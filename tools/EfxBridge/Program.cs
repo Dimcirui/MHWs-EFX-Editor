@@ -1,4 +1,6 @@
-// EfxBridge — Phase 0 验证工具
+// EfxBridge — Phase 0 验证工具 + Phase 1 Python↔C# JSON 桥接 CLI
+//
+// ===== roundtrip 子命令（Phase 0）=====
 //
 // 验证标准（已从"与原文件逐字节相同"改为"二次往返稳定"，见 PLAN.md 第 0 阶段讨论）：
 // RE-Engine-Lib 不是"保留原字节"哲学，是"解码成干净对象模型后总是重新生成字节"——
@@ -16,20 +18,102 @@
 // 不再是 PASS/FAIL 判据。
 //
 // 用法：
-//   dotnet run --project tools/EfxBridge -- roundtrip <目录或单个文件路径> [--verbose] [--dump <输出目录>]
+//   dotnet <dll> roundtrip <目录或单个文件路径> [--verbose] [--dump <输出目录>]
 //
 // --dump <dir>：不稳定（bytes1 != bytes2）时，把 original / bytes1 / bytes2 三份都写到
 // <dir>/<文件名>.{orig,pass1,pass2}，供 hexdump/010 Editor 对比（诊断用）。
 //
+// ===== dump / load 子命令（Phase 1，Python↔C# 交换协议）=====
+//
+// RE-Engine-Lib 自带 EfxJsonTypeResolver（见 REE-Lib/OtherFiles/EfxFile.cs），用
+// System.Text.Json 的多态序列化（$type 判别字段 + GetTypeInfo 反射注册全部 ~150 个
+// EFXAttribute 子类）实现了通用 JSON 往返，不需要在这一层手工枚举每个 attribute 类型。
+// dump/load 只是薄封装：
+//
+//   dump <efx 文件路径> <json 输出路径>   —— 读 .efx，序列化整个 EfxFile 对象图为 JSON
+//   load <json 文件路径> <efx 输出路径>   —— 反序列化 JSON 为 EfxFile，写回 .efx
+//
+// 中间表示是"整个 EfxFile 对象图"的直译 JSON（字段名、结构均来自 C# 类本身），
+// 不是为 Blender UI 设计过的精简 schema——Python 侧后续按需再从这份 JSON 里挑字段
+// 映射到 PropertyGroup。这一层只负责"批处理、文件进文件出"的桥接，不做语义裁剪。
+//
+// 已发现并绕过的坑（不改 vendor，见下方 StripUnsafeComputedProperties）：
+// EFXExpressionParameter.{Float2,Color,Range} 是三个"标签联合视图"属性，共享底层
+// value1/value2/value3 字段，只有与当前 type 匹配的那个可读，其余两个 getter 直接
+// throw。System.Text.Json 默认反射会把这三个 public 属性当成普通字段全部尝试序列化，
+// 导致必炸（三选二必抛异常）。全仓库排查过，这个模式只出现在这一处（EfxFile.cs 内的
+// 3 处 `get => ... : throw new Exception`），不是普遍现象，所以不需要通用化解法，
+// 按类型+属性名精确剔除即可。
+//
 // 编译需要 -p:LangVersion=preview（vendor 用了 C# 13 的 field 关键字）：
 //   dotnet build tools/EfxBridge -p:LangVersion=preview
 
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using ReeLib;
 using ReeLib.Efx;
 
+static JsonSerializerOptions CreateBridgeJsonOptions() => new(EfxJsonTypeResolver.jsonOptions)
+{
+    TypeInfoResolver = EfxJsonTypeResolver.Instance.WithAddedModifier(StripUnsafeComputedProperties),
+    // EFX 里的 float 字段会出现 Infinity/NaN（例如"无上限"语义），默认 JSON 数字语法
+    // 不支持这两个字面量，需要显式放开（写成 "Infinity"/"NaN" 字符串形式的具名浮点值）。
+    NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals,
+};
+
+static void StripUnsafeComputedProperties(JsonTypeInfo typeInfo)
+{
+    if (typeInfo.Type == typeof(EFXExpressionParameter))
+    {
+        // 标签联合视图属性：Float2/Color/Range 共享 value1/value2/value3，只有与当前
+        // type 匹配的那个可读，其余两个 getter 直接 throw（见文件头注释）。
+        RemoveProperties(typeInfo, "Float2", "Color", "Range");
+    }
+    else if (typeof(EFXEntryBase).IsAssignableFrom(typeInfo.Type))
+    {
+        // EFXEntryBase.TypeAttribute 是"在 Attributes 里找第一个 IsTypeAttribute"的
+        // 只读计算属性（无 setter），不是独立数据。EfxJsonTypeResolver 把声明类型为
+        // EFXAttribute 的成员都设成了 Populate 创建模式（服务于 Attributes 列表本身），
+        // 但 Populate 模式对"只读 + 标量（非集合）"成员无法处理 null 值
+        // ——找不到 Type* attribute 时这个属性就是 null，反序列化会直接抛异常。
+        RemoveProperties(typeInfo, "TypeAttribute");
+    }
+    else if (typeInfo.Type == typeof(EfxFile))
+    {
+        // EFXAttributePlayEmitter.efxrData（内嵌子 EfxFile，PLAYEMITTER 引用外部 .efxr）
+        // 在 DoRead() 里被反向挂上 parentFile 指回外层 EfxFile，形成真实对象图环
+        // （efxrData.parentFile.Actions[].Attributes[].efxrData.parentFile...），
+        // 序列化时直接触发 System.Text.Json 的 cycle 检测异常。这个反向指针只在
+        // ParseExpressions()/FindParameterByHash() 这类"跨内嵌文件解析表达式"的
+        // 便捷路径里用到，DoWrite() 本身不读它，所以 dump/load 往返里可以整个丢弃，
+        // 不需要在 load 之后手工重建。
+        RemoveProperties(typeInfo, "parentFile");
+    }
+}
+
+static void RemoveProperties(JsonTypeInfo typeInfo, params string[] names)
+{
+    foreach (var prop in typeInfo.Properties.Where(p => names.Contains(p.Name)).ToList())
+    {
+        typeInfo.Properties.Remove(prop);
+    }
+}
+
+if (args.Length >= 1 && args[0] == "dump")
+{
+    return RunDump(args);
+}
+if (args.Length >= 1 && args[0] == "load")
+{
+    return RunLoad(args);
+}
+
 if (args.Length < 2 || args[0] != "roundtrip")
 {
-    Console.WriteLine("用法: dotnet run --project tools/EfxBridge -- roundtrip <目录或文件路径> [--verbose] [--dump <输出目录>]");
+    Console.WriteLine("用法:");
+    Console.WriteLine("  dotnet <dll> roundtrip <目录或文件路径> [--verbose] [--dump <输出目录>]");
+    Console.WriteLine("  dotnet <dll> dump <efx 文件路径> <json 输出路径>");
+    Console.WriteLine("  dotnet <dll> load <json 文件路径> <efx 输出路径>");
     return 1;
 }
 
@@ -163,4 +247,61 @@ static (int offset, int lenA, int lenB) FirstDiff(byte[] a, byte[] b)
         if (a[i] != b[i]) return (i, a.Length, b.Length);
     }
     return (n, a.Length, b.Length); // 长度不同但公共前缀完全一致
+}
+
+static int RunDump(string[] args)
+{
+    if (args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> dump <efx 文件路径> <json 输出路径>");
+        return 1;
+    }
+    var efxPath = args[1];
+    var jsonOutPath = args[2];
+
+    try
+    {
+        var handler = new FileHandler(efxPath);
+        var efx = new EfxFile(handler);
+        efx.Read();
+
+        var json = JsonSerializer.Serialize(efx, CreateBridgeJsonOptions());
+        File.WriteAllText(jsonOutPath, json);
+        Console.WriteLine($"OK: {efxPath} -> {jsonOutPath}");
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ERROR] {efxPath}");
+        Console.WriteLine(ex.ToString());
+        return 1;
+    }
+}
+
+static int RunLoad(string[] args)
+{
+    if (args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> load <json 文件路径> <efx 输出路径>");
+        return 1;
+    }
+    var jsonPath = args[1];
+    var efxOutPath = args[2];
+
+    try
+    {
+        var json = File.ReadAllText(jsonPath);
+        var efx = JsonSerializer.Deserialize<EfxFile>(json, CreateBridgeJsonOptions())
+            ?? throw new Exception("反序列化结果为 null");
+
+        efx.WriteTo(efxOutPath);
+        Console.WriteLine($"OK: {jsonPath} -> {efxOutPath}");
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ERROR] {jsonPath}");
+        Console.WriteLine(ex.ToString());
+        return 1;
+    }
 }

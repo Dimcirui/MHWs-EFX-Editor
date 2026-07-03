@@ -1,0 +1,25 @@
+schema_version = "1.0.0"
+
+id      = "mhws_efx_editor"
+type    = "add-on"
+
+name     = "MHWs EFX Editor"
+tagline  = "Import and export Monster Hunter Wilds EFX effect files"
+version  = "0.0.1"
+
+maintainer = "Dimcirui"
+
+blender_version_min = "4.3.0"
+
+# TODO: 尚未定；姊妹项目 EFX-Editor 用 GPL-3.0-or-later，本项目 vendor 的
+# RE-Engine-Lib 是 MIT，两者不冲突，但本项目自身代码的许可证还没有正式决定。
+# 发布前必须补上，否则 Blender 扩展系统校验会失败。
+# license = ["SPDX:GPL-3.0-or-later"]
+
+tags = ["Import-Export"]
+
+# 打包正式扩展时需要把 blender_efx_re/ 放入包根目录，并在 [build] 声明；
+# 开发期本地安装（Blender 扩展系统 "Install from Disk" 指向仓库根目录）可省略。
+#
+# [build]
+# paths = ["blender_efx_re/"]

@@ -1,7 +1,8 @@
 # MHWs-EFX-Editor
 
-Monster Hunter Wilds（RE Engine）`.efx` 特效文件的 Blender 编辑插件。目前处于 Phase 0（验证阶段），
-还没有 Blender 插件代码。
+Monster Hunter Wilds（RE Engine）`.efx` 特效文件的 Blender 编辑插件。Phase 0（C# 后端往返稳定性
+验证）已完成，目前处于 Phase 1（JSON 交换协议 + Blender addon 骨架搭建中）。当前只有一个最小
+"导入→查看 JSON→导出"闭环，还没有字段级 PropertyGroup 面板。
 
 详见 [PLAN.md](PLAN.md)。
 
