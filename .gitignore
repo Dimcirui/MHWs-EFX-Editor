@@ -1,0 +1,12 @@
+# .NET
+bin/
+obj/
+*.user
+
+# Blender
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
