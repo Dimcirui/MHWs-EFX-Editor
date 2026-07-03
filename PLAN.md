@@ -159,11 +159,77 @@ Expression 数据的 attribute 目前 dump 没问题，load 会失败。这与�
 
 尚未做（按需排期，不卡当前）：
 - `~TYPE` 自定义属性对象模型 + Body/Attribute 的 PropertyGroup 字段面板
-- 跨引用字段的 PointerProperty 化（Subselect/Play/Extern 等）
+- Action 顶层对象类型 + Body 上的 Subselect 标签列表（见下方数据模型调研结论）
 - 复制/粘贴/预设系统
 - Clip（TIML 同构）与 Expression（公式引擎）编辑器 UI
+- FieldParameterValues/ExpressionParameters 的不透明透传支持（不做字段级 UI）
 - 尚未跑过大规模语料的 dump/load 回归（只验证过 `diag/` 里的 2 个样本 + 手工抽样，
   没有复现 Phase 0 roundtrip 那种全量 9241 文件统计）
+
+### Phase 1 补充 — MHWs 顶层数据结构与 MHWI（EFX-Editor）对照调研（2026-07-03）
+
+背景：开始设计 PointerProperty/对象模型前，先搞清楚 MHWs 的 EFX 顶层结构相对 MHWI（姊妹
+项目 [EFX-Editor](https://github.com/Dimcirui/MHW-EFX-Editor) 的 Body/Play/Extern/
+Subselect Table 概念，见其 README"Basic structure"一节）发生了什么变化。以下结论完全基于
+静态阅读 `vendor/RE-Engine-Lib` 源码（`EfxFile.cs` 的 Read/Write 顺序、`AddAttribute` 的
+护栏逻辑、`AttributeTypeIDs` 表）得出，**当前仓库没有任何真实 MHWs `.efx` 样本**，样本到手
+后需要用实际文件复核。
+
+**`EfxFile`（`ReeLib.EfxFile`）顶层字段清单**：
+
+```
+Entries               List<EFXEntry>                — Body（与 MHWI 概念一致）
+Actions               List<EFXAction>                — 独立顶层列表，= Play（已确认）
+EffectGroups          List<EffectGroup>              — 命名分组 + Entry 下标子集，= Subselect Table（已确认）
+FieldParameterValues  List<EFXFieldParameterValue>   — 命名+类型化的值/路径表，Wilds 新增，暂不深挖
+ExpressionParameters  List<EFXExpressionParameter>   — 公式引擎具名参数表，Wilds 新增，暂不深挖（决策8已覆盖）
+Bones / BoneRelations                                 — 骨骼绑定表，与 MHWI PARENTOPTIONS 概念一致
+```
+
+**结论 1：`Actions` = MHWI 的 Play。** 证据是结构性的，不只是同名：`EFXEntryBase.AddAttribute`
+（`EfxFile.cs:233`）显式拒绝把 `PlayEmitter`/`PlayEfx` 挂到 `EFXEntry` 上——这两个 attribute
+类型只能挂在 `EFXAction` 上。"Action" 这个顶层列表存在的意义就是承载 Play 类 attribute，
+且和 Body 一样有独立的具名字符串表（`Strings.ActionNames`）。工业界习惯把这类"动作触发器"
+叫 Action，Play 是社区约定名，两者所指一致。
+
+**结论 2：`EffectGroups` = MHWI 的 Subselect Table。** `EffectGroup` 就是"命名分组 + 一组
+Entry 下标"（`groupName` + `efxEntryIndexes`），和 `EFXEntry.Groups`（每个 Body 反向记录
+自己属于哪些组）互为镜像，导出时由 `UpdateEffectGroups()`（`EfxFile.cs:893`）从 Body 侧的
+Groups 重新推导、重建下标数组。这与架构决策第 4 点"对象身份而非裸下标"的精神一致：Blender
+侧不需要为 Subselect 做下标 PointerProperty 数组，只需要在每个 Body 对象上挂一个字符串/
+标签列表（对应 `EFXEntry.Groups`），文件级 `EffectGroups` 列表整个当成导出时的派生产物
+处理，不需要用户直接编辑下标。外部调用方式已确认：`.epv`（Effect Provider）按"带
+conditional bit id 的 Subselect 表项"调用某个 EFX 文件里的 Body 子集；这个条件判断逻辑本身
+不在 `.efx` 文件内、也不由 RE-Engine-Lib 解释，`.efx` 侧只需要如实存储分组数据。
+
+**结论 3：`PlayEmitter` 是内嵌（组合），不是引用。** 这一点和直觉相反，值得记录：
+`EFXAttributePlayEmitter.efxrData` 是一个完整、独立的 `EfxFile` 对象图（自己的
+Header/Entries/Actions/EffectGroups 等），整个内联序列化在这个 attribute 里
+（`EfxFile.cs` 约 495-515 行），不是"指向同文件内某个 Body/Action 的指针"。**这直接影响
+Blender 对象模型**：Play → PlayEmitter 不应该做成"PointerProperty 指向本文件内某个 Body
+对象"，而应该做成"PlayEmitter 拥有一个嵌套子集合（递归的 Body/Action/EffectGroups 结构）"
+——即 Blender 场景里大概率是一层嵌套 Collection，而不是跨对象的裸指针。
+
+**决策（已定）**：`FieldParameterValues` 与 `ExpressionParameters` 均视为 MHWs 新增的、
+暂不深挖语义的子系统——**只做透传，不做字段级解析/编辑 UI**，与架构决策第 8 点对 Expression
+的处理原则一致（结构化透传，UI 后置，不卡其他功能）。不再尝试把 `FieldParameterValues` 往
+MHWI Extern"替换参数"机制上套（调研阶段的一个假设，已放弃——两边都没有确凿的消费端代码
+佐证这个映射，与其猜一个不确定的语义，不如先诚实地标记为"不透明"）。MHWI Extern 的第二种
+子类型（"external EFX references"）在 Wilds 侧目前没有找到任何结构对应物，视为可能已被
+移除/合并，等有真实样本再复核。
+
+**Blender 对象模型草案（已达成一致，实现时按此展开）**：
+- **Body**（对应 `Entries`）——与 MHWI 一致，`~TYPE` 对象 + PropertyGroup 字段面板。
+- **Action**（对应 `Actions`，新顶层类型，与 Body 同级而非 Body 的子级）——承载
+  `PlayEmitter`/`PlayEfx`；`PlayEmitter` 拥有嵌套子集合，不用 PointerProperty。
+- **Subselect**——不建单独对象类型，落在 Body 对象上的一个字符串标签列表
+  （对应 `EFXEntry.Groups`），文件级 `EffectGroups` 视为导出时派生数据。
+- **FieldParameterValues / ExpressionParameters**——暂列为不透明数据块随文件透传，
+  不建 PropertyGroup 编辑面板。
+
+**尚待验证（需要真实 MHWs 样本，当前仓库里没有任何样本文件）**：以上三点结论均只经过静态
+代码阅读，没有跑过真实文件验证，样本到手后应优先用 `EfxBridge dump` 检查一个带 Play 的
+真实 Body 的 JSON，确认 Action/PlayEmitter 嵌套结构与推断一致。
 
 **前瞻性备注（不影响当前阶段，仅为将来铺路）**：姊妹项目 EFX-Editor（MHWI）正在设计一套
 "字段语义知识表"（把 label/tooltip/官方名等展示层语义从 `.py` 表搬到外部 JSON，让非程序员
