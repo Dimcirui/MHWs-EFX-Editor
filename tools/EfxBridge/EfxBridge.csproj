@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>EfxBridge</RootNamespace>
+    <AssemblyName>EfxBridge</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- vendor/RE-Engine-Lib 是 git submodule，锁定 commit 见 PLAN.md -->
+    <ProjectReference Include="..\..\vendor\RE-Engine-Lib\REE-Lib\REE-Lib.csproj" />
+  </ItemGroup>
+
+</Project>
