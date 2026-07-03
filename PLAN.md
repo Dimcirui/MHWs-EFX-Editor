@@ -111,13 +111,59 @@ dotnet tools/EfxBridge/bin/Debug/net8.0/EfxBridge.dll roundtrip <MHWs .efx 样�
 记录在 [KNOWN_UPSTREAM_ISSUES.md](KNOWN_UPSTREAM_ISSUES.md)，升级 vendor commit 时对照复核。
 异常样本的处理方式见架构决策第 9 点（拒绝导入，不做半成品解析）。当前可以进入 Phase 1。
 
-### Phase 1+ — 待 Phase 0 通过后再定
+### Phase 1 — JSON 交换协议 + Blender addon 骨架（进行中）
 
-暂不展开，避免在验证核心前提之前过度设计。大致方向：
-- 若 Phase 0 通过：设计 Python↔C# 的 JSON 交换协议（复用 `efx_structs.json` 的 schema 描述做
-  Blender 侧的通用属性面板），搭 Blender addon 骨架，实现最小可用的「导入→查看单个 attribute
-  字段→导出」闭环。
-- 若 Phase 0 发现系统性失败：按失败模式决定是"绕过该字段类型"还是"重新评估整个架构"。
+**JSON 交换协议**：没有走"手工设计 schema"路线，而是直接用上了 RE-Engine-Lib 自带的
+`EfxJsonTypeResolver`（`vendor/RE-Engine-Lib/REE-Lib/OtherFiles/EfxFile.cs`）——它已经用
+`System.Text.Json` 的多态序列化（`$type` 判别字段 + 反射注册全部 ~150 个 `EFXAttribute`
+子类）实现了通用往返，不需要在这一层手工枚举每个 attribute 类型。`tools/EfxBridge` 新增
+`dump`/`load` 两个子命令做薄封装：
+
+```
+dotnet <dll> dump <efx 文件路径> <json 输出路径>   # 读 .efx → 序列化整个 EfxFile 对象图
+dotnet <dll> load <json 文件路径> <efx 输出路径>   # 反序列化 JSON → 写回 .efx
+```
+
+中间表示是 `EfxFile` 对象图的直译 JSON（字段名/结构来自 C# 类本身），不是为 Blender UI
+精简过的 schema——Python 侧后续按需再从这份 JSON 里挑字段映射到 PropertyGroup。
+
+**验证中发现并修复的 3 个通用序列化坑**（都在 `tools/EfxBridge/Program.cs` 里用自定义
+`JsonTypeInfo` modifier 绕过，没有改 vendor 源码——这是我们自己桥接层的问题，不是"上游
+解析 bug"，所以没有记进 KNOWN_UPSTREAM_ISSUES.md）：
+
+1. `EFXExpressionParameter.{Float2,Color,Range}` 是三个共享底层字段的"标签联合视图"属性，
+   只有与当前 `type` 匹配的那个可读，其余两个 getter 直接 `throw`——序列化会必炸。
+2. `EFXEntryBase.TypeAttribute` 是只读计算属性（`Attributes.FirstOrDefault(...)`），
+   resolver 把声明类型为 `EFXAttribute` 的成员都设成了 Populate 创建模式（服务于
+   `Attributes` 列表本身），但 Populate 模式处理不了"只读 + 标量 + null"的组合，找不到
+   Type* attribute 时（`null`）反序列化直接抛异常。
+3. `EfxFile.parentFile`（`EFXAttributePlayEmitter.efxrData` 内嵌子文件反向指回外层
+   `EfxFile`）形成真实对象图环，序列化触发 System.Text.Json 的 cycle 检测。这个指针只服务
+   `ParseExpressions()`/`FindParameterByHash()` 这类跨内嵌文件解析表达式的便捷路径，
+   `DoWrite()` 本身不读它，dump/load 往返可以整个丢弃、不需要 load 后手工重建。
+
+**已知遗留缺口（不是本轮要解决的）**：`EFXExpressionDataBase`（Expression 公式引擎的
+表达式节点树）反序列化会报
+`Deserialization of types without a parameterless constructor ... is not supported`——
+resolver 只给 `EFXAttribute` 一层注册了多态判别，没有覆盖这一层嵌套多态类型。带
+Expression 数据的 attribute 目前 dump 没问题，load 会失败。这与架构决策第 8 点一致
+（Expression 是独立子系统，UI 和序列化支持都可以后置），调用方应捕获 `BridgeError` 后
+按第 9 点"整文件拒绝"处理，不做半成品。
+
+**Blender addon 骨架**（`__init__.py` + `blender_manifest.toml` + `blender_efx_re/`）：
+最小闭环打通了 `.efx --dump--> JSON --存成文本块--> （可查看/编辑）--load--> .efx`，
+但还没有 `~TYPE` 对象模型、PointerProperty 交叉引用、字段 PropertyGroup 面板——当前是
+"JSON 文本块"级别的查看，不是字段级 UI。这些是下一步（需要先决定 JSON 里哪些字段映射到
+哪些 PropertyGroup，可参考 EFX-Editor 的 `fields.py`/`subselect.py`/`play_emitter.py` 等
+模块的 PointerProperty+poll 模式，见项目发起会话的架构调研）。
+
+尚未做（按需排期，不卡当前）：
+- `~TYPE` 自定义属性对象模型 + Body/Attribute 的 PropertyGroup 字段面板
+- 跨引用字段的 PointerProperty 化（Subselect/Play/Extern 等）
+- 复制/粘贴/预设系统
+- Clip（TIML 同构）与 Expression（公式引擎）编辑器 UI
+- 尚未跑过大规模语料的 dump/load 回归（只验证过 `diag/` 里的 2 个样本 + 手工抽样，
+  没有复现 Phase 0 roundtrip 那种全量 9241 文件统计）
 
 **前瞻性备注（不影响当前阶段，仅为将来铺路）**：姊妹项目 EFX-Editor（MHWI）正在设计一套
 "字段语义知识表"（把 label/tooltip/官方名等展示层语义从 `.py` 表搬到外部 JSON，让非程序员
@@ -132,9 +178,11 @@ Blender 通用属性面板时，本项目会遇到同样的问题（RE-Engine-Li
 ```
 MHWs-EFX-Editor/
   vendor/RE-Engine-Lib/       — git submodule，锁定 commit，见上文
-  tools/EfxBridge/            — Phase 0 验证工具（.NET 控制台程序）
+  tools/EfxBridge/            — Phase 0 验证工具 + Phase 1 dump/load 桥接 CLI（.NET 控制台程序）
+  __init__.py                 — Blender 扩展入口（委托给 blender_efx_re）
+  blender_manifest.toml       — Blender 4.2+ 扩展清单
+  blender_efx_re/             — Blender 胶水层：bridge.py（subprocess+JSON 封装）/
+                                 operators.py / panels.py，目前只有最小 import/export 闭环
   PLAN.md                     — 本文件
   KNOWN_UPSTREAM_ISSUES.md    — 已知上游解析缺口跟踪，升级 vendor 时对照复核
 ```
-
-Blender 插件本体（`blender_efx_re/` 或类似）尚未创建，留到 Phase 1。
