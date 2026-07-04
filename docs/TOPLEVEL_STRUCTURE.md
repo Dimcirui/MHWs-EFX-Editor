@@ -577,3 +577,143 @@ expressions, embedded efx"。用 `gh api repos/kagenocookie/RE-Engine-Lib/compar
 内容级比对完全一致。**教训**：以后手工用 `EfxBridge load` 测试时，输出路径必须带正确的
 `.efx.<version>` 后缀，不能图方便用裸 `.efx`——这不是 bug，是这套文件格式的设计（版本号本来
 就该体现在文件名里，不是任何一个游戏版本都会把它编码进二进制内容本身）。
+
+## `Clip`（attribute 内容级，不是顶层字段）结构调研与实现（2026-07-04）
+
+**先厘清范围**：`Clip` 不是 `EfxFile` 的顶层字段——它是 attribute 内容级的结构，和本文件
+其余章节记录的 `Bones`/`FieldParameterValues`/`UvarGroups`/`ExpressionParameters`（都挂在
+`EfxFile` 上）不是同一个层级。放进这份文档是因为调研方法和记录习惯一致（同一批"结构确定、
+语义部分确定"的字段），且和已经记录在"Bones / BoneRelations 结构调研"里的 `ParentBone`
+一样，都是"接口在 attribute 具体类上暴露的字段"这种模式。
+
+**不是一个字段，是一整族 attribute 类型**：`IClipAttribute`/`IMaterialClipAttribute`
+（`EfxFile.cs:1009-1019`）两个接口，一共被 ~24 个 `*Clip`/`*MaterialClip` 后缀的独立
+attribute 类实现（`Transform3DClip`/`EmitterColorClip`/`PtVelocity3DClip`/`TypeMeshClip`/
+……，遍布 `EfxTransform.cs`/`EfxEmitter.cs`/`EfxTypeMesh.cs`/`EfxTypeRibbon.cs` 等十来个
+文件）。这些 attribute **不是**"某个正常 attribute 多出来的几个字段"，而是**独立的、必须
+和对应的"主" attribute 成对出现的兄弟 attribute**（比如 `Transform3DClip` 要求同一个
+Entry 上也有 `Transform3D`）——`EFXEntryBase.AddAttribute()`（`EfxFile.cs:232`）会在挂载时
+校验这个配对关系，找不到主 attribute 只会打日志警告，不会拒绝，但结构上"孤立的 Clip
+attribute"是不完整的状态。**这一轮只实现纯 `IClipAttribute`（15 个类）**，
+`IMaterialClipAttribute`（~9 个，额外带 `mdfProperties`/`indices` 材质属性哈希关联）留给
+以后的迭代，见下方"范围边界"。
+
+**核心数据结构**（`ClipSubstructs.cs`）：
+```
+EfxClipData:
+    loopType: EfxClipPlaybackType     — 4 个取值（-1/0/2/4），vendor 注释坦承是猜的
+    clipDuration: float               — 所有关键帧里最大的 frameTime，写出时不会自动重算
+    clipCount/frameCount/interpolationDataCount: int   — 三个数组的长度，写出时会从数组
+                                                          长度自愈（不需要我们手动维护）
+    clipDataSize/frameDataSize/interpolationDataSize: int   — 三个数组的字节长度，
+                                                              **写出时不会自愈**，必须自己
+                                                              按 8/12/16 字节算对（结构体
+                                                              大小，见下）
+    clips: EfxClipHeader[]            — 每条子曲线的 {frameCount, valueType}
+    frames: EfxClipFrame[]            — 所有子曲线的关键帧，按子曲线顺序拼接成一个平铺数组
+    interpolationData: EfxClipInterpolationTangents[]   — 只有 Bezier 类型的帧才有一条，
+                                                          按"遇到顺序"消费，不是按下标对齐
+
+EfxClipHeader:      {frameCount: int, valueType: ClipValueType}          — 8 字节
+EfxClipFrame:       {frameTime: float, type: FrameInterpolationType, value: float(私有)}
+                    — 12 字节，IntValue/FloatValue 是对同一个私有 value 字段的两种位重解释
+EfxClipInterpolationTangents:  {out_x, out_y, in_x, in_y: float}          — 16 字节
+```
+`ClipValueType`：`Int=3`/`Float=5`。`FrameInterpolationType`：`Unknown=0`/`Type1=1`/
+`Type2=2`（结构体默认值）/`Type3=3`/`Bezier=5`（唯一有结构性证据的——带独立的切线数据段）/
+`Type13=13`（仅 DMC5 样本见过）。
+
+**一个真实的 vendor bug：`EfxClipFrame.IntValue` 的 setter 是死代码。**
+```csharp
+public int IntValue { get => BitConverter.SingleToInt32Bits(value); set => BitConverter.Int32BitsToSingle(value); }
+```
+setter 算出了转换结果，但忘了赋值回私有字段 `value`（应该是 `this.value = ...`）——C# 属性
+setter 的隐式参数刚好也叫 `value`，和私有字段同名，这行代码实际是对局部参数做了一次纯计算
+后直接丢弃，`this.value` 完全没被碰过。**通过 `IntValue` 赋值完全不生效**，通读全仓库确认
+`FloatValue` 的 setter 是对的（显式 `this.value = value`），所以导出 `ClipValueType.Int`
+类型的关键帧必须自己把整数位模式转换成浮点数，写进 `FloatValue`（`model.
+int_bits_to_float()`），不能指望 `IntValue`。`IntValue` 的 getter 本身没问题，导入时直接读
+没问题。
+
+**`ClipBits`（`BitSet`）决定"这个 Clip attribute 驱动主 attribute 的哪几个字段"，子曲线
+数组和置位 bit 一一对应**：`clips[]`（一条子曲线一项）的下标顺序，和 `ClipBits` 里从低到高
+排序后的置位 bit 下标一一对应（vendor `BitSet.GetBitInsertIndex()` 就是算这个映射用的：
+"给定一个 bit，它前面已经置位的 bit 数量，就是它在数组里应该排的位置"）。也就是说：启用
+一个 bit（比如"位置 X 分量"）等于给这个 attribute 新增一条独立的关键帧曲线，关掉一个 bit
+等于删掉对应曲线——Blender 侧因此不单独维护"启用哪些 bit"的勾选列表，"添加一条曲线"和
+"启用一个 bit"是同一个操作，见下方 Blender 实现。`BitNames`（把 bit 下标映射成字段名）是
+vendor **C# 类字段初始化时硬编码的常量**（比如 `expressionBits = new BitSet(6) {
+BitNameDict = {...} }`），不是文件自己的数据——`BitSet.DoRead()`/`DoWrite()` 只处理 `Bits`
+这个整数数组，`BitNames` 对导出字节没有任何影响。真实样本（`Transform3DClip`，见下）的
+`clipBits = new BitSet(9)` 没有定义 `BitNameDict`，`bitNames` 全程是 `null`——只知道"bit 1
+被启用"，不知道 bit 1 对应哪个字段，这是**结构确定、字段身份未知**的典型情况，按决策 9
+如实标注（面板上没有名字就显示 `Bit {index}`）。
+
+**JSON 序列化里的两组"只读视图"重复内容，导入时全部忽略**：
+1. attribute 顶层的 `Clip`/`ClipBits`/`MaterialClip`——`IClipAttribute`/
+   `IMaterialClipAttribute` 接口暴露的计算属性（`Clip => clipData`），纯粹是对
+   `clipData`/`clipBits` 字段的只读别名，序列化会重复输出一遍完整内容，反序列化用不到（没有
+   setter）。真正要读/写的是小写的 `clipData`/`clipBits` 字段本身。
+2. `clipData` 内部的 `IsParsed`/`ParsedClip`——`EfxClipData.ParseClip()` 的缓存视图，把
+   平铺的 `clips`/`frames`/`interpolationData` 重新分组成"每条子曲线自己的关键帧列表"，
+   更适合人读，但同样是只读、没有 setter。**这次没有依赖它**：`ParsedClip` 是否存在、格式
+   会不会变，都不影响我们自己的导入逻辑——Blender 侧直接照抄 `ParseClip()` 本身的分组算法
+   （按 `clips[]` 每一项的 `frameCount` 依次切 `frames[]`，Bezier 帧顺带从
+   `interpolationData[]` 取一个），比依赖一个我们自己也能重算的便利视图更稳健。
+
+**范围边界（这一轮明确不做的）**：
+- `IMaterialClipAttribute`（`EFXAttributeTypeMeshClip`/`TypeBillboard3DMaterialClip`/……
+  9 个类）——额外的 `mdfProperties: EfxMaterialClip_Struct4[]`（材质属性哈希 +
+  几个未知字段）/`indices: uint[]` 关联材质参数，本轮结构性排除
+  （`model.is_clip_attribute_dict()` 检测 `clipData` 里有没有 `mdfProperties` 键），继续
+  走通用树透传，不建专属 UI。
+- "主/Clip 兄弟 attribute 必须成对存在"这个约束本轮不做导出前校验——只有真正拿到一个
+  "有 Clip 没有主 attribute"的真实样本、确认这在游戏里到底是不是致命错误，才知道要不要拦。
+
+**Blender 实现**：`Object.efx_is_clip_attribute`（持久标记，导出时判断走不走 Clip 专属逻辑，
+不靠"曲线列表是不是空"推断——0 条曲线也是合法状态）+ `efx_clip_bit_count`（只读展示，
+attribute 类型固定的常量）+ `efx_clip_loop_type`（4 选项 Enum）+ `efx_clip_curves`
+（`EFXClipCurveItem` 列表，一条曲线 = 一个启用的 bit，`bit_index`/`bit_name`（纯展示）/
+`value_type`（Int/Float Enum）/`keyframes`）。每条曲线的 `keyframes`
+（`EFXClipKeyframeItem` 列表）：`frame_time`/`interp_type`（6 选项 Enum）/`value`（统一用
+`FloatProperty`，Int 类型时存整数的浮点表示，导出时四舍五入取整再按位转换）/4 个 Bezier
+切线分量（只在 `interp_type == "5"` 时面板显示）。三层级联 UIList（曲线列表 → 选中曲线的
+关键帧列表 → 选中关键帧的详情），Add 曲线自动挑最低的未使用 bit（挑不到时报错，不静默失败）。
+
+新增 `io_tree.check_clip_bits()`（导出前校验，同 `check_bone_references()` 的纪律）：
+`bit_index` 越界（超出 `[0, bit_count)`）或重复（两条曲线用了同一个 bit）都直接拒绝导出——
+越界会让 C# 侧 `BitSet.SetBit()` 在 `load` 阶段直接数组越界抛异常（不是理论风险，`Bits[
+bitIndex >> 5]` 是裸数组访问），重复会让两条曲线的数据在写出时对同一个 bit 位互相覆盖，
+两种情况都不能悄悄放行。和 `check_bone_references()` 不同的是这个校验**会递归进嵌套
+PlayEmitter.efxrData 子树**——Clip 的 bit 校验是纯局部的（不依赖任何文件级共享表），没有
+已知的嵌套读写不对称问题，没有理由把检查范围收窄到顶层。
+
+**实机验证（2026-07-04，Blender 5.1 + `diag/11_guide_110.efx.5571972.orig`）**：真实样本
+里的唯一一个 Clip attribute（`Entry4` 上的 `Transform3DClip`）覆盖了大部分关键路径——
+`bit_index=1`（`bitNames` 确认是 `null`，面板正确显示成"Bit 1"）、`value_type=Float`、
+3 个关键帧全部是 `Bezier` 插值（带真实的切线数据）。
+- Import 后逐字段核对：`bit_count=9`、`loop_type="-1"`（面板正确显示"Looping"）、
+  曲线的 `bit_index`/`value_type`/3 个关键帧的 `frame_time`/`value`/`interp_type`/4 个
+  切线分量，与样本原始 JSON（`clipData.clips[0]`+`clipData.frames[]`+
+  `clipData.interpolationData[]`+`clipBits.bits`）完全一致。
+- 直接检查 `io_tree.export_attribute_object()` 的返回值：`clipData`/`clipBits` 逐字段
+  完全相同，三个 `*Size` 字段（`8`/`36`/`48`）精确匹配原始样本（confirmed 1 条曲线×8 字节、
+  3 帧×12 字节、3 条切线×16 字节）。
+- **过真实 `bpy.ops.efx_re.export()` 走完整链路**：导出后用 `EfxBridge dump` 复核，
+  `clipData`/`clipBits` 和原始样本逐字段完全相同（这次不像 `EffectGroups` 那样有"重新计算
+  导致顺序不同"的情况——Clip 没有被 C# 后端二次处理，纯粹是我们自己写出去多少就是多少）。
+- 手工验证 `IntValue`/`FloatValue` 位转换往返：`int_bits_to_float(42)` →
+  `5.885453550164232e-44` → 反向 `struct.unpack("<i", ...)` 精确取回 `42`，确认
+  `EfxClipFrame.IntValue` setter bug 的规避方案是对的（真实测过，不是纸上谈兵）。
+- `check_clip_bits()` 三态测试：合法状态放行；`bit_index` 设成 99（超出 `bit_count=9`）
+  正确拒绝；两条曲线设成同一个 `bit_index` 正确拒绝（报错信息标出具体是哪个 attribute、
+  哪个 bit）；恢复合法状态后正确放行——四个状态全部通过。
+- 走真实 `bpy.ops.efx_re.export` operator 用一个刻意构造的重复 `bit_index` 触发拒绝：
+  operator 在调用 C# 桥接之前就报错、不写文件，和 `check_bone_references()` 的既有行为
+  一致。
+- 截图确认三层级联 UI 渲染正确：曲线列表显示"Bit 1 / 3 kf / Float"，选中后关键帧列表显示
+  3 个 `t=.../v=.../Bezier` 条目，选中关键帧后详情框显示 Time/Interpolation/Value 和 4 个
+  Bezier 切线分量，数值全部与原始样本吻合。
+
+测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON/efx 测试文件，没有
+改动仓库里的任何样本文件。

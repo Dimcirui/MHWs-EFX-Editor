@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import math
+import struct
 
 import bpy
 from bpy.props import (
@@ -54,6 +55,13 @@ ATTRIBUTE_BOOKKEEPING_KEYS = frozenset({
     "$type", "UniqueID", "Version", "IsTypeAttribute", "type",
 })
 ATTRIBUTE_NESTED_ROOT_KEYS = frozenset({"efxrData", "efxrSize"})
+
+# IClipAttribute/IMaterialClipAttribute 接口在具体 attribute 类上暴露的只读计算属性
+# （`Clip => clipData`/`ClipBits => clipBits`/`MaterialClip => clipData`），纯粹是对同一份
+# 数据的只读视图，没有独立内容，也没有 setter（JSON 反序列化用不到它们）。永远从内容字典里
+# 剔除，不管这个 attribute 这一轮有没有专属编辑 UI（`is_clip_attribute_dict()` 为 False 的
+# IMaterialClipAttribute 实现类走通用树时，也不需要在树里看到这三个键的重复内容）。
+ATTRIBUTE_CLIP_VIEW_KEYS = frozenset({"Clip", "ClipBits", "MaterialClip"})
 
 # EFXEntry 字典里，Attributes 单独按子对象处理，Groups 单独做成可编辑标签列表，其余键原样存进
 # efx_opaque_text，不建编辑 UI（当前阶段的结构骨架不覆盖）。
@@ -227,6 +235,24 @@ def is_bone_reference_field(node: EFXValueNode, attr_type: str | None) -> bool:
     `TypeLightning3D`，但字段 key 统一都是 `ParentBone`。
     """
     return attr_type is not None and node.key == "ParentBone" and node.data_type == "STRING"
+
+
+def is_clip_attribute_dict(attr_dict: dict) -> bool:
+    """一个 attribute 字典是不是"纯 `IClipAttribute`"（vendor `EfxFile.cs` 里的
+    `IClipAttribute`/`IMaterialClipAttribute` 接口，~24 个 `*Clip`/`*MaterialClip` 后缀的
+    attribute 类实现，见 docs/TOPLEVEL_STRUCTURE.md "Clip 结构调研"）。只按字段 key 结构性
+    判断（`clipData`+`clipBits` 同时存在），不维护硬编码类型清单——原因同
+    `is_bone_reference_field()`。
+
+    `IMaterialClipAttribute` 实现类（~9 个）额外带 `mdfProperties`（材质属性哈希关联，本轮
+    暂不处理，继续走通用树透传），字段名同样叫 `clipData`/`clipBits`，用
+    `clipData` 里有没有 `mdfProperties` 键排除——只有纯 `IClipAttribute`（不是
+    `IMaterialClipAttribute`）才会命中这个函数，对应 `EFXClipCurveItem` 编辑 UI。
+    """
+    if "clipData" not in attr_dict or "clipBits" not in attr_dict:
+        return False
+    clip_data = attr_dict.get("clipData") or {}
+    return "mdfProperties" not in clip_data
 
 
 def json_float_in(value) -> float:
@@ -527,6 +553,99 @@ class EFXExpressionParamItem(PropertyGroup):
 
 
 # ---------------------------------------------------------------------------
+# EFXClipCurveItem / EFXClipKeyframeItem —— IClipAttribute 的动画曲线编辑（挂在 EFX_ATTRIBUTE
+# 对象上，不是 EFX_ROOT——每个 Clip attribute 有自己独立的一份，不是文件级共享表）
+# ---------------------------------------------------------------------------
+
+# EfxClipPlaybackType（ClipSubstructs.cs:7-12）。vendor 注释原文只是猜测（"might be coded as
+# a Playback / loop trigger flag enum"），结构上 4 个取值完全确认，游戏侧真正含义不确认——
+# 分开标注，不写进下拉框标签本身。
+_CLIP_LOOP_TYPE_ITEMS = (
+    ("-1", "Looping", "loopType == -1：vendor 注释推测『一切都触发循环』，未证实"),
+    ("0", "Unknown", "loopType == 0：语义未知"),
+    ("2", "NonLooping", "loopType == 2：vendor 注释推测『都不触发循环』（手动控制？），未证实"),
+    ("4", "Type4", "loopType == 4：语义未知"),
+)
+
+# FrameInterpolationType（ClipSubstructs.cs:33-44）。vendor 注释坦承"这是不是插值方式本身都是
+# 猜的"，只有 Bezier（5）有强证据支持（带额外的切线数据段）。
+_CLIP_INTERP_TYPE_ITEMS = (
+    ("0", "Unknown", "type == 0：语义未知"),
+    ("1", "Type1", "vendor 注释：只在关键帧列表末尾出现过"),
+    ("2", "Type2", "vendor 注释：在首/中/末帧都出现过，也见过全 2 的列表；EfxClipFrame 的"
+                    "默认构造值"),
+    ("3", "Type3", "type == 3：语义未知"),
+    ("5", "Bezier", "大概率是贝塞尔曲线插值——带独立的切线数据段（interpolationData），是唯一"
+                     "有结构性证据支持插值方式这个猜测的取值"),
+    ("13", "Type13", "type == 13：仅在 DMC5 样本见过"),
+)
+
+# ClipValueType（ClipSubstructs.cs:14-18）。
+_CLIP_VALUE_TYPE_ITEMS = (
+    ("3", "Int", "关键帧数值按整数存取（EfxClipFrame.IntValue）"),
+    ("5", "Float", "关键帧数值按浮点数存取（EfxClipFrame.FloatValue），目前样本里唯一见过的"
+                    "取值"),
+)
+
+
+def int_bits_to_float(value: int) -> float:
+    """把一个 int 的位模式重新解释成 float。`EfxClipFrame`（`ClipSubstructs.cs:46-76`）只有
+    一个私有字段 `value`，`IntValue`/`FloatValue` 是对同一份存储的两种视图——但
+    `IntValue` 的 setter 有一个真实的 vendor 侧 bug：`set => BitConverter.
+    Int32BitsToSingle(value)`，C# 属性 setter 的隐式参数刚好也叫 `value`，和私有字段同名，
+    这行代码算出了转换结果却忘了赋值回私有字段（应该是 `this.value = ...`），是一个纯粹的
+    no-op——**通过 `IntValue` 赋值完全不生效**。导出 `ClipValueType.Int` 类型的关键帧时，
+    只能自己做这个位转换，写进 `FloatValue`（它的 setter 是对的：`this.value = value`）。
+    `IntValue` 的 getter 本身没问题，导入时直接读没问题。"""
+    return struct.unpack("<f", struct.pack("<i", value))[0]
+
+
+class EFXClipKeyframeItem(PropertyGroup):
+    """对应 `EfxClipFrame`（一个关键帧）+ 命中 `Bezier` 插值时的
+    `EfxClipInterpolationTangents`（切线，`ClipSubstructs.cs:81-89`，只在
+    `interp_type == "5"` 时才在文件里真实存在，见 `EfxClipData.ParseClip()`——按 frame 出现
+    顺序和"是不是 Bezier"筛出的并行数组，不是按下标对齐）。
+
+    `value` 统一用 `FloatProperty` 存（不管 `ClipValueType` 是 Int 还是 Float）——Int 类型时
+    存整数的浮点表示（如 `1.0`），导出时四舍五入取整再按位转换成 `FloatValue`
+    （见 `int_bits_to_float()`），没有必要为了一个大概率是小整数/布尔语义的字段单独维护一个
+    `IntProperty`。
+    """
+
+    frame_time: FloatProperty(name="Time")
+    interp_type: EnumProperty(name="Interpolation", items=_CLIP_INTERP_TYPE_ITEMS, default="2")
+    value: FloatProperty(name="Value")
+    tangent_out_x: FloatProperty(name="Out X")
+    tangent_out_y: FloatProperty(name="Out Y")
+    tangent_in_x: FloatProperty(name="In X")
+    tangent_in_y: FloatProperty(name="In Y")
+
+
+class EFXClipCurveItem(PropertyGroup):
+    """对应 `EfxClipData` 里的一条子曲线（`clips[]` 里的一项 + 它自己的一段 `frames[]`）。
+    子曲线的身份是"驱动 `ClipBits` 里的哪一位"（`bit_index`，0-based，和 JSON `clipBits.bits`
+    数组、`BitSet.HasBit()`/`SetBit()` 的下标语义完全一致——vendor 源码里 `BitNameDict` 初始化
+    语法虽然是 1-based（`[1] = nameof(field)`），那只是给 C# 代码作者的书写便利，内部存储
+    (`BitSet.BitNames[i]`）和这里的 `bit_index` 都是 0-based，不要和 `BitNameDict` 的 key
+    弄混）。子曲线数组下标和排序后的置位 bit 下标一一对应（vendor `BitSet.
+    GetBitInsertIndex()`就是算这个映射用的），所以 Blender 侧不单独维护一份"启用哪些 bit"的
+    勾选列表——加一条曲线就是启用一个 bit，删一条曲线就是关闭它，两者是同一件事，见
+    `io_tree.py` 的说明。
+
+    `bit_name` 纯展示用，不参与导出——`BitNames` 是 vendor C# 类字段初始化时硬编码的常量
+    （比如 `expressionBits = new BitSet(6) { BitNameDict = {...} }`），不是文件自己的数据，
+    `BitSet` 的二进制读写（`DoRead`/`DoWrite`）也只处理 `Bits` 这个整数数组，`BitNames`
+    对导出字节没有任何影响，纯粹是给人看的标签，能拿到就存，拿不到就空着。
+    """
+
+    bit_index: IntProperty(name="Bit Index", min=0)
+    bit_name: StringProperty(name="Bit Name")
+    value_type: EnumProperty(name="Value Type", items=_CLIP_VALUE_TYPE_ITEMS, default="5")
+    keyframes: CollectionProperty(type=EFXClipKeyframeItem)
+    keyframes_active_index: IntProperty()
+
+
+# ---------------------------------------------------------------------------
 # 不透明剩余字段 —— 存成 bpy.data.texts 文本块，import/export 两边共用
 # ---------------------------------------------------------------------------
 
@@ -555,7 +674,7 @@ def load_opaque(obj: Object) -> dict:
 
 _CLASSES = (
     EFXValueNode, EFXGroupTag, EFXBoneItem, EFXFieldParameterItem, EFXUvarGroupItem,
-    EFXExpressionParamItem,
+    EFXExpressionParamItem, EFXClipKeyframeItem, EFXClipCurveItem,
 )
 
 
@@ -613,8 +732,30 @@ def register():
     Object.efx_is_type_attribute = BoolProperty(name="Is Type Attribute")
     Object.efx_fields = CollectionProperty(type=EFXValueNode)
 
+    # EFX_ATTRIBUTE 专属，只在 is_clip_attribute_dict() 命中时有意义：IClipAttribute 的动画
+    # 曲线（对应 clipData/clipBits），见 EFXClipCurveItem/EFXClipKeyframeItem 的说明。
+    # efx_is_clip_attribute 是持久标记，不靠"curves 是不是空"判断——bit 全部关闭（0 条曲线）
+    # 也是合法状态，导出时仍需要正确写出空的 clipData/clipBits，不能被误判成"这不是 Clip
+    # attribute，直接走通用树"。
+    Object.efx_is_clip_attribute = BoolProperty(name="Is Clip Attribute")
+    Object.efx_clip_bit_count = IntProperty(
+        name="Bit Count",
+        description="ClipBits 的总位数，由 attribute 类型固定（如 Transform3DClip 是 9），"
+                    "导入时原样记录，不可编辑",
+    )
+    Object.efx_clip_loop_type = EnumProperty(
+        name="Loop Type", items=_CLIP_LOOP_TYPE_ITEMS, default="0",
+    )
+    Object.efx_clip_curves = CollectionProperty(type=EFXClipCurveItem)
+    Object.efx_clip_curves_active_index = IntProperty()
+
 
 def unregister():
+    del Object.efx_clip_curves_active_index
+    del Object.efx_clip_curves
+    del Object.efx_clip_loop_type
+    del Object.efx_clip_bit_count
+    del Object.efx_is_clip_attribute
     del Object.efx_fields
     del Object.efx_is_type_attribute
     del Object.efx_type_id

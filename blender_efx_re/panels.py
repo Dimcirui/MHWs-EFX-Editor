@@ -333,6 +333,100 @@ class EFX_OT_expression_parameter_remove(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class EFX_UL_clip_curves(UIList):
+    bl_idname = "EFX_UL_clip_curves"
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        row = layout.row(align=True)
+        label = item.bit_name or f"Bit {item.bit_index}"
+        row.label(text=label, icon="DECORATE_KEYFRAME", translate=False)
+        row.label(text=f"{len(item.keyframes)} kf", translate=False)
+        row.prop(item, "value_type", text="")
+
+
+class EFX_OT_clip_curve_add(bpy.types.Operator):
+    bl_idname = "efx_re.clip_curve_add"
+    bl_label = "Add Clip Curve"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        obj = context.object
+        used = {curve.bit_index for curve in obj.efx_clip_curves}
+        bit_index = next((i for i in range(obj.efx_clip_bit_count) if i not in used), None)
+        if bit_index is None:
+            self.report(
+                {"ERROR"},
+                f"所有 {obj.efx_clip_bit_count} 个 bit 都已经有曲线了，不能再添加",
+            )
+            return {"CANCELLED"}
+        curve = obj.efx_clip_curves.add()
+        curve.bit_index = bit_index
+        obj.efx_clip_curves_active_index = len(obj.efx_clip_curves) - 1
+        return {"FINISHED"}
+
+
+class EFX_OT_clip_curve_remove(bpy.types.Operator):
+    bl_idname = "efx_re.clip_curve_remove"
+    bl_label = "Remove Clip Curve"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        obj = context.object
+        index = obj.efx_clip_curves_active_index
+        if 0 <= index < len(obj.efx_clip_curves):
+            obj.efx_clip_curves.remove(index)
+            obj.efx_clip_curves_active_index = min(index, len(obj.efx_clip_curves) - 1)
+        return {"FINISHED"}
+
+
+class EFX_UL_clip_keyframes(UIList):
+    bl_idname = "EFX_UL_clip_keyframes"
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        row = layout.row(align=True)
+        row.label(text=f"t={item.frame_time:g}", translate=False)
+        row.label(text=f"v={item.value:g}", translate=False)
+        row.prop(item, "interp_type", text="")
+
+
+def _active_clip_curve(obj):
+    index = obj.efx_clip_curves_active_index
+    if 0 <= index < len(obj.efx_clip_curves):
+        return obj.efx_clip_curves[index]
+    return None
+
+
+class EFX_OT_clip_keyframe_add(bpy.types.Operator):
+    bl_idname = "efx_re.clip_keyframe_add"
+    bl_label = "Add Keyframe"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        curve = _active_clip_curve(context.object)
+        if curve is None:
+            self.report({"ERROR"}, "先选中一条曲线，再添加关键帧")
+            return {"CANCELLED"}
+        curve.keyframes.add()
+        curve.keyframes_active_index = len(curve.keyframes) - 1
+        return {"FINISHED"}
+
+
+class EFX_OT_clip_keyframe_remove(bpy.types.Operator):
+    bl_idname = "efx_re.clip_keyframe_remove"
+    bl_label = "Remove Keyframe"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        curve = _active_clip_curve(context.object)
+        if curve is None:
+            return {"CANCELLED"}
+        index = curve.keyframes_active_index
+        if 0 <= index < len(curve.keyframes):
+            curve.keyframes.remove(index)
+            curve.keyframes_active_index = min(index, len(curve.keyframes) - 1)
+        return {"FINISHED"}
+
+
 class EFX_PT_main(Panel):
     bl_idname = "EFX_PT_main"
     bl_label = "MHWs EFX"
@@ -472,6 +566,49 @@ class EFX_PT_object(Panel):
             row.label(text=f"type id {obj.efx_type_id}")
             row.label(text=f"IsTypeAttribute {obj.efx_is_type_attribute}")
 
+            if obj.efx_is_clip_attribute:
+                clip_box = layout.box()
+                clip_box.label(text=f"Clip (bit count: {obj.efx_clip_bit_count}):")
+                clip_box.prop(obj, "efx_clip_loop_type")
+
+                row = clip_box.row()
+                row.template_list(
+                    "EFX_UL_clip_curves", "", obj, "efx_clip_curves",
+                    obj, "efx_clip_curves_active_index", rows=3,
+                )
+                col = row.column(align=True)
+                col.operator("efx_re.clip_curve_add", icon="ADD", text="")
+                col.operator("efx_re.clip_curve_remove", icon="REMOVE", text="")
+
+                curve = _active_clip_curve(obj)
+                if curve is not None:
+                    sub_box = clip_box.box()
+                    sub_box.prop(curve, "bit_index")
+
+                    row = sub_box.row()
+                    row.template_list(
+                        "EFX_UL_clip_keyframes", "", curve, "keyframes",
+                        curve, "keyframes_active_index", rows=3,
+                    )
+                    col = row.column(align=True)
+                    col.operator("efx_re.clip_keyframe_add", icon="ADD", text="")
+                    col.operator("efx_re.clip_keyframe_remove", icon="REMOVE", text="")
+
+                    kf_index = curve.keyframes_active_index
+                    if 0 <= kf_index < len(curve.keyframes):
+                        kf = curve.keyframes[kf_index]
+                        kf_box = sub_box.box()
+                        kf_box.prop(kf, "frame_time")
+                        kf_box.prop(kf, "interp_type")
+                        kf_box.prop(kf, "value")
+                        if kf.interp_type == "5":  # Bezier
+                            row = kf_box.row(align=True)
+                            row.prop(kf, "tangent_out_x")
+                            row.prop(kf, "tangent_out_y")
+                            row = kf_box.row(align=True)
+                            row.prop(kf, "tangent_in_x")
+                            row.prop(kf, "tangent_in_y")
+
             layout.label(text="Fields:")
             root_obj = io_tree.find_root(obj)
             for node in obj.efx_fields:
@@ -484,6 +621,8 @@ _CLASSES = (
     EFX_UL_field_parameters,
     EFX_UL_uvar_groups,
     EFX_UL_expression_parameters,
+    EFX_UL_clip_curves,
+    EFX_UL_clip_keyframes,
     EFX_OT_field_info,
     EFX_OT_group_add,
     EFX_OT_group_remove,
@@ -495,6 +634,10 @@ _CLASSES = (
     EFX_OT_uvar_group_remove,
     EFX_OT_expression_parameter_add,
     EFX_OT_expression_parameter_remove,
+    EFX_OT_clip_curve_add,
+    EFX_OT_clip_curve_remove,
+    EFX_OT_clip_keyframe_add,
+    EFX_OT_clip_keyframe_remove,
     EFX_PT_main,
     EFX_PT_object,
 )

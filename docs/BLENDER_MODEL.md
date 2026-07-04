@@ -565,3 +565,55 @@ type 下拉），选中条目下方详情框按 `param_type` 只展示当前生�
 
 测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON/efx 测试文件，没有
 改动仓库里的任何样本文件。
+
+## Phase 1 补充 —— Clip 动画曲线编辑 UI（2026-07-04）
+
+结构调研（`IClipAttribute` 接口族、`EfxClipData`/`BitSet` 的完整字段清单、`IntValue` setter
+的 vendor 侧 bug、bit 下标和子曲线数组的对应关系）记录在
+`docs/TOPLEVEL_STRUCTURE.md` "`Clip`（attribute 内容级，不是顶层字段）结构调研与实现"
+一节，这里只记代码结构和实机验证结论摘要——这是第一个**挂在 EFX_ATTRIBUTE 对象上**（不是
+EFX_ROOT）的专属编辑 UI，也是第一个需要三层级联列表（曲线 → 关键帧 → 切线）的功能，比之前
+四个顶层字段的规模都大。
+
+**数据模型**（`model.py`）：新增 `ATTRIBUTE_CLIP_VIEW_KEYS`（`Clip`/`ClipBits`/
+`MaterialClip` 三个只读视图键，无条件从 attribute 内容字典剔除）、
+`is_clip_attribute_dict()`（结构判断：`clipData`+`clipBits` 同时存在且 `clipData` 里没有
+`mdfProperties`，排除 `IMaterialClipAttribute`）、`int_bits_to_float()`（规避 `IntValue`
+setter bug 的位转换）、`EFXClipKeyframeItem`/`EFXClipCurveItem` 两个 PropertyGroup。
+`Object` 新增 `efx_is_clip_attribute`（持久标记）/`efx_clip_bit_count`/
+`efx_clip_loop_type`/`efx_clip_curves`。
+
+**Import/Export**（`io_tree.py`）：`build_attribute_object()` 检测到
+`is_clip_attribute_dict()` 时，把 `clipData`/`clipBits` 从通用树内容里摘掉，改用
+`_populate_clip_attribute()` 展开（照抄 vendor `EfxClipData.ParseClip()` 的分组算法，不
+依赖只读的 `ParsedClip` 便利视图）；`export_attribute_object()` 对应用
+`_export_clip_attribute()` 重新拍平成 `clips`/`frames`/`interpolationData` 三个并行数组，
+自己算 `clipDataSize`/`frameDataSize`/`interpolationDataSize`（vendor 写出时不会像
+`clipCount` 那样自愈，必须自己按 8/12/16 字节的结构体大小算对）。新增
+`check_clip_bits()`（+ `ClipBitError`）校验 `bit_index` 越界/重复，接进
+`EFX_OT_export.execute()`，和既有的 `check_bone_references()` 并列。
+
+**UI**（`panels.py`）：`EFX_UL_clip_curves`/`EFX_UL_clip_keyframes` 两个 UIList +
+对应的 Add/Remove 操作符（Add 曲线自动挑最低的未使用 bit，挑不到报错不静默失败）。attribute
+面板在 `efx_is_clip_attribute` 为真时插入一个"Clip"分区：Loop Type 下拉 → 曲线列表 →
+选中曲线详情（Bit Index + 关键帧列表）→ 选中关键帧详情（Time/Interpolation/Value，
+`interp_type == "5"`（Bezier）时额外显示 4 个切线分量）。
+
+**实机验证（2026-07-04，Blender 5.1.2，via Blender MCP）**：用真实样本
+`11_guide_110`（唯一的 Clip attribute：`Entry4` 上的 `Transform3DClip`，`bit_index=1`，
+3 个 Bezier 关键帧）。
+- Import 后逐字段核对，与样本原始 JSON 完全一致；`io_tree.export_attribute_object()` 直接
+  dict 检查确认 `clipData`/`clipBits` 逐字段相同，三个 `*Size` 字段精确匹配（`8`/`36`/
+  `48`）。
+- **过真实 `bpy.ops.efx_re.export()` 走完整链路成功**，导出文件用 `EfxBridge dump` 复核，
+  `clipData`/`clipBits` 和原始样本逐字段完全相同（Clip 不像 `EffectGroups` 那样会被 C#
+  后端二次处理/重排）。
+- 手工验证 `int_bits_to_float(42)` 位转换往返精确无损，确认 `IntValue` setter bug 的规避
+  方案真实有效。
+- `check_clip_bits()` 四态测试（合法/越界/重复/恢复合法）全部通过；真实 `bpy.ops.efx_re.
+  export` operator 用重复 `bit_index` 触发拒绝，行为和 `check_bone_references()` 一致
+  （调用 C# 桥接前拦截，不写文件）。
+- 截图确认三层级联 UI 渲染正确，曲线/关键帧/切线的所有数值都与原始样本吻合。
+
+测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON/efx 测试文件，没有
+改动仓库里的任何样本文件。

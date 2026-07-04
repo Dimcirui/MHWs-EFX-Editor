@@ -68,7 +68,8 @@ class EFX_OT_export(Operator, ExportHelper):
 
         try:
             io_tree.check_bone_references(root_obj)
-        except io_tree.BoneReferenceError as ex:
+            io_tree.check_clip_bits(root_obj)
+        except (io_tree.BoneReferenceError, io_tree.ClipBitError) as ex:
             self.report({"ERROR"}, str(ex))
             return {"CANCELLED"}
 

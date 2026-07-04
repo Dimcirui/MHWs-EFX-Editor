@@ -184,7 +184,11 @@ cross-reference 结论，搬到了 [docs/TOPLEVEL_STRUCTURE.md](docs/TOPLEVEL_ST
 - 预设系统（架构决策 6 的另一半，复制/粘贴已经够用，用户明确说了预设先不做）
 - 新建 Action（复制/粘贴目前只做了 Entry 和 Attribute，Action 本身没有 Copy/New 操作，只能
   通过 import 获得；Attribute 粘贴支持粘到已有 Action 上）
-- Clip（TIML 同构）编辑器 UI
+- `Clip`（TIML 同构）动画曲线编辑 UI（纯 `IClipAttribute`，15 个 attribute 类型）已于
+  2026-07-04 做完，结构调研和实机验证记录见
+  [docs/TOPLEVEL_STRUCTURE.md](docs/TOPLEVEL_STRUCTURE.md)。**`IMaterialClipAttribute`
+  （~9 个额外带材质属性哈希关联的类型）仍未实现**，结构性排除、继续走通用树透传，是下一块
+  可以捡起来做的工作。
 - 拖拽重排 UI（当前 Entry/Action/Attribute 顺序只反映 import 时的原始下标，新粘贴的对象固定
   排在同类兄弟的最后）
 - 尚未跑过大规模语料的 dump/load 回归（只验证过 `diag/` 里的 2 个样本，没有复现 Phase 0

@@ -55,6 +55,62 @@ def _short_attr_name(attr_type: str) -> str:
 # Import：EfxFile dict -> ~TYPE 对象树
 # ---------------------------------------------------------------------------
 
+_CLIP_HEADER_SIZE = 8  # EfxClipHeader: int frameCount + int(enum) valueType
+_CLIP_FRAME_SIZE = 12  # EfxClipFrame: float frameTime + int(enum) type + float value
+_CLIP_TANGENT_SIZE = 16  # EfxClipInterpolationTangents: 4 个 float
+_CLIP_BEZIER_TYPE = 5  # FrameInterpolationType.Bezier
+
+
+def _populate_clip_attribute(obj: Object, attr_dict: dict) -> None:
+    """把一个 IClipAttribute 的 clipData/clipBits 展开成 obj.efx_clip_* 系列属性——不依赖
+    vendor 算好的 ParsedClip 只读便利视图，直接照抄 EfxClipData.ParseClip() 的分组逻辑：
+    按 clips[] 每一项的 frameCount 依次切 frames[]，type==Bezier 的帧再顺带从
+    interpolationData[] 里取一个——两个并行数组都是"遇到顺序"消费，不按下标对齐，见
+    docs/TOPLEVEL_STRUCTURE.md "Clip 结构调研"。子曲线数组下标和排序后的置位 bit 下标一一
+    对应（vendor BitSet.GetBitInsertIndex() 就是算这个映射用的），所以按 sorted(bits) 和
+    clips[] 一起 zip 消费。"""
+    clip_data = attr_dict.get("clipData") or {}
+    clip_bits = attr_dict.get("clipBits") or {}
+
+    obj.efx_is_clip_attribute = True
+    obj.efx_clip_bit_count = int(clip_bits.get("bitCount", 0) or 0)
+    obj.efx_clip_loop_type = str(int(clip_data.get("loopType", 0) or 0))
+
+    bit_names = clip_bits.get("bitNames") or []
+    sorted_bits = sorted(clip_bits.get("bits") or [])
+
+    frames = clip_data.get("frames") or []
+    tangents = clip_data.get("interpolationData") or []
+    frame_i = 0
+    tangent_i = 0
+
+    for bit_index, header in zip(sorted_bits, clip_data.get("clips") or []):
+        curve = obj.efx_clip_curves.add()
+        curve.bit_index = bit_index
+        curve.bit_name = (bit_names[bit_index] if bit_index < len(bit_names) else None) or ""
+        value_type = int(header.get("valueType", 5) or 5)
+        curve.value_type = str(value_type)
+
+        for _ in range(int(header.get("frameCount", 0) or 0)):
+            frame = frames[frame_i]
+            frame_i += 1
+            kf = curve.keyframes.add()
+            kf.frame_time = model.json_float_in(frame.get("frameTime", 0.0))
+            interp_type = int(frame.get("type", 2) or 2)
+            kf.interp_type = str(interp_type)
+            if value_type == 3:  # Int：IntValue 的 getter 没问题，直接读
+                kf.value = float(int(frame.get("IntValue", 0) or 0))
+            else:
+                kf.value = model.json_float_in(frame.get("FloatValue", 0.0))
+            if interp_type == _CLIP_BEZIER_TYPE:
+                tangent = tangents[tangent_i]
+                tangent_i += 1
+                kf.tangent_out_x = model.json_float_in(tangent.get("out_x", 0.0))
+                kf.tangent_out_y = model.json_float_in(tangent.get("out_y", 0.0))
+                kf.tangent_in_x = model.json_float_in(tangent.get("in_x", 0.0))
+                kf.tangent_in_y = model.json_float_in(tangent.get("in_y", 0.0))
+
+
 def build_attribute_object(attr_dict: dict, index: int, parent_obj: Object, collection: Collection) -> Object:
     attr_type = attr_dict.get("$type", "")
     obj = _new_empty(f"[{parent_obj.name}] {_short_attr_name(attr_type)}", collection)
@@ -69,7 +125,9 @@ def build_attribute_object(attr_dict: dict, index: int, parent_obj: Object, coll
 
     content = {
         key: value for key, value in attr_dict.items()
-        if key not in model.ATTRIBUTE_BOOKKEEPING_KEYS and key not in model.ATTRIBUTE_NESTED_ROOT_KEYS
+        if key not in model.ATTRIBUTE_BOOKKEEPING_KEYS
+        and key not in model.ATTRIBUTE_NESTED_ROOT_KEYS
+        and key not in model.ATTRIBUTE_CLIP_VIEW_KEYS
     }
     if content.get("ParentBone") is None and "ParentBone" in content:
         # C# 侧 ParentBone 是 string?，无绑定时可能是 null，也可能压根不存在（老结构体没有
@@ -79,6 +137,13 @@ def build_attribute_object(attr_dict: dict, index: int, parent_obj: Object, coll
         # prop_search 控件，所以统一存成空字符串，导出行为不变。见
         # model.is_bone_reference_field()/panels.py 的骨骼搜索控件。
         content["ParentBone"] = ""
+    if model.is_clip_attribute_dict(attr_dict):
+        # clipData/clipBits 走专属的 efx_clip_* 结构（见 _populate_clip_attribute()），不进
+        # 通用树——IMaterialClipAttribute 实现类（is_clip_attribute_dict() 为 False）不受
+        # 影响，仍然原样进通用树，本轮不处理它们额外的 mdfProperties 关联。
+        content.pop("clipData", None)
+        content.pop("clipBits", None)
+        _populate_clip_attribute(obj, attr_dict)
     model.populate_dict_as_children(obj.efx_fields, content)
 
     leftover = {key: attr_dict[key] for key in ("efxrSize",) if key in attr_dict}
@@ -240,6 +305,57 @@ def root_collections(root_obj: Object) -> tuple[Collection, Collection]:
     return own_collection.children[0], own_collection.children[1]
 
 
+def _export_clip_attribute(obj: Object) -> tuple[dict, dict]:
+    """_populate_clip_attribute() 的反函数——按 bit_index 升序重建扁平并行数组，复刻
+    EfxClipData.SetFromClipList()/AssignFromList() 的重算逻辑。三个 *Size 字节长度字段
+    vendor 写出时不会重算（不像 clipCount/frameCount/interpolationDataCount 那样能从数组
+    长度自愈），必须自己算对，见 docs/TOPLEVEL_STRUCTURE.md "Clip 结构调研"。"""
+    curves = sorted(obj.efx_clip_curves, key=lambda c: c.bit_index)
+
+    clip_headers = []
+    frames = []
+    tangents = []
+    max_frame_time = 0.0
+    for curve in curves:
+        value_type = int(curve.value_type)
+        clip_headers.append({"frameCount": len(curve.keyframes), "valueType": value_type})
+        for kf in curve.keyframes:
+            interp_type = int(kf.interp_type)
+            if value_type == 3:  # Int：IntValue 的 setter 是死代码，只能靠 FloatValue 位转换
+                float_value = model.int_bits_to_float(int(round(kf.value)))
+            else:
+                float_value = model.json_float_out(kf.value)
+            frames.append({
+                "IntValue": 0,
+                "FloatValue": float_value,
+                "frameTime": model.json_float_out(kf.frame_time),
+                "type": interp_type,
+            })
+            if interp_type == _CLIP_BEZIER_TYPE:
+                tangents.append({
+                    "out_x": kf.tangent_out_x, "out_y": kf.tangent_out_y,
+                    "in_x": kf.tangent_in_x, "in_y": kf.tangent_in_y,
+                })
+            if kf.frame_time > max_frame_time:
+                max_frame_time = kf.frame_time
+
+    clip_data = {
+        "loopType": int(obj.efx_clip_loop_type),
+        "clipDuration": max_frame_time,
+        "clipCount": len(clip_headers),
+        "frameCount": len(frames),
+        "interpolationDataCount": len(tangents),
+        "clipDataSize": len(clip_headers) * _CLIP_HEADER_SIZE,
+        "frameDataSize": len(frames) * _CLIP_FRAME_SIZE,
+        "interpolationDataSize": len(tangents) * _CLIP_TANGENT_SIZE,
+        "clips": clip_headers,
+        "frames": frames,
+        "interpolationData": tangents,
+    }
+    clip_bits = {"bitCount": obj.efx_clip_bit_count, "bits": [c.bit_index for c in curves]}
+    return clip_data, clip_bits
+
+
 def export_attribute_object(obj: Object) -> dict:
     # $type 必须是字典的第一个键：C# 侧 EfxJsonTypeResolver 是流式读取多态判别字段来选定具体
     # EFXAttribute 子类的 JsonTypeInfo，不像 System.Text.Json 内置的 [JsonPolymorphic] 那样会
@@ -252,6 +368,11 @@ def export_attribute_object(obj: Object) -> dict:
     attr_dict["Version"] = obj.efx_version
     attr_dict["type"] = obj.efx_type_id
     attr_dict["IsTypeAttribute"] = obj.efx_is_type_attribute
+
+    if obj.efx_is_clip_attribute:
+        clip_data, clip_bits = _export_clip_attribute(obj)
+        attr_dict["clipData"] = clip_data
+        attr_dict["clipBits"] = clip_bits
 
     nested_root = next(
         (child for child in obj.children if child.get("~TYPE") == model.TYPE_ROOT), None
@@ -378,4 +499,52 @@ def check_bone_references(root_obj: Object) -> None:
             "以下 attribute 的 ParentBone 引用了不在 Bones 列表里的骨骼名字，"
             "导出会静默丢失绑定，请先在 Root 面板的 Bones 列表里添加对应名字：\n"
             + "\n".join(f"  {m}" for m in missing)
+        )
+
+
+class ClipBitError(Exception):
+    """check_clip_bits() 校验失败时抛出：某个 Clip attribute 的曲线 bit_index 越界（超出
+    efx_clip_bit_count）或重复（两条曲线用了同一个 bit）。不在这里静默截断/去重——越界会让
+    C# 侧 `BitSet.SetBit()` 在 load 阶段直接抛数组越界异常（不是理论风险，`Bits[bitIndex >>
+    5]` 直接访问底层 int 数组），重复会让两条曲线的数据在写出时对同一个 bit 位互相覆盖，两种
+    情况都是"看起来正常但实际出错/丢数据"，按架构决策 9 直接拒绝导出，不做自动修复。"""
+
+
+def _clip_bit_issues(attr_obj: Object) -> list:
+    if not attr_obj.efx_is_clip_attribute:
+        return []
+    bit_count = attr_obj.efx_clip_bit_count
+    issues = []
+    seen = set()
+    for curve in attr_obj.efx_clip_curves:
+        if not (0 <= curve.bit_index < bit_count):
+            issues.append(f"{attr_obj.name}: bit_index {curve.bit_index} 超出范围 [0, {bit_count})")
+        elif curve.bit_index in seen:
+            issues.append(f"{attr_obj.name}: bit_index {curve.bit_index} 被多条曲线重复使用")
+        seen.add(curve.bit_index)
+    return issues
+
+
+def _walk_clip_issues(obj: Object) -> list:
+    """递归遍历一个 ~TYPE 对象树下所有 EFX_ATTRIBUTE（含嵌套 PlayEmitter.efxrData 子树里的），
+    收集 Clip bit 校验问题。和 check_bone_references() 不同，这里不需要排除嵌套子树——Clip
+    的 bit_count/bits 校验是纯粹局部的（不依赖任何文件级共享表，不像 Bones 那样有已知的嵌套
+    读写不对称问题），直接沿 Blender parent-child 关系整棵树走一遍即可。"""
+    issues = []
+    tag = obj.get("~TYPE")
+    if tag == model.TYPE_ATTRIBUTE:
+        issues.extend(_clip_bit_issues(obj))
+    for child in obj.children:
+        if child.get("~TYPE") in (model.TYPE_ROOT, model.TYPE_ENTRY, model.TYPE_ACTION, model.TYPE_ATTRIBUTE):
+            issues.extend(_walk_clip_issues(child))
+    return issues
+
+
+def check_clip_bits(root_obj: Object) -> None:
+    """导出前校验：见 ClipBitError 的说明。"""
+    issues = _walk_clip_issues(root_obj)
+    if issues:
+        raise ClipBitError(
+            "以下 Clip attribute 的曲线 bit_index 有问题（越界或重复），会导致导出出错或"
+            "静默丢数据，请先修正：\n" + "\n".join(f"  {m}" for m in issues)
         )
