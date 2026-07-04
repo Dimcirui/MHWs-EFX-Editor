@@ -73,9 +73,11 @@ ACTION_STRUCTURAL_KEYS = frozenset({"Attributes"})
 # EffectGroups 一样整体不透传（导出时固定输出空数组，靠 C# 后端从每个 attribute 的
 # ParentBone + Bones 表反向重建下标，见 docs/TOPLEVEL_STRUCTURE.md "Bones / BoneRelations
 # 结构调研"），FieldParameterValues 建成 EFX_ROOT.efx_field_parameters 列表 UI（见
-# EFXFieldParameterItem 的说明），其余键原样存进 EFX_ROOT 的 efx_opaque_text。
+# EFXFieldParameterItem 的说明），UvarGroups 建成 EFX_ROOT.efx_uvar_groups 列表 UI（见
+# EFXUvarGroupItem 的说明），其余键原样存进 EFX_ROOT 的 efx_opaque_text。
 ROOT_STRUCTURAL_KEYS = frozenset({
     "Entries", "Actions", "EffectGroups", "Bones", "BoneRelations", "FieldParameterValues",
+    "UvarGroups",
 })
 
 
@@ -377,6 +379,44 @@ class EFXFieldParameterItem(PropertyGroup):
 
 
 # ---------------------------------------------------------------------------
+# EFXUvarGroupItem —— EFX_ROOT 的外部 .uvar 引用表（对应 EfxFile.UvarGroups）
+# ---------------------------------------------------------------------------
+
+# uvarType 只有两个能在导入后存活的取值——read 阶段对 >2 的值直接 throw（决策 9 的整文件拒绝
+# 已经覆盖，不会有第三种值流进 Blender），结构上完全确认（EfxFile.cs:758-776 的
+# RszConditional(uvarType == 2) 门控），只是游戏侧真正用途仍是猜测（见
+# docs/TOPLEVEL_STRUCTURE.md）。用 EnumProperty 而不是裸 IntProperty，把这个已确认的结构性
+# 区分直接体现在下拉框标签上。
+_UVAR_TYPE_ITEMS = (
+    ("1", "Marker Only", "uvarType == 1：纯标记位，不带 path/group 数据（DD2 见过，"
+                          "RE4/DMC5/RERT 恒为 0，MHWilds 未在样本中见过）"),
+    ("2", "Named Uvar Reference", "uvarType == 2：引用一个外部 .uvar 文件——path 是文件路径，"
+                                   "group 是该文件内的变量组名"),
+)
+
+
+class EFXUvarGroupItem(PropertyGroup):
+    """对应 vendor `EFXUvarGroup`（`EfxFile.cs:598-605`）。不是变长列表的自然序列化——vendor
+    读时是固定两个 `int` 槽位（`uvarType1`/`uvarType2`），每个非 0 时才追加一条；写时
+    `UvarGroups[0]`/`UvarGroups[1]` 对应"槽位 1"/"槽位 2"（`EfxFile.cs:1001-1011`），完全按
+    列表下标而不是按 `uvarType` 取值配对——如果原文件"槽位 1 为空、槽位 2 有值"，读出来的
+    `UvarGroups` 列表只有一条（下标 0），vendor 自己写回时会把它归到"槽位 1"，原始槽位归属信息
+    在 vendor 自己的读写往返里就已经丢失（和 EfxBridge.Program.cs 头部注释里 CollisionEffect
+    下标重排是同一类"解码成干净模型、总是重新生成字节"的哲学，语义等价、字节不同，不是
+    bug）——所以 Blender 侧不需要，也不可能，保留"槽位 1 vs 槽位 2"这个身份，只需要维护一个
+    最多 2 项的有序列表，交给 vendor 写出时按下标重新分配槽位。
+
+    `path`/`group` 是 `RszConditional(uvarType == 2)` 门控字段，`uvarType == 1` 时 vendor
+    压根不读/不写它们（值是多少不影响导出字节），Blender 侧不做特殊清空，只在面板上按
+    `uvar_type` 隐藏这两行输入框，减少误导（免得用户以为"标记位"槽位也能填路径）。
+    """
+
+    uvar_type: EnumProperty(name="Type", items=_UVAR_TYPE_ITEMS, default="2")
+    path: StringProperty(name="Path")
+    group: StringProperty(name="Group")
+
+
+# ---------------------------------------------------------------------------
 # 不透明剩余字段 —— 存成 bpy.data.texts 文本块，import/export 两边共用
 # ---------------------------------------------------------------------------
 
@@ -403,7 +443,7 @@ def load_opaque(obj: Object) -> dict:
 # Object 级属性注册（挂在 bpy.types.Object 上，四种 ~TYPE 对象按需使用其中一部分）
 # ---------------------------------------------------------------------------
 
-_CLASSES = (EFXValueNode, EFXGroupTag, EFXBoneItem, EFXFieldParameterItem)
+_CLASSES = (EFXValueNode, EFXGroupTag, EFXBoneItem, EFXFieldParameterItem, EFXUvarGroupItem)
 
 
 def register():
@@ -439,6 +479,11 @@ def register():
     Object.efx_field_parameters = CollectionProperty(type=EFXFieldParameterItem)
     Object.efx_field_parameters_active_index = IntProperty()
 
+    # EFX_ROOT 专属：外部 .uvar 引用表（对应 EfxFile.UvarGroups），最多 2 项，见
+    # EFXUvarGroupItem 的说明。
+    Object.efx_uvar_groups = CollectionProperty(type=EFXUvarGroupItem)
+    Object.efx_uvar_groups_active_index = IntProperty()
+
     # EFX_ATTRIBUTE 专属：bookkeeping 标量 + 内容字段树。
     Object.efx_attr_type = StringProperty(
         name="Attribute Type",
@@ -458,6 +503,8 @@ def unregister():
     del Object.efx_version
     del Object.efx_unique_id
     del Object.efx_attr_type
+    del Object.efx_uvar_groups_active_index
+    del Object.efx_uvar_groups
     del Object.efx_field_parameters_active_index
     del Object.efx_field_parameters
     del Object.efx_bones_active_index

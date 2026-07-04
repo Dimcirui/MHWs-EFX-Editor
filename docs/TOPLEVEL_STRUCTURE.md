@@ -52,8 +52,8 @@ Blender 对象模型**：Play → PlayEmitter 不应该做成"PointerProperty �
 对象"，而应该做成"PlayEmitter 拥有一个嵌套子集合（递归的 Body/Action/EffectGroups 结构）"
 ——即 Blender 场景里大概率是一层嵌套 Collection，而不是跨对象的裸指针。
 
-**决策（已定，2026-07-03；`FieldParameterValues` 已于 2026-07-04 升级为有编辑 UI，见下方
-"`FieldParameterValues` 结构调研与实现"一节，`ExpressionParameters` 仍维持本段原决策）**：
+**决策（已定，2026-07-03；`FieldParameterValues`/`UvarGroups` 已于 2026-07-04 升级为有编辑
+UI，见下方对应的"结构调研与实现"一节，`ExpressionParameters` 仍维持本段原决策）**：
 `FieldParameterValues` 与 `ExpressionParameters` 均视为 MHWs 新增的、暂不深挖语义的子
 系统——**只做透传，不做字段级解析/编辑 UI**，与架构决策第 8 点对 Expression 的处理原则一致
 （结构化透传，UI 后置，不卡其他功能）。不再尝试把 `FieldParameterValues` 往 MHWI Extern
@@ -72,8 +72,11 @@ Blender 对象模型**：Play → PlayEmitter 不应该做成"PointerProperty �
   `PlayEmitter`/`PlayEfx`；`PlayEmitter` 拥有嵌套子集合，不用 PointerProperty。
 - **Subselect**——不建单独对象类型，落在 Entry 对象上的一个字符串标签列表
   （对应 `EFXEntry.Groups`），文件级 `EffectGroups` 视为导出时派生数据。
-- **ExpressionParameters / UvarGroups**——暂列为不透明数据块随文件透传，不建 PropertyGroup
-  编辑面板（`UvarGroups` 为 2026-07-03 复核时新发现，归入同一处理原则，见下方验证记录）。
+- **ExpressionParameters**——暂列为不透明数据块随文件透传，不建 PropertyGroup 编辑面板
+  （union 类型视图属性、公式引擎消费方式都还没搞清楚，比 `UvarGroups`/`FieldParameterValues`
+  更棘手，继续维持决策 8 的处理原则）。
+- **UvarGroups**——2026-07-04 升级为有编辑 UI：`EFX_ROOT.efx_uvar_groups` 列表（最多 2 项），
+  见下方"`UvarGroups` 结构调研与实现"一节。
 - **FieldParameterValues**——2026-07-04 升级为有编辑 UI：`EFX_ROOT.efx_field_parameters`
   列表（`EFXFieldParameterItem`），见下方"`FieldParameterValues` 结构调研与实现"一节。
 
@@ -324,3 +327,68 @@ BIGINT 精度不丢；再单独构造一个不含 `Entries`/`Expression` 内容�
 JSON 形状，不抛异常。完整 Blender `bpy.ops.efx_re.export()` 走到的唯一失败点仍然是那个
 已知的、与本次改动无关的 Expression 反序列化限制（`EFXExpressionDataBase` 缺少无参构造函数）
 ——和 Bones 那轮验证撞到的是同一个既有缺口，不是新引入的问题。
+
+## `UvarGroups` 结构调研与实现（2026-07-04）
+
+2026-07-03 已经把语义搞得比较清楚（见上方"未知字段语义 cross-reference"一节：`uvarType==1`
+是纯标记位，`uvarType==2` 带 `path`+`group`，指向一个游戏内共享 `.uvar` 具名用户变量文件）。
+这次直接读 `EfxFile.cs:758-776`（读）和 `EfxFile.cs:1001-1011`（写）把二进制层的结构钉死，
+发现一个此前没写进文档、对 Blender 侧设计有直接影响的细节。
+
+**不是自然变长列表，是两个固定二进制槽位，但对象模型层面表现为一个最多 2 项的有序列表：**
+```
+读（EfxFile.cs:758-776，门控 Header.Version > EfxVersion.DMC5，MHWilds 满足）：
+    uvarType1 = 读一个 int
+    uvarType2 = 读一个 int
+    uvarType1 != 0 时：按 uvarType1 建一条 EFXUvarGroup，Add 进 UvarGroups
+    uvarType2 != 0 时：按 uvarType2 建一条 EFXUvarGroup，Add 进 UvarGroups
+    （uvarType1 > 2 或 uvarType2 > 2 时直接 throw——决策 9 的整文件拒绝已覆盖，
+     不会有 >2 的值流进 Blender）
+
+写（EfxFile.cs:1001-1011）：
+    写 UvarGroups[0]?.uvarType ?? 0        — "槽位 1"
+    写 UvarGroups[1]?.uvarType ?? 0        — "槽位 2"
+    UvarGroups.Count >= 1 时写 UvarGroups[0] 的 path/group
+    UvarGroups.Count >= 2 时写 UvarGroups[1] 的 path/group
+```
+写完全按**列表下标**分配槽位，不按 `uvarType` 取值配对、也不管原始数据来自哪个槽位。举例：
+如果原文件"槽位 1 为空（0）、槽位 2 是 `uvarType==2`"，读出来的 `UvarGroups` 列表只有一条
+（下标 0，因为槽位 1 是 0 从不 Add），vendor 自己重新写出时会把这条记录归到"槽位 1"——
+原始槽位归属信息在 **vendor 自己的读写往返里就已经丢失**，这和 `EfxBridge/Program.cs`
+头部注释里 `CollisionEffect` 下标重排是同一类"解码成干净模型、总是重新生成字节，语义等价、
+字节不同"的哲学，不是 bug。**结论**：Blender 侧不需要、也不可能保留"槽位 1 vs 槽位 2"这个
+身份，只需要维护一个最多 2 项的有序列表，交给 vendor 写出时按下标重新分配槽位——这也意味着
+超过 2 项的列表会被**静默截断**（`UvarGroups[2]` 及之后完全不会被写逻辑碰到，既不写
+`uvarType`，也不写 `path`/`group`），必须在 Blender 侧堵住这个口子（做法见下）。
+
+**`path`/`group` 是 `RszConditional(uvarType == 2)` 门控字段**（`EfxFile.cs:603-604`）：
+`uvarType == 1` 时 vendor 完全不读/不写这两个字段，值是多少不影响导出字节。
+
+**Blender 实现**：`EFX_ROOT.efx_uvar_groups`（`EFXUvarGroupItem` 列表，最多 2 项）。和
+`EFXFieldParameterItem`（13 个语义大半未知的字段，用通用树）不同，这里只有 3 个字段且形状
+简单明确，改用类似 `EFXBoneItem` 的手写具名字段：`uvar_type` 是一个两选项 `EnumProperty`
+（"Marker Only"/"Named Uvar Reference"，标签直接体现已确认的结构含义，而不是裸
+`IntProperty`——这个区分是结构上 100% 确认的，值得暴露成有意义的下拉框，游戏侧的真正用途
+才是待确认的部分）、`path`/`group` 是普通 `StringProperty`，`uvarType == 1` 时面板隐藏这两
+行输入框（避免用户误以为"标记位"槽位也能填路径）。**最多 2 项的限制在 `EFX_OT_uvar_group_add`
+里硬拦截**（`len(...) >= 2` 直接 `{"ERROR"}` + `{"CANCELLED"}`，不静默截断，同 Bones
+`check_bone_references()` 一脉相承的"宁可拒绝，不要悄悄丢数据"纪律），导出侧
+（`export_root_to_efxfile()`）不需要重复这个校验——UI 是唯一的写入入口，Add 操作符已经
+保证列表不会超过 2 项。
+
+**实机验证（2026-07-04，Blender 5.1 + `diag/11_guide_110.efx.5571972.orig`）**：这次比
+`FieldParameterValues` 幸运——`11_guide_110` 真的有一条非空 `UvarGroups`（正是
+2026-07-03 调研记录的那个真实样本：`{uvarType: 2, path: "Art/VFX/VFX_group_common.uvar",
+group: "VFX_group_common"}`），完整覆盖了读入路径，不需要像 `FieldParameterValues` 那样
+靠手工构造数据模拟。
+- Import 后 `efx_uvar_groups[0]` 的 `uvar_type`/`path`/`group` 与样本原始 JSON 完全一致。
+- `io_tree.export_root_to_efxfile()` 直接 dict 检查：导出的 `UvarGroups` 和原始样本
+  逐字段相同（`uvarType: 2`, `path`/`group` 原样），证明无编辑往返是无损的。
+- 截图确认面板正确渲染：列表显示已导入的 `VFX_group_common` 条目（类型下拉 + 文件夹图标 +
+  group 名），详情框显示 Type/Path/Group 三个可编辑字段。
+- 二态测试 `EFX_OT_uvar_group_add` 的数量上限：已有 1 项时 Add 成功（到 2 项）；再次 Add
+  正确拒绝，报错文案提示"最多 2 项"，不静默创建第 3 项。
+- Remove 测试：删除后列表正确回到 1 项。
+
+测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON 文件，没有改动仓库里
+的任何样本文件。

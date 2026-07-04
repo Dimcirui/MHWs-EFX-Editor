@@ -172,6 +172,12 @@ def build_root_from_efxfile(
             content["filePath"] = ""
         model.populate_dict_as_children(item.fields, content)
 
+    for uvar_dict in efxfile_dict.get("UvarGroups", []) or []:
+        item = root_obj.efx_uvar_groups.add()
+        item.uvar_type = str(int(uvar_dict.get("uvarType", 2) or 2))
+        item.path = uvar_dict.get("path") or ""
+        item.group = uvar_dict.get("group") or ""
+
     for index, entry_dict in enumerate(efxfile_dict.get("Entries", []) or []):
         build_entry_object(entry_dict, index, root_obj, main_collection)
 
@@ -275,6 +281,13 @@ def export_root_to_efxfile(root_obj: Object) -> dict:
     efxfile_dict["FieldParameterValues"] = [
         {"name": item.name, **model.children_to_dict(item.fields)}
         for item in root_obj.efx_field_parameters
+    ]
+    # UvarGroups 最多 2 项，超出的会在 vendor 写出逻辑里被静默忽略（只处理下标 0/1，见
+    # docs/TOPLEVEL_STRUCTURE.md "UvarGroups 结构调研"）——UI 侧的 Add 按钮已经拦住了超过
+    # 2 项的情况（EFX_OT_uvar_group_add），这里不需要重复校验。
+    efxfile_dict["UvarGroups"] = [
+        {"uvarType": int(item.uvar_type), "path": item.path, "group": item.group}
+        for item in root_obj.efx_uvar_groups
     ]
     return efxfile_dict
 

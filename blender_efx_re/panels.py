@@ -250,6 +250,51 @@ class EFX_OT_field_parameter_remove(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class EFX_UL_uvar_groups(UIList):
+    bl_idname = "EFX_UL_uvar_groups"
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        row = layout.row(align=True)
+        row.prop(item, "uvar_type", text="")
+        if item.uvar_type == "2":
+            row.label(text=item.group or item.path, icon="FILE_FOLDER", translate=False)
+        else:
+            row.label(text="(marker only)")
+
+
+class EFX_OT_uvar_group_add(bpy.types.Operator):
+    bl_idname = "efx_re.uvar_group_add"
+    bl_label = "Add Uvar Group"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        obj = context.object
+        if len(obj.efx_uvar_groups) >= 2:
+            self.report(
+                {"ERROR"},
+                "UvarGroups 最多 2 项——vendor 写出逻辑只处理前 2 项，多出的会被静默忽略，"
+                "见 docs/TOPLEVEL_STRUCTURE.md",
+            )
+            return {"CANCELLED"}
+        item = obj.efx_uvar_groups.add()
+        obj.efx_uvar_groups_active_index = len(obj.efx_uvar_groups) - 1
+        return {"FINISHED"}
+
+
+class EFX_OT_uvar_group_remove(bpy.types.Operator):
+    bl_idname = "efx_re.uvar_group_remove"
+    bl_label = "Remove Uvar Group"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        obj = context.object
+        index = obj.efx_uvar_groups_active_index
+        if 0 <= index < len(obj.efx_uvar_groups):
+            obj.efx_uvar_groups.remove(index)
+            obj.efx_uvar_groups_active_index = min(index, len(obj.efx_uvar_groups) - 1)
+        return {"FINISHED"}
+
+
 class EFX_PT_main(Panel):
     bl_idname = "EFX_PT_main"
     bl_label = "MHWs EFX"
@@ -311,6 +356,25 @@ class EFX_PT_object(Panel):
                 for node in obj.efx_field_parameters[active_index].fields:
                     draw_node(box, node)
 
+            layout.label(text="Uvar Groups:")
+            row = layout.row()
+            row.template_list(
+                "EFX_UL_uvar_groups", "", obj, "efx_uvar_groups",
+                obj, "efx_uvar_groups_active_index", rows=2,
+            )
+            col = row.column(align=True)
+            col.operator("efx_re.uvar_group_add", icon="ADD", text="")
+            col.operator("efx_re.uvar_group_remove", icon="REMOVE", text="")
+
+            uvar_index = obj.efx_uvar_groups_active_index
+            if 0 <= uvar_index < len(obj.efx_uvar_groups):
+                uvar_item = obj.efx_uvar_groups[uvar_index]
+                box = layout.box()
+                box.prop(uvar_item, "uvar_type")
+                if uvar_item.uvar_type == "2":
+                    box.prop(uvar_item, "path")
+                    box.prop(uvar_item, "group")
+
         elif type_tag == model.TYPE_ENTRY:
             row = layout.row(align=True)
             row.operator("efx_re.entry_copy", icon="COPYDOWN")
@@ -352,6 +416,7 @@ _CLASSES = (
     EFX_UL_groups,
     EFX_UL_bones,
     EFX_UL_field_parameters,
+    EFX_UL_uvar_groups,
     EFX_OT_field_info,
     EFX_OT_group_add,
     EFX_OT_group_remove,
@@ -359,6 +424,8 @@ _CLASSES = (
     EFX_OT_bone_remove,
     EFX_OT_field_parameter_add,
     EFX_OT_field_parameter_remove,
+    EFX_OT_uvar_group_add,
+    EFX_OT_uvar_group_remove,
     EFX_PT_main,
     EFX_PT_object,
 )

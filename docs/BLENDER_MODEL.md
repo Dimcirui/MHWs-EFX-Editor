@@ -405,3 +405,49 @@ session），没有改动仓库里的任何样本文件。
 
 测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON/efx 测试文件，没有
 改动仓库里的任何样本文件。
+
+## Phase 1 补充 —— UvarGroups 编辑 UI（2026-07-04）
+
+结构调研见 `docs/TOPLEVEL_STRUCTURE.md` "`UvarGroups` 结构调研与实现"一节（二进制层是
+两个固定槽位、但 vendor 自己的读写往返已经把槽位归属信息丢了，对象模型层面等价于"一个最多
+2 项的有序列表"；`path`/`group` 只在 `uvarType==2` 时生效）。这里只记代码改动和实机验证。
+
+**数据模型**（`model.py`）：
+- `ROOT_STRUCTURAL_KEYS` 加入 `UvarGroups`。
+- 新增 `EFXUvarGroupItem`：`uvar_type`（`EnumProperty`，两个选项 "Marker Only"/"Named Uvar
+  Reference"）+ `path`/`group`（`StringProperty`）。和 `EFXFieldParameterItem`（13 个语义
+  大半未知的字段，重用通用 `EFXValueNode` 树）的设计选择不同——这里只有 3 个字段且形状
+  简单明确，改用类似 `EFXBoneItem` 的手写具名字段，`uvar_type` 用 Enum 而不是裸 Int，把
+  已经结构性确认的区分（决定 path/group 是否生效）直接体现在下拉框标签上。
+
+**Import/Export**（`io_tree.py`）：
+- `build_root_from_efxfile()` 从 `UvarGroups` 数组填 `efx_uvar_groups`（数组最多 2 项，
+  由 vendor 读取逻辑保证，`null` 的 `path`/`group` 规整成 `""`，同 `filePath`/`ParentBone`
+  的先例）。
+- `export_root_to_efxfile()` 从 `efx_uvar_groups` 反填 `UvarGroups`——不做数量校验，因为
+  UI 侧的 `EFX_OT_uvar_group_add` 是唯一写入入口，已经硬拦住超过 2 项的情况。
+
+**UI**（`panels.py`）：Root 面板新增 `EFX_UL_uvar_groups` 列表（一行显示类型下拉 + 有效时的
+`group`/`path` 摘要），选中条目下方的详情框显示完整的 `uvar_type`/`path`/`group`——
+`uvar_type == "1"`（Marker Only）时隐藏 `path`/`group` 两行，避免用户误以为这个槽位也能填
+路径（vendor 读写逻辑在这个取值下压根不碰这两个字段）。`EFX_OT_uvar_group_add` 在列表已有
+2 项时直接 `{"ERROR"}` + `{"CANCELLED"}`，不静默创建第 3 项——因为 vendor 写出逻辑只处理
+下标 0/1，第 3 项会被静默丢弃，这正是决策 9 想避免的"错误结构骗过用户"，这次直接在 UI 入口
+堵住，不需要额外的导出前校验函数。
+
+**实机验证（2026-07-04，Blender 5.1.2，via Blender MCP）**：这次比 `FieldParameterValues`
+幸运——`diag/11_guide_110.efx.5571972.orig` 真的带一条非空 `UvarGroups`
+（`{uvarType: 2, path: "Art/VFX/VFX_group_common.uvar", group: "VFX_group_common"}`，正是
+2026-07-03 调研记录的那个真实样本），完整覆盖了真实数据的读入路径，不需要像
+`FieldParameterValues` 那样靠手工构造数据模拟。
+
+- Import 后 `efx_uvar_groups[0]` 的三个字段与样本原始 JSON 完全一致。
+- 直接检查 `io_tree.export_root_to_efxfile()` 的返回值，确认无编辑往返导出的 `UvarGroups`
+  和原始样本逐字段相同（`uvarType`/`path`/`group` 均未改变）。
+- 截图确认面板渲染正确：列表显示 `VFX_group_common` 条目（类型下拉 + 文件夹图标 + group
+  名），选中后详情框显示三个可编辑字段。
+- `EFX_OT_uvar_group_add` 二态测试：已有 1 项时 Add 成功（到 2 项）；再次 Add 正确拒绝，
+  报错文案提示"最多 2 项"；`EFX_OT_uvar_group_remove` 删除后列表正确回到 1 项。
+
+测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON 文件，没有改动仓库里
+的任何样本文件。
