@@ -37,67 +37,27 @@
 // 不是为 Blender UI 设计过的精简 schema——Python 侧后续按需再从这份 JSON 里挑字段
 // 映射到 PropertyGroup。这一层只负责"批处理、文件进文件出"的桥接，不做语义裁剪。
 //
-// 已发现并绕过的坑（不改 vendor，见下方 StripUnsafeComputedProperties）：
-// EFXExpressionParameter.{Float2,Color,Range} 是三个"标签联合视图"属性，共享底层
-// value1/value2/value3 字段，只有与当前 type 匹配的那个可读，其余两个 getter 直接
-// throw。System.Text.Json 默认反射会把这三个 public 属性当成普通字段全部尝试序列化，
-// 导致必炸（三选二必抛异常）。全仓库排查过，这个模式只出现在这一处（EfxFile.cs 内的
-// 3 处 `get => ... : throw new Exception`），不是普遍现象，所以不需要通用化解法，
-// 按类型+属性名精确剔除即可。
+// 曾经发现并绕过过三个坑（EFXExpressionParameter.{Float2,Color,Range} 三个"标签联合视图"
+// 属性互相 throw、EFXEntryBase.TypeAttribute 只读计算属性配 Populate 创建模式时处理不了
+// null、EfxFile.parentFile 内嵌 efxrData 反向指针形成序列化环），2026-07-04 vendor 升级
+// （`ebb1bc7`，"Fix efx json serialization for expressions, embedded efx"）后全部由 vendor
+// 自己解决（前两个分别用自定义 JsonConverter 和 [JsonIgnore] 处理，parentFile 也直接标了
+// [JsonIgnore]），这层 TypeInfoResolver 包装不再需要，直接用 vendor 自带的
+// `EfxJsonTypeResolver.jsonOptions` 即可（历史包袱记录见 git blame，不在这里堆讲解）。
 //
 // 编译需要 -p:LangVersion=preview（vendor 用了 C# 13 的 field 关键字）：
 //   dotnet build tools/EfxBridge -p:LangVersion=preview
 
 using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 using ReeLib;
 using ReeLib.Efx;
 
 static JsonSerializerOptions CreateBridgeJsonOptions() => new(EfxJsonTypeResolver.jsonOptions)
 {
-    TypeInfoResolver = EfxJsonTypeResolver.Instance.WithAddedModifier(StripUnsafeComputedProperties),
     // EFX 里的 float 字段会出现 Infinity/NaN（例如"无上限"语义），默认 JSON 数字语法
     // 不支持这两个字面量，需要显式放开（写成 "Infinity"/"NaN" 字符串形式的具名浮点值）。
     NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals,
 };
-
-static void StripUnsafeComputedProperties(JsonTypeInfo typeInfo)
-{
-    if (typeInfo.Type == typeof(EFXExpressionParameter))
-    {
-        // 标签联合视图属性：Float2/Color/Range 共享 value1/value2/value3，只有与当前
-        // type 匹配的那个可读，其余两个 getter 直接 throw（见文件头注释）。
-        RemoveProperties(typeInfo, "Float2", "Color", "Range");
-    }
-    else if (typeof(EFXEntryBase).IsAssignableFrom(typeInfo.Type))
-    {
-        // EFXEntryBase.TypeAttribute 是"在 Attributes 里找第一个 IsTypeAttribute"的
-        // 只读计算属性（无 setter），不是独立数据。EfxJsonTypeResolver 把声明类型为
-        // EFXAttribute 的成员都设成了 Populate 创建模式（服务于 Attributes 列表本身），
-        // 但 Populate 模式对"只读 + 标量（非集合）"成员无法处理 null 值
-        // ——找不到 Type* attribute 时这个属性就是 null，反序列化会直接抛异常。
-        RemoveProperties(typeInfo, "TypeAttribute");
-    }
-    else if (typeInfo.Type == typeof(EfxFile))
-    {
-        // EFXAttributePlayEmitter.efxrData（内嵌子 EfxFile，PLAYEMITTER 引用外部 .efxr）
-        // 在 DoRead() 里被反向挂上 parentFile 指回外层 EfxFile，形成真实对象图环
-        // （efxrData.parentFile.Actions[].Attributes[].efxrData.parentFile...），
-        // 序列化时直接触发 System.Text.Json 的 cycle 检测异常。这个反向指针只在
-        // ParseExpressions()/FindParameterByHash() 这类"跨内嵌文件解析表达式"的
-        // 便捷路径里用到，DoWrite() 本身不读它，所以 dump/load 往返里可以整个丢弃，
-        // 不需要在 load 之后手工重建。
-        RemoveProperties(typeInfo, "parentFile");
-    }
-}
-
-static void RemoveProperties(JsonTypeInfo typeInfo, params string[] names)
-{
-    foreach (var prop in typeInfo.Properties.Where(p => names.Contains(p.Name)).ToList())
-    {
-        typeInfo.Properties.Remove(prop);
-    }
-}
 
 if (args.Length >= 1 && args[0] == "dump")
 {

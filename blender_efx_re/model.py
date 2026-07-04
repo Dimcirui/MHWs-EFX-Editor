@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import json
 import math
-import struct
 
 import bpy
 from bpy.props import (
@@ -245,11 +244,13 @@ def json_float_out(value: float):
     它默认给 NaN/Infinity/-Infinity 写裸 token（`allow_nan=True` 的默认行为），但已经用
     `EfxBridge load` 实测证实 C# 端的 `System.Text.Json`（即使开了
     `AllowNamedFloatingPointLiterals`）拒绝裸 token 形式（`'N' is an invalid start of a
-    value`），只认带引号的字符串形式——这不是理论风险，是 RGBA 按位重解释成浮点数时的常见
-    情况：`alpha≈255`（最常见的不透明色）叠加 `blue>=128` 就会落进 NaN 的位模式区间，真实样本
-    （`11_guide_110` 的好几个 `type=Color` 的 ExpressionParameter）已经命中过。这里手动转成
-    带引号字符串，交给 `json.dump` 当成普通字符串序列化，就能匹配 EfxBridge 自己 dump 时用的
-    同一种带引号形式。"""
+    value`），只认带引号的字符串形式——**这不是理论风险，是真实命中过的问题**：vendor
+    2026-07-04 升级（`ebb1bc7`）之前，`ExpressionParameter.Color` 把 RGBA 按位重新解释成
+    浮点数，`alpha≈255`（最常见的不透明色）叠加 `blue>=128` 就会落进 NaN 的位模式区间，真实
+    样本（`11_guide_110` 的好几个 `type=Color` 记录）当时确实命中过。vendor 升级后 `Color`
+    改用干净的打包 `rgba` 整数（`EFXExpressionParamItem.rgba_str`），不再触发这个坑，但
+    `value1/2/3`（`Float`/`Range`/`Float2` 类型）仍是普通浮点数，理论上仍可能是
+    NaN/Infinity，这两个函数继续作为防御性处理保留。"""
     if math.isnan(value):
         return "NaN"
     if math.isinf(value):
@@ -452,21 +453,26 @@ class EFXUvarGroupItem(PropertyGroup):
 # ---------------------------------------------------------------------------
 
 # EfxFile.cs:69-87 的 EfxExpressionParameterType 枚举，四个取值语义均已由 vendor 注释+真实
-# 样本确认到"数据形状"这一层（哪几个 value1/2/3 生效），游戏侧真正用途仍是猜测（Range/Float2
-# 的具体含义见下方 tooltip，不确定的部分只放在 tooltip 里，不写进下拉框标签）。
+# 样本确认到"数据形状"这一层（哪几个字段生效），游戏侧真正用途仍是猜测（Range/Float2 的具体
+# 含义见下方 tooltip，不确定的部分只放在 tooltip 里，不写进下拉框标签）。标识符直接用 vendor
+# 枚举成员的字面量名字（"Float"/"Color"/"Range"/"Float2"）而不是数字下标——2026-07-04 vendor
+# 升级（`ebb1bc7`）后 JSON 的 `type` 键本身就是这个字符串（`Enum.ToString()`/`Enum.Parse<T>`），
+# 标识符和 JSON 值完全一致，import/export 不需要在数字下标和字符串之间来回换算。
 _EXPR_PARAM_TYPE_ITEMS = (
-    ("0", "Float", "type == 0：单个浮点值，value1 生效，value2/value3 未用"),
-    ("1", "Color", "type == 1：value1 的浮点数值按位重新解释成打包 uint32 RGBA"
-                    "（同 via.Color 的序列化手法），value2/value3 未用"),
-    ("2", "Range", "type == 2：value1/value2/value3 三个浮点值都生效。vendor 注释推测是"
-                    "{初始值, 最小值, 最大值}（X 总是落在 Y-Z 区间内），未证实"),
-    ("3", "Float2", "type == 3：value1/value2 两个浮点值生效，value3 未用。vendor 注释里"
-                     "样本只见过 0.0/1.0，疑似布尔语义，未证实"),
+    ("Float", "Float", "type == Float：单个浮点值，value1 生效，value2/value3 未用"),
+    ("Color", "Color", "type == Color：value 是一个打包 uint32 RGBA（`via.Color.rgba`，"
+                        "存进 rgba_str），不占用 value1/2/3"),
+    ("Range", "Range", "type == Range：value1/value2/value3 三个浮点值都生效。vendor 注释"
+                        "推测是{初始值, 最小值, 最大值}（X 总是落在 Y-Z 区间内），未证实"),
+    ("Float2", "Float2", "type == Float2：value1/value2 两个浮点值生效，value3 未用。"
+                          "vendor 注释里样本只见过 0.0/1.0，疑似布尔语义，未证实"),
 )
+
+_UINT32_MASK = 2**32 - 1
 
 
 def _get_expr_param_color(self) -> tuple:
-    raw = struct.unpack("<I", struct.pack("<f", self.value1))[0]
+    raw = int(self.rgba_str or "0") & _UINT32_MASK
     r = raw & 0xFF
     g = (raw >> 8) & 0xFF
     b = (raw >> 16) & 0xFF
@@ -477,39 +483,43 @@ def _get_expr_param_color(self) -> tuple:
 def _set_expr_param_color(self, value) -> None:
     r, g, b, a = (max(0, min(255, round(c * 255))) for c in value)
     raw = r | (g << 8) | (b << 16) | (a << 24)
-    self.value1 = struct.unpack("<f", struct.pack("<I", raw))[0]
+    self.rgba_str = str(raw)
 
 
 class EFXExpressionParamItem(PropertyGroup):
-    """对应 vendor `EFXExpressionParameter`（`EfxFile.cs:400-448`）。C# 侧有三个"标签联合视图"
-    计算属性（`Float2`/`Color`/`Range`，共享底层 `value1`/`value2`/`value3`，只有和当前 `type`
-    匹配的那个可读，其余两个 getter 直接 throw）——这正是 `EfxBridge/Program.cs` 头部注释里
-    "已发现并绕过的坑"那三个属性，桥接层已经把它们从 JSON 视图里剔除
-    （`StripUnsafeComputedProperties`），Python 侧看到的是稳定的扁平 7 键
-    （两个具名哈希 + `type` + `value1/2/3` + `name`），不需要再处理那个 union 问题。
+    """对应 vendor `EFXExpressionParameter`（`EfxFile.cs:400-448`，2026-07-04 vendor 升级到
+    `ebb1bc7` 后 JSON 形状整个变了，这份 docstring 对应新形状——旧形状的调研过程和踩坑记录见
+    `docs/TOPLEVEL_STRUCTURE.md` "vendor 升级"一节，不在这里重复）。
 
-    两个具名哈希（`expressionParameterNameUTF16Hash`/`expressionParameterNameUTF8Hash`）
-    不需要在 Blender 侧保留字段——不像 `FieldParameterValues.fieldParameterNameHash`
-    那样有失配风险，这两个哈希在导出前会被 vendor **无条件**用 MurMur3 从 `name` 重新计算
-    （`EfxFile.cs:966-967`，在 `foreach` 循环里逐项覆盖后再 `Write()`），改名字天然保持同步，
-    导出时固定填 0 占位即可。
+    新形状只有 3 个键：`type`（字符串，`"Float"`/`"Color"`/`"Range"`/`"Float2"`）、`name`、
+    `value`（形状由 `type` 决定：`Float` 是裸数字；`Float2` 是 `{X, Y}`；`Range` 是
+    `{X, Y, Z}`；`Color` 是 `{rgba: uint32}`，和 `via.Color` 完全一样的打包整数，不再是旧版本
+    那种"把浮点数值按位重新解释成 RGBA"的猜谜手法）。两个具名哈希字段
+    （`expressionParameterNameUTF16Hash`/`expressionParameterNameUTF8Hash`）在新版本里连 JSON
+    都不出现了——vendor 自定义的 `EFXExpressionParameterJsonConverter` 读到 `name` 时就地用
+    MurMur3 算好存进内存对象，写的时候压根不输出这两个键，Blender 侧不需要处理，也不需要像
+    旧版本那样占位填 0。
 
-    `value1`/`value2`/`value3` 用真正的 `FloatProperty`（不是 `EFXValueNode` 通用树）——这三个
-    字段形状简单固定、`type` 语义已确认到哪几个生效，值得做成真数值控件而不是通用树，尤其是
-    `Color` 类型可以直接复用现成的颜色轮（`color_value`，对 `value1` 的浮点位做和
-    `via.Color.rgba` 一样的按位重解释）。**这也是为什么需要 `model.json_float_in/out`**：
-    真实样本证实 `Color` 类型的 `value1` 经常是 NaN 位模式（`alpha≈255` 叠加 `blue>=128` 就会
-    落进这个区间，见 `docs/TOPLEVEL_STRUCTURE.md`），EfxBridge 的 JSON 表示把 NaN/Infinity
-    存成带引号字符串，不能直接塞进/读出 `FloatProperty`，需要显式转换（而不是像
-    `FieldParameterValues` 那样交给通用树，把 NaN 当字符串囫囵存过去——这里既要真数值参与颜色
-    运算，就必须显式处理）。
+    `value1`/`value2`/`value3` 继续用真正的 `FloatProperty`（不是 `EFXValueNode` 通用树）——
+    形状简单固定、语义已知，值得做成真数值控件。`Color` 类型改用 `rgba_str`（十进制字符串，
+    同 `EFXBoneItem.value` 的 BIGINT-safe 惯例）而不是复用 `value1`：新版本的 `rgba` 已经是
+    一个干净的打包 uint32，不再需要"浮点数按位重新解释"这个技巧，也就不再有旧版本那个真实
+    命中过的坑——RGBA 按位重解释成浮点数时，`alpha≈255` 叠加 `blue>=128` 就会落进 NaN 位模式
+    区间（`11_guide_110` 的 `colorR_N/P/D/T` 四条记录当时就是这样），而 EfxBridge 把 NaN 存成
+    带引号字符串、Python `json.dump` 默认写裸 token 两者不兼容，是上一版本必须用
+    `model.json_float_in/out` 显式转换的唯一原因。新版本 `Color` 完全不经过浮点数，`rgba_str`
+    只是一个整数的字符串表示，天然没有这个问题；`json_float_in/out` 仍然保留，供
+    `value1`/`value2`/`value3`（`Float`/`Range`/`Float2` 类型）使用——这几个字段本质上还是
+    普通浮点数，理论上仍可能是 NaN/Infinity（只是目前的真实样本没有命中过），继续做防御性处理
+    符合决策 9"不确定就别自作主张排除"的精神。
     """
 
     name: StringProperty(name="Name")
-    param_type: EnumProperty(name="Type", items=_EXPR_PARAM_TYPE_ITEMS, default="0")
+    param_type: EnumProperty(name="Type", items=_EXPR_PARAM_TYPE_ITEMS, default="Float")
     value1: FloatProperty(name="Value 1")
     value2: FloatProperty(name="Value 2")
     value3: FloatProperty(name="Value 3")
+    rgba_str: StringProperty(name="RGBA", default="0")
     color_value: FloatVectorProperty(
         name="Color", subtype="COLOR", size=4, min=0.0, max=1.0,
         get=_get_expr_param_color, set=_set_expr_param_color,

@@ -22,8 +22,9 @@ MHWs（Monster Hunter Wilds，RE Engine）`.efx` 特效文件的 Blender 编辑�
    （`REE-Lib.Generators`，通过 `ProjectReference OutputItemType="Analyzer"` 引用）和核心
    `FileHandler`/`BaseModel` 基础设施，手工抽取源码风险远大于收益。最终产物体积由
    `dotnet publish` 的裁剪（trimming）在发布时自动收窄，不需要在源码层面预先瘦身。
-   当前锁定 commit：`52248353b07b97d8e67493f5ac3ce67ebc01e390`（2026-06-30）。升级时手动
-   bump + 跑一遍 Phase 0 回归，不追"永远最新"。
+   当前锁定 commit：`ebb1bc7dfd52637ad9fc7f2c5c87d34c798d4790`（2026-07-04，从
+   `5224835307...`升级，修复了 Expression 反序列化的长期缺口，见下方"验证中曾发现并临时
+   绕过过 3 个通用序列化坑"一节）。升级时手动 bump + 跑一遍 Phase 0 回归，不追"永远最新"。
 3. **数据交换**：Python（Blender 胶水层）↔ C# 桥接 CLI，走"文件 → 结构化中间表示 → 文件"的
    批处理调用模式（类比现有 import/export operator 的调用方式），不做常驻服务、不用 pythonnet
    内嵌 CLR（避免和 Blender 自带 Python 跨版本 3.6→5.x 的兼容负担叠加）。
@@ -127,9 +128,10 @@ dotnet <dll> load <json 文件路径> <efx 输出路径>   # 反序列化 JSON �
 中间表示是 `EfxFile` 对象图的直译 JSON（字段名/结构来自 C# 类本身），不是为 Blender UI
 精简过的 schema——Python 侧后续按需再从这份 JSON 里挑字段映射到 PropertyGroup。
 
-**验证中发现并修复的 3 个通用序列化坑**（都在 `tools/EfxBridge/Program.cs` 里用自定义
-`JsonTypeInfo` modifier 绕过，没有改 vendor 源码——这是我们自己桥接层的问题，不是"上游
-解析 bug"，所以没有记进 KNOWN_UPSTREAM_ISSUES.md）：
+**验证中曾发现并临时绕过过 3 个通用序列化坑**（原本在 `tools/EfxBridge/Program.cs` 里用
+自定义 `JsonTypeInfo` modifier 绕过，没有改 vendor 源码——**2026-07-04 vendor 升级
+（`5224835`→`ebb1bc7`，见下）后 vendor 自己解决了全部 3 个，这层绕过代码已删除**，以下按
+历史记录保留，不再是当前需要维护的补丁）：
 
 1. `EFXExpressionParameter.{Float2,Color,Range}` 是三个共享底层字段的"标签联合视图"属性，
    只有与当前 `type` 匹配的那个可读，其余两个 getter 直接 `throw`——序列化会必炸。
@@ -142,13 +144,14 @@ dotnet <dll> load <json 文件路径> <efx 输出路径>   # 反序列化 JSON �
    `ParseExpressions()`/`FindParameterByHash()` 这类跨内嵌文件解析表达式的便捷路径，
    `DoWrite()` 本身不读它，dump/load 往返可以整个丢弃、不需要 load 后手工重建。
 
-**已知遗留缺口（不是本轮要解决的）**：`EFXExpressionDataBase`（Expression 公式引擎的
-表达式节点树）反序列化会报
-`Deserialization of types without a parameterless constructor ... is not supported`——
-resolver 只给 `EFXAttribute` 一层注册了多态判别，没有覆盖这一层嵌套多态类型。带
-Expression 数据的 attribute 目前 dump 没问题，load 会失败。这与架构决策第 8 点一致
-（Expression 是独立子系统，UI 和序列化支持都可以后置），调用方应捕获 `BridgeError` 后
-按第 9 点"整文件拒绝"处理，不做半成品。
+**曾经的已知遗留缺口，已于 2026-07-04 随 vendor 升级解决**：`EFXExpressionDataBase`
+（Expression 公式引擎的表达式节点树）反序列化曾经会报
+`Deserialization of types without a parameterless constructor ... is not supported`，
+这是此前每一轮 `bpy.ops.efx_re.export()` 端到端验证都会撞到的同一个缺口。vendor
+`ebb1bc7` 给它补了正规的 `JsonPolymorphismOptions`，问题从根上解决——已用真实样本
+（`11_guide_110`，含 Expression 数据的 attribute）验证完整导出成功，见
+`docs/TOPLEVEL_STRUCTURE.md` "vendor 升级"一节和 `docs/BLENDER_MODEL.md` 对应实机验证
+记录。
 
 **Blender addon 骨架**（`__init__.py` + `blender_manifest.toml` + `blender_efx_re/`）：
 最小闭环打通了 `.efx --dump--> JSON --存成文本块--> （可查看/编辑）--load--> .efx`，
@@ -175,9 +178,9 @@ cross-reference 结论，搬到了 [docs/TOPLEVEL_STRUCTURE.md](docs/TOPLEVEL_ST
 - attribute 内容字段里的公式树（`Expression`/`MaterialExpressions`，`IExpressionAttribute`/
   `IMaterialExpressionAttribute`）——注意这个和上面已经做完的顶层 `ExpressionParameters`
   具名参数表是完全不同的两套结构，名字相似容易搞混（见
-  [docs/TOPLEVEL_STRUCTURE.md](docs/TOPLEVEL_STRUCTURE.md) 的专门说明）。这个公式树本身
-  还有一个已知的、和本项目改动无关的 vendor 反序列化缺口（`EFXExpressionDataBase` 缺无参
-  构造函数），继续按架构决策第 8 点结构化透传，不建字段级 UI。
+  [docs/TOPLEVEL_STRUCTURE.md](docs/TOPLEVEL_STRUCTURE.md) 的专门说明）。此前反序列化会
+  失败的已知缺口已于 2026-07-04 随 vendor 升级解决（见上），现在纯粹是"还没建字段级编辑
+  UI"，结构化透传本身已经能正常工作，继续按架构决策第 8 点处理，UI 后置。
 - 预设系统（架构决策 6 的另一半，复制/粘贴已经够用，用户明确说了预设先不做）
 - 新建 Action（复制/粘贴目前只做了 Entry 和 Attribute，Action 本身没有 Copy/New 操作，只能
   通过 import 获得；Attribute 粘贴支持粘到已有 Action 上）

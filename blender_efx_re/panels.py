@@ -429,13 +429,13 @@ class EFX_PT_object(Panel):
                 box = layout.box()
                 box.prop(expr_item, "name")
                 box.prop(expr_item, "param_type")
-                if expr_item.param_type == "1":
+                if expr_item.param_type == "Color":
                     box.prop(expr_item, "color_value", text="Color")
-                elif expr_item.param_type == "2":
+                elif expr_item.param_type == "Range":
                     box.prop(expr_item, "value1")
                     box.prop(expr_item, "value2")
                     box.prop(expr_item, "value3")
-                elif expr_item.param_type == "3":
+                elif expr_item.param_type == "Float2":
                     box.prop(expr_item, "value1")
                     box.prop(expr_item, "value2")
                 else:

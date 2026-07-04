@@ -500,3 +500,80 @@ foreach (var exprParam in ExpressionParameters) {
 
 测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON/efx 测试文件，没有
 改动仓库里的任何样本文件。
+
+## vendor 升级：`5224835` → `ebb1bc7`，解决长期存在的 Expression 反序列化缺口（2026-07-04）
+
+**背景**：用户提供线索——姊妹应用 [REE-Content-Editor](https://github.com/kagenocookie/REE-Content-Editor)
+（同一作者 kagenocookie，作为独立 GUI 工具消费同一个 `RE-Engine-Lib`）几小时前把内嵌的
+`RE-Engine-Lib` submodule 从 `5224835`（正好是本项目当前 vendor 版本）升到
+`ebb1bc7dfd52637ad9fc7f2c5c87d34c798d4790`，提交信息是"Fix efx json serialization for
+expressions, embedded efx"。用 `gh api repos/kagenocookie/RE-Engine-Lib/compare/...` 直接
+拉了这两个 commit 之间的完整 diff（`8b5325b`/`ebb1bc7` 两个提交），逐个确认了对本项目的影响，
+决定升级。**已完成**：`vendor/RE-Engine-Lib` submodule 指针更新到 `ebb1bc7`，`EfxBridge`
+重新编译，四个已实现的顶层字段（Bones/FieldParameterValues/UvarGroups/ExpressionParameters）
+全部重新走了一遍实机验证，外加第一次真正跑通了含真实 Entries/Actions 的完整
+`bpy.ops.efx_re.export` 端到端流程（此前每一轮验证都卡在同一个已知缺口上，从未真正走完）。
+
+**升级修的是什么**：`EFXExpressionDataBase`（attribute 内容字段里 `Expression`/
+`MaterialExpressions` 公式树用到的多态基类）此前反序列化直接抛
+`NotSupportedException`（"缺无参构造函数"）——这是本项目从 Bones 那一轮起，每一次
+`bpy.ops.efx_re.export()` 端到端验证都会撞到的同一个缺口，一直被记录成"已知的、和本项目改动
+无关的既有问题"。新版本给 `EFXExpressionDataBase` 补了正规的
+`JsonPolymorphismOptions`（`type` 字段做判别式，显式列出 5 个派生类），问题从根上解决。
+用真实样本（`11_guide_110`，含 2 个 Action + PlayEmitter + 141 个 attribute）验证：
+`bpy.ops.efx_re.export()` 第一次返回 `{"FINISHED"}`，导出文件用 `EfxBridge dump` 复核可以
+正常读回，`Entries`/`Actions`/`Bones`/`FieldParameterValues`/`UvarGroups`/
+`ExpressionParameters` 逐字段和原始样本完全一致，`EffectGroups` 按预期重新排序（同一组下标，
+顺序不同，语义等价——这个"解码成干净模型、总是重新生成字节"的差异本来就是项目公认的正常
+行为，见 `EfxBridge/Program.cs` 头部注释）。
+
+**`ExpressionParameters` 的 JSON 形状整个变了**（升级前的形状记录在上方
+"`ExpressionParameters`（顶层参数表）结构调研与实现"一节，不删除，作为历史记录保留，注意
+读的时候要按"旧版本"理解）：
+```
+旧（vendor 5224835）：{expressionParameterNameUTF16Hash, expressionParameterNameUTF8Hash,
+                        type: <int 0-3>, value1, value2, value3, name}
+新（vendor ebb1bc7）：{type: <string, "Float"/"Color"/"Range"/"Float2">, name, value}
+                       value 形状随 type 变化：
+                         Float  → 裸数字
+                         Float2 → {X, Y}
+                         Range  → {X, Y, Z}
+                         Color  → {rgba: <uint32>}（和 via.Color 完全一样的打包整数）
+```
+新增了一个自定义 `EFXExpressionParameterJsonConverter`（vendor `EfxFile.cs` 里的
+`EfxJsonTypeResolver` 静态构造函数注册），彻底取代了旧版本"三个标签联合视图属性靠反射直接
+序列化、桥接层手工剔除"的做法。两个具名哈希字段在新版本里**完全不出现在 JSON 里**——读
+`name` 时转换器就地用 MurMur3 算好塞进内存对象，写的时候压根不输出，Blender 侧不需要提供
+占位值。
+
+**最大的实际收益：`Color` 类型不再有 NaN 风险。** 旧版本把 RGBA 按位重新解释成一个浮点数
+（`value1`），真实样本证实这经常落进 NaN 位模式（`alpha≈255` 叠加 `blue>=128`），逼着我们写
+`model.json_float_in/out` 显式处理"EfxBridge 用带引号字符串表示 NaN、Python `json.dump`
+默认写裸 token 两者不兼容"这个坑。新版本 `Color` 直接是一个干净的 `rgba: uint32`，完全不
+经过浮点数，`EFXExpressionParamItem` 相应改用 `rgba_str`（十进制字符串，BIGINT-safe，同
+`EFXBoneItem.value` 的惯例）存储，颜色轮 get/set 变成纯粹的整数位运算，不再需要
+`struct.pack`/`unpack`。`json_float_in/out` 两个函数保留，继续给 `value1/2/3`
+（`Float`/`Range`/`Float2` 类型）做防御性处理——这几个字段本质上还是普通浮点数，理论上仍
+可能是 NaN/Infinity，只是目前的真实样本没有命中过，符合决策 9 的一贯态度。
+
+**顺带清理**：`EfxBridge/Program.cs` 里为三个已知坑写的 `StripUnsafeComputedProperties`
+工作区（`EFXExpressionParameter.{Float2,Color,Range}` 剔除、`EFXEntryBase.TypeAttribute`
+剔除、`EfxFile.parentFile` 剔除）全部由 vendor 自己解决了（前两个分别用自定义
+`JsonConverter`/`[JsonIgnore]`，`parentFile` 也直接标了 `[JsonIgnore]`），整个
+`TypeInfoResolver` 包装层被删除，直接用 vendor 自带的 `EfxJsonTypeResolver.jsonOptions`。
+删除后重新跑了 `EfxBridge roundtrip diag --verbose`（4 个文件全部 `STABLE`）和两个样本的
+`dump`/`load` 往返，确认没有引入新问题。
+
+**升级过程中的一次误报，记录下来避免以后重踩**：升级后第一次用命令行手工测试
+`dump→load→dump`（输出文件名用的是不带版本号后缀的裸 `.efx`，比如
+`g006_new.efx`），第二次 `dump` 读回时炸出 `Header.Version` 变成 `-1`、attribute typeId
+读到垃圾值——一度以为是这次升级引入的新回归（做了多组对照实验，包括纯二进制 `roundtrip`
+命令验证读写本身没问题，一度怀疑是 JSON 反序列化路径的新 bug）。往深挖after才发现真正原因：
+`EfxHeader.DoRead()` 里 `Version = (EfxVersion)handler.FileVersion;`——`Version` 字段本来
+就**不存在于二进制字节里**，而是运行时从 `FileHandler.FileVersion` 派生的，`FileVersion`
+的取值逻辑（`FileHandler.cs:24-31`）在 `FilePath` 非空时会去解析文件名里的数字后缀
+（`PathUtils.ParseFileFormat`）——这一段行为在旧版本（`5224835`）里就已经存在，不是这次升级
+改的。给输出文件名补上正确的 `.efx.5571972` 后缀后，问题完全消失，多轮往返稳定、字节级/
+内容级比对完全一致。**教训**：以后手工用 `EfxBridge load` 测试时，输出路径必须带正确的
+`.efx.<version>` 后缀，不能图方便用裸 `.efx`——这不是 bug，是这套文件格式的设计（版本号本来
+就该体现在文件名里，不是任何一个游戏版本都会把它编码进二进制内容本身）。

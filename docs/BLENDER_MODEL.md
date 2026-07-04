@@ -520,3 +520,48 @@ type 下拉），选中条目下方详情框按 `param_type` 只展示当前生�
 
 测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON/efx 测试文件，没有
 改动仓库里的任何样本文件。
+
+## vendor 升级后的完整重新验证（2026-07-04）
+
+背景和 vendor 升级本身（`5224835` → `ebb1bc7`）的调研过程记录在
+`docs/TOPLEVEL_STRUCTURE.md` "vendor 升级"一节，这里只记 Blender 侧代码改动和实机验证结果。
+
+**代码改动**：`ExpressionParameters` 的 JSON 形状因为 vendor 升级整个变了（`type` 从数字
+下标变成字符串枚举名，`value1/2/3` 三个平铺字段合并成一个随 `type` 变形的 `value`），
+`EFXExpressionParamItem`/`io_tree.py` 的 import/export 逻辑相应重写：
+- `param_type` 的 `EnumProperty` 标识符直接改用 vendor 枚举名字符串（`"Float"`/`"Color"`/
+  `"Range"`/`"Float2"`），不再用数字下标——JSON `type` 键本身就是这个字符串，不需要中间
+  换算。
+- `Color` 类型不再用"浮点数按位重新解释"技巧，改用 `rgba_str`（十进制字符串，BIGINT-safe）
+  直接对应新 JSON 形状里干净的 `{rgba: uint32}`，颜色轮 get/set 变成纯整数位运算——
+  `model.py` 里 `import struct` 和相关 `struct.pack`/`unpack` 调用全部移除，`json_float_in/
+  out` 保留给 `value1/2/3`（`Float`/`Range`/`Float2`）做防御性 NaN/Infinity 处理。
+- `panels.py` 里 `param_type` 的字符串比较从 `"1"`/`"2"`/`"3"` 改成 `"Color"`/`"Range"`/
+  `"Float2"`，其余 UI 逻辑不变（`color_value` 属性名没变，面板代码不需要改）。
+- `tools/EfxBridge/Program.cs` 删除了整个 `StripUnsafeComputedProperties`/
+  `TypeInfoResolver.WithAddedModifier` 包装层——三个此前手工绕过的坑（`EFXExpressionParameter`
+  的 union 属性、`EFXEntryBase.TypeAttribute`、`EfxFile.parentFile`）全部由 vendor 自己在
+  新版本里解决（自定义 `JsonConverter`/`[JsonIgnore]`），不需要我们这边的补丁了。
+
+**实机验证（2026-07-04，Blender 5.1.2 + upgraded vendor，via Blender MCP）**：模块热重载
+流程同前几轮（清 `sys.modules` 缓存 + 重新 `import`/`register()`）。
+
+- 重新导入 `11_guide_110`：`Bones`/`FieldParameterValues`/`UvarGroups`/`ExpressionParameters`
+  四个字段全部正确读入，`ExpressionParameters` 的 9 条记录里 `type` 正确显示成
+  `"Float2"`/`"Color"` 字符串，`Color` 类型的 `rgba_str` 全部是干净的十进制整数字符串
+  （如 `"4281129045"`/`"4294914096"`），**之前必须处理的 4 条 NaN 记录（`colorR_N/P/D/T`）
+  现在压根不经过浮点数，`v1/v2/v3` 全部是 `0`**——NaN 问题从根上消失，不是被掩盖。
+- **第一次真正跑通端到端导出**：`bpy.ops.efx_re.export()` 对 `11_guide_110`（2 Action + 1
+  PlayEmitter + 141 attribute）和 `11_guide_006`（7 Entry，0 Action）都返回 `{"FINISHED"}`，
+  此前每一轮（Bones/FieldParameterValues/UvarGroups/ExpressionParameters 四轮验证）都卡在
+  同一个 `EFXExpressionDataBase` 反序列化缺口上，这是第一次真正完整走完。
+- 导出文件复核：用 `EfxBridge dump` 读回刚导出的 `11_guide_110` 文件，`Entries`/`Actions`/
+  `Bones`/`FieldParameterValues`/`UvarGroups`/`ExpressionParameters` 六个字段和原始样本
+  JSON **逐字段完全相同**；`EffectGroups`（本来就设计成导出时重新计算）下标集合相同、顺序
+  不同，符合预期（同一类"解码成干净模型、总是重新生成字节"的语义等价差异）。
+- 顺手确认了 `EfxBridge/Program.cs` 删掉 `StripUnsafeComputedProperties` 之后没有引入新
+  问题：`EfxBridge roundtrip diag --verbose` 四个文件全部 `STABLE`，两个真实样本单独跑
+  `dump`→`load`→`dump` 全部成功、内容一致。
+
+测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON/efx 测试文件，没有
+改动仓库里的任何样本文件。
