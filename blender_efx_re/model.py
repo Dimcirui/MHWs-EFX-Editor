@@ -72,8 +72,11 @@ ACTION_STRUCTURAL_KEYS = frozenset({"Attributes"})
 # 见 PLAN.md 验证记录），Bones 建成 EFX_ROOT.efx_bones 列表 UI，BoneRelations 和
 # EffectGroups 一样整体不透传（导出时固定输出空数组，靠 C# 后端从每个 attribute 的
 # ParentBone + Bones 表反向重建下标，见 docs/TOPLEVEL_STRUCTURE.md "Bones / BoneRelations
-# 结构调研"），其余键原样存进 EFX_ROOT 的 efx_opaque_text。
-ROOT_STRUCTURAL_KEYS = frozenset({"Entries", "Actions", "EffectGroups", "Bones", "BoneRelations"})
+# 结构调研"），FieldParameterValues 建成 EFX_ROOT.efx_field_parameters 列表 UI（见
+# EFXFieldParameterItem 的说明），其余键原样存进 EFX_ROOT 的 efx_opaque_text。
+ROOT_STRUCTURAL_KEYS = frozenset({
+    "Entries", "Actions", "EffectGroups", "Bones", "BoneRelations", "FieldParameterValues",
+})
 
 
 # ---------------------------------------------------------------------------
@@ -328,6 +331,52 @@ class EFXBoneItem(PropertyGroup):
 
 
 # ---------------------------------------------------------------------------
+# EFXFieldParameterItem —— EFX_ROOT 的文件级具名参数表（对应 EfxFile.FieldParameterValues）
+# ---------------------------------------------------------------------------
+
+# EFXFieldParameterValue 除 name 外的其余字段（EfxFile.cs:512-578）。JSON 里这些键始终
+# 全部存在——type 只决定二进制读写时走哪个分支、哪些字段真正有意义，不影响 JSON 形状（反射
+# 序列化按字段当前值原样落盘，不会因为某个分支没碰到某个字段就在 JSON 里省略它）。
+FIELD_PARAMETER_CONTENT_DEFAULTS = {
+    "unkn0": 0,
+    "fieldParameterNameHash": 0,
+    "unkn2": 0,
+    "type": 0,
+    "unkn4": 0,
+    "value_ukn1": 0,
+    "value_ukn2": 0,
+    "value_ukn3": 0,
+    "value_ukn4": 0.0,
+    "value_ukn5": 0.0,
+    "value_ukn6": 0.0,
+    "wilds_unkn0": 0.0,
+    "filePath": "",
+}
+
+
+class EFXFieldParameterItem(PropertyGroup):
+    """对应 vendor `EFXFieldParameterValue`（`EfxFile.cs:512-578`）。除 `name` 外的其余 13
+    个字段（unkn0/fieldParameterNameHash/unkn2/type/unkn4/value_ukn1~6/wilds_unkn0/filePath）
+    绝大多数语义未确认——已确认的只有 `type` 决定 `filePath` 是否是一个真实使用的外部资源
+    路径（`type in {110,144,183,184,196,202,194,215,217}` 时是矢量场纹理这类资源引用，见
+    docs/TOPLEVEL_STRUCTURE.md "FieldParameterValues" 一节），其余数值字段含义不明。
+
+    和 attribute 内容字段一样重用通用 EFXValueNode 树（`fields`），不手写 13 个具名
+    PropertyGroup 字段：字段太多、大半语义未知，手写 schema 只会把"不确定"伪装成"确定"，
+    通用树才如实反映现状（决策 9）。
+
+    `fieldParameterNameHash` 尤其需要注意：不像同一个文件里 Entry/Action/Bones/
+    ExpressionParameter 的 nameHash 那样在导出时被 vendor 用 MurMur3 自动重算（已通读
+    EfxFile.cs 全部 MurMur3 调用点确认——`FieldParameterValues.Write()` 只是逐项调用
+    DefaultWrite，没有任何 hash 重算逻辑），改了 `name` 必须手动同步这个哈希，本项目目前
+    不替用户猜哈希算法（决策 9，同 EFXBoneItem.value 的处理原则），保持完全手动可编辑。
+    """
+
+    name: StringProperty(name="Name")
+    fields: CollectionProperty(type=EFXValueNode)
+
+
+# ---------------------------------------------------------------------------
 # 不透明剩余字段 —— 存成 bpy.data.texts 文本块，import/export 两边共用
 # ---------------------------------------------------------------------------
 
@@ -354,7 +403,7 @@ def load_opaque(obj: Object) -> dict:
 # Object 级属性注册（挂在 bpy.types.Object 上，四种 ~TYPE 对象按需使用其中一部分）
 # ---------------------------------------------------------------------------
 
-_CLASSES = (EFXValueNode, EFXGroupTag, EFXBoneItem)
+_CLASSES = (EFXValueNode, EFXGroupTag, EFXBoneItem, EFXFieldParameterItem)
 
 
 def register():
@@ -385,6 +434,11 @@ def register():
     Object.efx_bones = CollectionProperty(type=EFXBoneItem)
     Object.efx_bones_active_index = IntProperty()
 
+    # EFX_ROOT 专属：文件级具名参数表（对应 EfxFile.FieldParameterValues），见
+    # EFXFieldParameterItem 的说明。
+    Object.efx_field_parameters = CollectionProperty(type=EFXFieldParameterItem)
+    Object.efx_field_parameters_active_index = IntProperty()
+
     # EFX_ATTRIBUTE 专属：bookkeeping 标量 + 内容字段树。
     Object.efx_attr_type = StringProperty(
         name="Attribute Type",
@@ -404,6 +458,8 @@ def unregister():
     del Object.efx_version
     del Object.efx_unique_id
     del Object.efx_attr_type
+    del Object.efx_field_parameters_active_index
+    del Object.efx_field_parameters
     del Object.efx_bones_active_index
     del Object.efx_bones
     del Object.efx_groups_active_index

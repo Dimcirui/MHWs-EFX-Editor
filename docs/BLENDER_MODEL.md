@@ -339,3 +339,69 @@ EFX-Editor/MHWI，不是本项目——本项目的 `id` 是 `mhws_efx_editor`�
 
 测试完成后清空了这个 Blender 实例里的场景对象/collection（避免留下测试脏数据误导下次
 session），没有改动仓库里的任何样本文件。
+
+## Phase 1 补充 —— FieldParameterValues 编辑 UI（2026-07-04）
+
+结构调研见 `docs/TOPLEVEL_STRUCTURE.md` "`FieldParameterValues` 结构调研与实现"一节
+（`EFXFieldParameterValue` 14 个字段的完整清单、`type`-门控 `filePath` 的语义、
+`fieldParameterNameHash` 不被 vendor 自动重算的风险）。这里只记代码改动和实机验证。
+
+**数据模型**（`model.py`）：
+- `ROOT_STRUCTURAL_KEYS` 加入 `FieldParameterValues`。
+- 新增 `EFXFieldParameterItem`：`name`（`StringProperty`，同 `EFXBoneItem.name` 的具名机制）
+  + `fields`（`CollectionProperty(type=EFXValueNode)`，装剩下 13 个字段）。和 `EFXBoneItem`
+  的差别是内容处理方式：`EFXBoneItem` 只有 `name`+`value` 两个字段，直接摊成具名属性；
+  `EFXFieldParameterItem` 除 `name` 外还有 13 个大半语义未知的字段，改为重用通用
+  `EFXValueNode` 树（和 attribute 内容字段 `efx_fields` 的机制完全一样）而不是手写 13 个
+  具名 PropertyGroup 属性——字段太多、语义大半不确定时，通用树比手写 schema 更诚实（决策 9）。
+- 新增 `FIELD_PARAMETER_CONTENT_DEFAULTS`：新建条目时预置全部 13 个键的默认值（0/0.0/""），
+  否则 Add 按钮建出来的条目字段树是空的，UI 上看不到任何可编辑的行。
+
+**Import/Export**（`io_tree.py`）：
+- `build_root_from_efxfile()` 从 `FieldParameterValues` 数组填 `efx_field_parameters`，
+  `filePath` 为 `null` 时按 `ParentBone` 的先例规整成 `""`（C# 侧两处 `filePath ??= ...`
+  写出兜底证实语义等价，`EFXValueNode` 的 `NULL` data_type 没有可编辑 slot）。
+- `export_root_to_efxfile()` 从 `efx_field_parameters` 反填 `FieldParameterValues`
+  （`{"name": item.name, **children_to_dict(item.fields)}`）——不像 `Bones`/`BoneRelations`
+  那样有一半字段交给 C# 后端重算，这里是完全的双向直译，C# 侧只在写入前从这个列表反推
+  `Strings.FieldParameterNames`（`EfxFile.cs:948`，同 Bones/Actions 具名机制），不需要
+  Python 侧关心。
+
+**UI**（`panels.py`）：Root 面板新增 `EFX_UL_field_parameters` 列表（一行显示 `name`，
+`+`/`-` 增删，样式对齐 Bones/Groups 列表），选中条目下方直接用已有的 `draw_node()` 递归
+渲染 `fields` 树——不需要新写字段绘制逻辑，通用树自动覆盖全部 13 个字段（含
+`value_ukn4`/`value_ukn5`/`value_ukn6` 这类浮点三元组，因为 key 不是 `x/y/z`/`s/r` 所以
+不会被 XYZ/static-random 的结构探测函数误判，各自单独一行显示，符合预期）。
+
+**实机验证（2026-07-04，Blender 5.1.2，via Blender MCP）**：复用上一轮 Bones 验证已经装好
+的开发期 `sys.path` + `import blender_efx_re; blender_efx_re.register()` 流程，改完代码后
+重新清空 `sys.modules` 里的 `blender_efx_re*` 缓存再 `register()`，确认新 operator
+（`efx_re.field_parameter_add`）存在，代表模块正确热重载。
+
+- 仓库里唯二的两个真实样本 `FieldParameterValues` 均为空数组（和 2026-07-03 的 250 样本
+  调研命中率一致——本来就低，2/250），Import 两个样本后 `efx_field_parameters` 均正确为
+  空，验证了"空数组"这条路径。真实非空数据的读入路径没有样本可验证，等以后拿到真实样本
+  再复核。
+- 手工用 Add 按钮新建一条记录（`name="Field"`，`type=217`，`filePath` 设成真实的矢量场
+  纹理路径，`fieldParameterNameHash` 故意设成 `4294901234`（超过 2^31-1）验证 BIGINT 精度
+  不丢），截图确认 Root 面板正确渲染 Field Parameters 列表 + 选中条目的 13 行字段
+  （`type: 217`、`filePath: RE_ENGINE_LIB...` 截断显示可见）。
+- 用 Remove 按钮删除该记录，确认列表正确清空为 0 条。
+- 直接检查 `io_tree.export_root_to_efxfile()` 的返回值，确认 `FieldParameterValues` 正确
+  导出成 14 键完整字典，`fieldParameterNameHash` 精确保留大数值（未被当成 32 位有符号数
+  截断或变成负数）。
+- 走真实 `bpy.ops.efx_re.export` operator 端到端验证：卡在一个已知的、和这轮改动完全无关
+  的既有缺口（`EFXExpressionDataBase` 反序列化不支持——见上方"Blender 实机验证"一节，Bones
+  那轮验证撞到的是同一个坑），证明本轮改动没有引入新的 C# 反序列化错误。
+- 额外用命令行直接跑 `EfxBridge load`/`dump`（绕开 Blender，构造一个不含 `Entries`/
+  `ExpressionParameters` 的最小 `EfxFile` JSON，塞两条 `FieldParameterValues`）验证 C#
+  端能正常反序列化构造出的 JSON 形状、`load` 不抛异常。过程中发现一个**和本次改动无关**
+  的旁支现象：人为把 `Entries`/`Actions`/`Bones`/`BoneRelations`/`ExpressionParameters`
+  全部清空成 `[]` 再走 `load`→`dump`，`dump` 出来的 `Header.Version` 会变成 `-1`（即便
+  完全不碰 `FieldParameterValues` 也会复现，专门做过对照实验验证）——这是一个绕开 Blender
+  正常导出路径（`Header` 字典本来全程原样透传不会被碰）之后才会触发的测试脚手架级现象，
+  记录在这里只是为了避免以后重新踩到同一个坑而白白花时间排查，不代表这轮改动有问题，也不
+  在这轮范围内深挖根因。
+
+测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON/efx 测试文件，没有
+改动仓库里的任何样本文件。

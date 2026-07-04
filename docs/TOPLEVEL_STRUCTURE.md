@@ -52,13 +52,15 @@ Blender 对象模型**：Play → PlayEmitter 不应该做成"PointerProperty �
 对象"，而应该做成"PlayEmitter 拥有一个嵌套子集合（递归的 Body/Action/EffectGroups 结构）"
 ——即 Blender 场景里大概率是一层嵌套 Collection，而不是跨对象的裸指针。
 
-**决策（已定）**：`FieldParameterValues` 与 `ExpressionParameters` 均视为 MHWs 新增的、
-暂不深挖语义的子系统——**只做透传，不做字段级解析/编辑 UI**，与架构决策第 8 点对 Expression
-的处理原则一致（结构化透传，UI 后置，不卡其他功能）。不再尝试把 `FieldParameterValues` 往
-MHWI Extern"替换参数"机制上套（调研阶段的一个假设，已放弃——两边都没有确凿的消费端代码
-佐证这个映射，与其猜一个不确定的语义，不如先诚实地标记为"不透明"）。MHWI Extern 的第二种
-子类型（"external EFX references"）在 Wilds 侧目前没有找到任何结构对应物，视为可能已被
-移除/合并，等有真实样本再复核。
+**决策（已定，2026-07-03；`FieldParameterValues` 已于 2026-07-04 升级为有编辑 UI，见下方
+"`FieldParameterValues` 结构调研与实现"一节，`ExpressionParameters` 仍维持本段原决策）**：
+`FieldParameterValues` 与 `ExpressionParameters` 均视为 MHWs 新增的、暂不深挖语义的子
+系统——**只做透传，不做字段级解析/编辑 UI**，与架构决策第 8 点对 Expression 的处理原则一致
+（结构化透传，UI 后置，不卡其他功能）。不再尝试把 `FieldParameterValues` 往 MHWI Extern
+"替换参数"机制上套（调研阶段的一个假设，已放弃——两边都没有确凿的消费端代码佐证这个映射，
+与其猜一个不确定的语义，不如先诚实地标记为"不透明"）。MHWI Extern 的第二种子类型
+（"external EFX references"）在 Wilds 侧目前没有找到任何结构对应物，视为可能已被移除/合并，
+等有真实样本再复核。
 
 **Blender 对象模型草案（已达成一致，实现时按此展开）**：命名跟随 RE-Engine-Lib 实际类名
 （`EfxFile.Entries: List<EFXEntry>`）叫 **Entry**，不叫 EFX-Editor（MHWI）习惯用的 Body——下面
@@ -70,9 +72,10 @@ MHWI Extern"替换参数"机制上套（调研阶段的一个假设，已放弃�
   `PlayEmitter`/`PlayEfx`；`PlayEmitter` 拥有嵌套子集合，不用 PointerProperty。
 - **Subselect**——不建单独对象类型，落在 Entry 对象上的一个字符串标签列表
   （对应 `EFXEntry.Groups`），文件级 `EffectGroups` 视为导出时派生数据。
-- **FieldParameterValues / ExpressionParameters / UvarGroups**——暂列为不透明数据块随
-  文件透传，不建 PropertyGroup 编辑面板（`UvarGroups` 为 2026-07-03 复核时新发现，
-  归入同一处理原则，见下方验证记录）。
+- **ExpressionParameters / UvarGroups**——暂列为不透明数据块随文件透传，不建 PropertyGroup
+  编辑面板（`UvarGroups` 为 2026-07-03 复核时新发现，归入同一处理原则，见下方验证记录）。
+- **FieldParameterValues**——2026-07-04 升级为有编辑 UI：`EFX_ROOT.efx_field_parameters`
+  列表（`EFXFieldParameterItem`），见下方"`FieldParameterValues` 结构调研与实现"一节。
 
 **验证（2026-07-03，用 `diag/11_guide_110.efx.5571972.orig` 复核）**：仓库里唯二的样本
 中，`11_guide_110` 恰好带 2 个 Action + 2 个 EffectGroup，用 `EfxBridge dump` 检查其 JSON，
@@ -249,3 +252,75 @@ TIML attribute hash 破解了不少字段语义），结论是**否**——vendo
 （`KnownExternalHashes`/`UnknownParameterHashes`）如果还有未解析条目，理论上可以用同样的手段
 去撞库，但这和"给 unkn 结构字段找名字"是两件不同的事，后者目前只能靠人工逆向（对照真实特效
 效果调值 + 反编译游戏代码），没有捷径。
+
+## `FieldParameterValues` 结构调研与实现（2026-07-04）
+
+此前（2026-07-03 的"未知字段语义 cross-reference"一节）已经确认了核心语义：这是一张
+**具名、可类型化的"外部可调参数"表**，多数 `type` 取值下是纯数值，`type` 属于特定取值集合
+时是外部资源路径（矢量场纹理等）。这次直接读 `EfxFile.cs:512-578` 的 `EFXFieldParameterValue`
+完整类定义，把结构钉死，并实现了编辑 UI（这次改成"结构性 UI 现在做"而不是继续维持决策 8
+定的"只透传不建 UI"——用户明确要求把这个字段纳入本轮设计）。
+
+**字段清单**（`EFXFieldParameterValue`，`EfxFile.cs:512-530`）：
+```
+unkn0                    uint     — 语义未知
+fieldParameterNameHash   uint     — 语义未知，见下方风险说明
+unkn2                    uint     — 语义未知
+type                     uint     — 已确认：决定 filePath 是否是真正使用的外部资源路径
+unkn4                    uint     — 语义未知
+value_ukn1               int      — type==196 时兼作 filePath 的字符长度前缀，其余情况语义未知
+value_ukn2 ~ value_ukn3  uint     — 语义未知
+value_ukn4 ~ value_ukn6  float    — 语义未知
+wilds_unkn0              float    — 仅 Version >= MHWilds 存在，语义未知
+name                     string?  — 具名参数名字，走 Strings.FieldParameterNames 平行表（同
+                                     Bones/Actions 的具名机制）
+filePath                 string?  — 仅当 type ∈ {110,144,183,184,196,202,194,215,217} 时是
+                                     真正使用的外部资源路径（已用真实样本证实 type==217 对应
+                                     矢量场纹理 `.tex` 路径，见上一节）
+```
+
+**关键结构性结论：JSON 形状与 `type` 无关，恒定 14 个键。** `type` 只决定二进制读写时走哪个
+分支（`DoRead`/`DoWrite` 里 `type==196` 走一条完全独立的短分支，不读/不写
+`value_ukn2~6`/`wilds_unkn0`；其余情况走标准分支，`filePath` 只在特定 `type` 集合下额外读写），
+但 EfxBridge 的 JSON 序列化是对 C# 字段当前值的反射直译，不会因为某个二进制分支没碰到某个
+字段就在 JSON 里省略它——没被这次读取触碰到的字段就是其默认值（0/0.0），照样出现在 JSON
+里。这意味着 Blender 侧不需要按 `type` 做任何 UI 分支逻辑，用统一的通用字段树天然覆盖了
+所有 `type` 取值。
+
+**风险（同 `EFXBone.value` 一个类别）：`fieldParameterNameHash` 不会被 vendor 自动重算。**
+通读了 `EfxFile.cs` 全部 `MurMur3HashUtils` 调用点：`ExpressionParameters`（导出时重算
+`expressionParameterNameUTF16Hash`/`expressionParameterNameUTF8Hash`，`EfxFile.cs:966-967`）、
+`Bones`（导出时重算 `nameHash`，`EfxFile.cs:974`）都有自动同步机制，但
+`FieldParameterValues.Write(handler)`（`EfxFile.cs:994`）只是逐项调用 `DefaultWrite`，
+**没有任何针对 `fieldParameterNameHash` 的重算逻辑**。也就是说如果用户在 Blender 侧改了
+某个 FieldParameterValue 的 `name`，`fieldParameterNameHash` 不会跟着变，两者可能失配。
+这次没有对应的"导出前校验"（不像 Bones 的 `ParentBone` 那样有一个可枚举的"合法值集合"能拿来
+比对——`fieldParameterNameHash` 应该等于什么，本身就是未知的，没有基准可核对），只是如实
+在字段树里把它暴露成一个可编辑的 raw 值（同 `EFXBoneItem.value` 的处理方式），把"改名字要不
+要同步哈希"这个判断交给用户，不假装我们能校验一个连算法都不确定的哈希。**留给未来的线索**：
+`EfxCommon.cs` 里另有一个语义相邻的 `PropertyNameUTF8Hash`（专门给"被引用的着色器/材质参数名"
+做哈希，见上一节"哈希调研补记"），"FieldParameterValues"这个名字和"着色器/材质字段的具名可调
+参数"的定位高度吻合，`fieldParameterNameHash` 有理由怀疑是用同一个哈希算法对 `name` 计算的
+结果，但**没有拿到真实非零样本核实过**，不确认不实现，仅记录这个猜测供以后验证。
+
+**Blender 实现**：`EFX_ROOT.efx_field_parameters`（`EFXFieldParameterItem` 列表），结构上和
+`efx_bones` 平行（都是文件级具名表，UIList + Add/Remove），但内容处理不同——`EFXBoneItem`
+只有 `name`+`value` 两个字段，直接摊成两个 `StringProperty`；`EFXFieldParameterItem` 除 `name`
+外还有 13 个语义大半未知的字段，改为重用通用 `EFXValueNode` 树（`item.fields`，机制和
+attribute 内容字段的 `efx_fields` 完全一样），不手写 13 个具名 PropertyGroup 属性——决策 9
+的一贯原则：字段太多、语义大半不确定时，通用树比手写 schema 更诚实。`filePath` 为 `null`
+时按 `ParentBone` 的先例规整成 `""`（C# 侧两处 `filePath ??= ...` 写出兜底证实语义等价）。
+新增条目时用 `model.FIELD_PARAMETER_CONTENT_DEFAULTS` 预置全部 13 个键（否则字段树是空的，
+用户看不到任何可编辑的行）。
+
+**实机验证（2026-07-04，Blender 5.1 + `diag/11_guide_110.efx.5571972.orig`）**：
+仓库里唯二的两个真实样本 `FieldParameterValues` 均为空数组（这与 2026-07-03 的 250 样本
+调研一致——命中率本来就低，2/250），无法验证真实数据的读入路径，只验证了写入路径：用
+Add 按钮新建一条 `type=217`+真实矢量场纹理路径的记录，`io_tree.export_root_to_efxfile()`
+直接 dict 检查确认输出 14 个键、`fieldParameterNameHash` 故意设成超过 2^31-1 的大数验证
+BIGINT 精度不丢；再单独构造一个不含 `Entries`/`Expression` 内容的最小 `EfxFile` JSON
+（绕开与本次改动无关的既有 Expression 反序列化限制，见下方 `docs/BLENDER_MODEL.md` 的
+既有记录），过 `EfxBridge load` 确认 C# 端能正常反序列化构造出的 `EFXFieldParameterValue`
+JSON 形状，不抛异常。完整 Blender `bpy.ops.efx_re.export()` 走到的唯一失败点仍然是那个
+已知的、与本次改动无关的 Expression 反序列化限制（`EFXExpressionDataBase` 缺少无参构造函数）
+——和 Bones 那轮验证撞到的是同一个既有缺口，不是新引入的问题。

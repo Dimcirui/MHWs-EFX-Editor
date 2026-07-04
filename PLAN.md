@@ -170,10 +170,10 @@ cross-reference 结论，搬到了 [docs/TOPLEVEL_STRUCTURE.md](docs/TOPLEVEL_ST
 这是当前阶段"设计尚未实现的顶层字段"要用到的主要参考资料。
 
 尚未做（按需排期，不卡当前）：
-- **`FieldParameterValues`/`ExpressionParameters`/`UvarGroups`/`Bones`/`BoneRelations`
-  目前都只做不透明透传，没有编辑 UI**——结构已经调研清楚（见
-  [docs/TOPLEVEL_STRUCTURE.md](docs/TOPLEVEL_STRUCTURE.md)），语义有一部分线索但不完整，
-  这是当前正在考虑怎么合理设计的下一块工作。
+- **`ExpressionParameters`/`UvarGroups` 目前只做不透明透传，没有编辑 UI**——结构已经调研
+  清楚（见 [docs/TOPLEVEL_STRUCTURE.md](docs/TOPLEVEL_STRUCTURE.md)），语义有一部分线索但
+  不完整。`Bones`/`BoneRelations`（2026-07-04）、`FieldParameterValues`（2026-07-04）已经
+  做完编辑 UI，不在这个清单里了。
 - 预设系统（架构决策 6 的另一半，复制/粘贴已经够用，用户明确说了预设先不做）
 - 新建 Action（复制/粘贴目前只做了 Entry 和 Attribute，Action 本身没有 Copy/New 操作，只能
   通过 import 获得；Attribute 粘贴支持粘到已有 Action 上）

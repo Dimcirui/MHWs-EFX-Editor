@@ -160,6 +160,18 @@ def build_root_from_efxfile(
         item.name = bone_dict.get("name", "") or ""
         item.value = str(int(bone_dict.get("value", 0) or 0))
 
+    for fp_dict in efxfile_dict.get("FieldParameterValues", []) or []:
+        item = root_obj.efx_field_parameters.add()
+        item.name = fp_dict.get("name", "") or ""
+        content = {key: value for key, value in fp_dict.items() if key != "name"}
+        if content.get("filePath") is None and "filePath" in content:
+            # 同 build_attribute_object() 里 ParentBone 的规整：C# 侧 filePath 是 string?，
+            # 无效 type 时是 null，写出时也是 filePath ??= "" 兜底（EfxFile.cs:556/571）——
+            # null 和 "" 语义等价，规整成 "" 是为了让 EFXValueNode 有可编辑的 STRING slot
+            # （NULL data_type 没有对应控件）。
+            content["filePath"] = ""
+        model.populate_dict_as_children(item.fields, content)
+
     for index, entry_dict in enumerate(efxfile_dict.get("Entries", []) or []):
         build_entry_object(entry_dict, index, root_obj, main_collection)
 
@@ -260,6 +272,10 @@ def export_root_to_efxfile(root_obj: Object) -> dict:
     # ParentBone 对 Bones 表重新 FindIndex，完整重算下标数组，传空数组即可，见
     # docs/TOPLEVEL_STRUCTURE.md "Bones / BoneRelations 结构调研"（EfxFile.cs:982-989）。
     efxfile_dict["BoneRelations"] = []
+    efxfile_dict["FieldParameterValues"] = [
+        {"name": item.name, **model.children_to_dict(item.fields)}
+        for item in root_obj.efx_field_parameters
+    ]
     return efxfile_dict
 
 

@@ -215,6 +215,41 @@ class EFX_OT_bone_remove(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class EFX_UL_field_parameters(UIList):
+    bl_idname = "EFX_UL_field_parameters"
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        layout.prop(item, "name", text="", emboss=False, icon="PROPERTIES")
+
+
+class EFX_OT_field_parameter_add(bpy.types.Operator):
+    bl_idname = "efx_re.field_parameter_add"
+    bl_label = "Add Field Parameter"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        obj = context.object
+        item = obj.efx_field_parameters.add()
+        item.name = "FieldParameter"
+        model.populate_dict_as_children(item.fields, model.FIELD_PARAMETER_CONTENT_DEFAULTS)
+        obj.efx_field_parameters_active_index = len(obj.efx_field_parameters) - 1
+        return {"FINISHED"}
+
+
+class EFX_OT_field_parameter_remove(bpy.types.Operator):
+    bl_idname = "efx_re.field_parameter_remove"
+    bl_label = "Remove Field Parameter"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        obj = context.object
+        index = obj.efx_field_parameters_active_index
+        if 0 <= index < len(obj.efx_field_parameters):
+            obj.efx_field_parameters.remove(index)
+            obj.efx_field_parameters_active_index = min(index, len(obj.efx_field_parameters) - 1)
+        return {"FINISHED"}
+
+
 class EFX_PT_main(Panel):
     bl_idname = "EFX_PT_main"
     bl_label = "MHWs EFX"
@@ -260,6 +295,22 @@ class EFX_PT_object(Panel):
             col.operator("efx_re.bone_add", icon="ADD", text="")
             col.operator("efx_re.bone_remove", icon="REMOVE", text="")
 
+            layout.label(text="Field Parameters:")
+            row = layout.row()
+            row.template_list(
+                "EFX_UL_field_parameters", "", obj, "efx_field_parameters",
+                obj, "efx_field_parameters_active_index", rows=3,
+            )
+            col = row.column(align=True)
+            col.operator("efx_re.field_parameter_add", icon="ADD", text="")
+            col.operator("efx_re.field_parameter_remove", icon="REMOVE", text="")
+
+            active_index = obj.efx_field_parameters_active_index
+            if 0 <= active_index < len(obj.efx_field_parameters):
+                box = layout.box()
+                for node in obj.efx_field_parameters[active_index].fields:
+                    draw_node(box, node)
+
         elif type_tag == model.TYPE_ENTRY:
             row = layout.row(align=True)
             row.operator("efx_re.entry_copy", icon="COPYDOWN")
@@ -300,11 +351,14 @@ class EFX_PT_object(Panel):
 _CLASSES = (
     EFX_UL_groups,
     EFX_UL_bones,
+    EFX_UL_field_parameters,
     EFX_OT_field_info,
     EFX_OT_group_add,
     EFX_OT_group_remove,
     EFX_OT_bone_add,
     EFX_OT_bone_remove,
+    EFX_OT_field_parameter_add,
+    EFX_OT_field_parameter_remove,
     EFX_PT_main,
     EFX_PT_object,
 )
