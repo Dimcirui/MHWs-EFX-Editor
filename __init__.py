@@ -8,7 +8,7 @@ Blender 加载时此目录被视为包 bl_ext.user_default.mhws_efx_editor。
   MHWs-EFX-Editor/
   ├── __init__.py             ← 本文件（扩展入口，委托给 blender_efx_re）
   ├── blender_manifest.toml
-  ├── blender_efx_re/         ← Blender 胶水层（operators / panels / bridge）
+  ├── blender_efx_re/         ← Blender 胶水层（bridge / model / io_tree / operators / panels）
   │   └── __init__.py
   └── tools/EfxBridge/        ← C# 桥接 CLI（不是 Python 包，subprocess 调用）
 

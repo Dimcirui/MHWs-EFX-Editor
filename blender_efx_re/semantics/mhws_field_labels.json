@@ -1,0 +1,56 @@
+{
+  "game": "MHWS",
+  "global_fields": {},
+  "fields": {
+    "ReeLib.Efx.Structs.Basic.EFXAttributeParentOptions": {
+      "RelationPos": {
+        "label_zh": "位置跟随模式（分轴）",
+        "tooltip_zh": "X/Y/Z 每个分量各自取值 0-3：0=完全跟踪地图中心，1=跟随物体，2=不跟随，3=忽略变化。",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释；该结构体本身标记为 //unconfirmed，未经游戏内实测验证",
+        "tester": "community (NSACloud/RE-Engine-EFX-Template fork)",
+        "date": "2026-07-04"
+      },
+      "RelationRot": {
+        "label_zh": "旋转跟随模式（分轴）",
+        "tooltip_zh": "X/Y/Z 每个分量各自取值 0-3：0=完全跟踪地图中心，1=跟踪物体，2=不跟随，3=忽略变化。",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释；该结构体本身标记为 //unconfirmed，未经游戏内实测验证",
+        "tester": "community (NSACloud/RE-Engine-EFX-Template fork)",
+        "date": "2026-07-04"
+      },
+      "RelationScl": {
+        "label_zh": "缩放跟随模式（分轴）",
+        "tooltip_zh": "X/Y/Z 每个分量各自取值 0-3：0=完全跟踪地图中心，1=跟踪物体，2=不跟随，3=忽略变化。",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释；该结构体本身标记为 //unconfirmed，未经游戏内实测验证",
+        "tester": "community (NSACloud/RE-Engine-EFX-Template fork)",
+        "date": "2026-07-04"
+      },
+      "ParticleUseLocal": {
+        "label_zh": "粒子跟踪开关",
+        "tooltip_zh": "布尔类字段（模板按 ubyte 读取），推测控制粒子是否使用本地/跟踪坐标系。",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释；该结构体本身标记为 //unconfirmed，未经游戏内实测验证",
+        "tester": "community (NSACloud/RE-Engine-EFX-Template fork)",
+        "date": "2026-07-04"
+      },
+      "ConstInheritRate": {
+        "label_zh": "跟踪继承比例（存疑）",
+        "tooltip_zh": "推测是粒子跟踪比例，模板原注释本身带问号（不确定），未经游戏内实测验证。",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释（原注释带\"？\"），该结构体本身标记为 //unconfirmed",
+        "tester": "community (NSACloud/RE-Engine-EFX-Template fork)",
+        "date": "2026-07-04"
+      },
+      "ConstFrame": {
+        "label_zh": "取消跟踪帧数",
+        "tooltip_zh": "推测是经过多少帧后取消对物体/骨骼的跟踪。",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释；该结构体本身标记为 //unconfirmed，未经游戏内实测验证",
+        "tester": "community (NSACloud/RE-Engine-EFX-Template fork)",
+        "date": "2026-07-04"
+      }
+    }
+  }
+}
