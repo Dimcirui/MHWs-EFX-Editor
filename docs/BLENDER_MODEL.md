@@ -451,3 +451,72 @@ session），没有改动仓库里的任何样本文件。
 
 测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON 文件，没有改动仓库里
 的任何样本文件。
+
+## Phase 1 补充 —— ExpressionParameters（顶层参数表）编辑 UI（2026-07-04）
+
+结构调研见 `docs/TOPLEVEL_STRUCTURE.md` "`ExpressionParameters`（顶层参数表）结构调研与
+实现"一节——特别提醒：这里的 `ExpressionParameters` 指 `EfxFile.ExpressionParameters`
+这个文件级具名参数表，不是 attribute 内容字段里那个更复杂的公式树
+（`Expression`/`MaterialExpressions`，那个依然结构化透传，不建 UI，两者名字相似但完全是
+两回事）。这里只记代码改动和实机验证。
+
+**数据模型**（`model.py`）：
+- `ROOT_STRUCTURAL_KEYS` 加入 `ExpressionParameters`。
+- 新增 `_EXPR_PARAM_TYPE_ITEMS`（4 选项：Float/Color/Range/Float2，标签只写已确认的"哪些
+  字段生效"，猜测性的游戏侧含义放 tooltip，不写进下拉框标签本身）。
+- 新增 `EFXExpressionParamItem`：`name`/`param_type`（Enum）/`value1`/`value2`/`value3`
+  （真正的 `FloatProperty`，不是 `EFXValueNode` 通用树——和 `UvarGroups` 同一个判断：字段
+  少、形状固定、语义确认到位，值得手写具名字段）+ `color_value`（`FloatVectorProperty`，
+  get/set 对 `value1` 做和 `via.Color.rgba` 一样的按位重解释，复用同一套位运算逻辑）。
+- 新增 `model.json_float_in()`/`model.json_float_out()`：处理 EfxBridge 用带引号字符串
+  表示 NaN/Infinity（`AllowNamedFloatingPointLiterals`）、但 Python `json.dump` 默认写裸
+  token 这两者形式不一致的问题——已用真实数据证实这不是理论风险（`Color` 类型的
+  `alpha≈255`+`blue>=128` 组合按位重解释后常落进 NaN 区间，真实样本 `11_guide_110` 的
+  `colorR_N/P/D/T` 四条记录就是如此），裸 token 喂给 `EfxBridge load` 会被
+  `System.Text.Json` 直接拒绝（实测确认，即使开着 `AllowNamedFloatingPointLiterals` 也不
+  接受裸 token）。这两个函数是本项目第一次需要真正意义上的 Python `float` NaN/Infinity
+  参与运算（之前 `EFXValueNode` 通用树处理这类字段的方式是"分类成 STRING、原样透传"，从不
+  真的产生 Python float 意义上的 NaN，所以没暴露过这个问题）。
+
+**Import/Export**（`io_tree.py`）：
+- `build_root_from_efxfile()` 从 `ExpressionParameters` 数组填 `efx_expression_parameters`，
+  `value1/2/3` 走 `model.json_float_in()`。
+- `export_root_to_efxfile()` 从 `efx_expression_parameters` 反填，`value1/2/3` 走
+  `model.json_float_out()`；两个具名哈希字段固定填 `0` 占位——vendor 导出前会无条件用
+  MurMur3 从 `name` 重新计算（`EfxFile.cs:966-967`），不像 `FieldParameterValues.
+  fieldParameterNameHash` 那样需要担心失配，已用真实样本验证重算结果和原文件一致。
+
+**UI**（`panels.py`）：Root 面板新增 `EFX_UL_expression_parameters` 列表（一行显示 name +
+type 下拉），选中条目下方详情框按 `param_type` 只展示当前生效的字段——`Float` 只显示
+`value1`，`Color` 显示颜色轮（复用 `color_value`），`Range` 显示三个值，`Float2` 显示两个
+值——和 `UvarGroups` 按 `uvar_type` 隐藏无效 `path`/`group` 输入框同一个思路。这个列表没有
+`UvarGroups` 那种二进制层面的数量上限，`EFX_OT_expression_parameter_add`/`_remove` 直接
+照搬 `EFX_OT_bone_add`/`_remove` 的模式，不需要额外拦截逻辑。
+
+**实机验证（2026-07-04，Blender 5.1.2，via Blender MCP）**：这个字段的运气和 `UvarGroups`
+一样好——`11_guide_110` 真实样本有 9 条数据，且恰好覆盖了最需要验证的 NaN 场景（9 条里 4 条
+`type=Color` 的 `value1` 真的是 `float('nan')`）。
+
+- Import 后逐条核对全部 9 条记录（`IsBlue`/`color_N/P/D/T`/`colorR_N/P/D/T`）与样本原始
+  JSON 完全对应，用 `math.isnan()` 直接断言确认 `colorR_*` 四条的 `value1` 确实是真 NaN
+  （不是被静默改写成 0 或别的占位值）。
+- 颜色轮 get/set 正确解码：`color_N` 解出 RGB≈(85,216,44) alpha=255（合理的绿色），
+  `colorR_N` 的 NaN 位模式解出 alpha≈127 的半透明蓝色，两者都是合理颜色，位运算正确；截图
+  确认面板选中 `colorR_N` 时显示一个带透明棋盘格的颜色轮控件（视觉上能看出半透明，控件
+  本身工作正常）。
+- 直接检查 `io_tree.export_root_to_efxfile()` 的返回值：导出字典与原始样本逐字段相同（除
+  两个哈希占位成 0），NaN 条目正确导出成带引号字符串 `"NaN"`，不是裸 token。
+- **过真实 `EfxBridge load`/`dump` 完整走了一遍**（构造剥离了其余顶层字段、只保留原始 9 条
+  `ExpressionParameters` 的最小 `EfxFile`）：`load` 成功接受带引号 NaN 字符串，`dump` 回来
+  的记录与原始样本逐字段相同（含 4 条 NaN），两个哈希字段被 vendor 正确重算回和原始样本
+  一致的值——证明"必须用带引号字符串而不是裸 token"这个判断不是纸上谈兵，是真的会在
+  `EfxBridge load` 这一步失败的问题，这次已经在 Python 侧正确规避。
+- `EFX_OT_expression_parameter_add`/`_remove` 二态测试：Add 后数量 +1，Remove 后数量 -1。
+- 走真实 `bpy.ops.efx_re.export` operator 端到端验证：卡在一个已知的、和这轮改动完全无关
+  的既有缺口——报错路径是 `Entries[1].Attributes[13].Expression.expressions[0].
+  components[0].data`（attribute 内容字段里的公式树，`EFXExpressionDataBase` 缺无参构造
+  函数），不是本轮实现的顶层 `ExpressionParameters` 列表，进一步印证两者是完全不同的两套
+  结构，这次没有引入新的 C# 反序列化错误。
+
+测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON/efx 测试文件，没有
+改动仓库里的任何样本文件。

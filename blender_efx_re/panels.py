@@ -295,6 +295,44 @@ class EFX_OT_uvar_group_remove(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class EFX_UL_expression_parameters(UIList):
+    bl_idname = "EFX_UL_expression_parameters"
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        row = layout.row(align=True)
+        row.prop(item, "name", text="", emboss=False, icon="DRIVER")
+        row.prop(item, "param_type", text="")
+
+
+class EFX_OT_expression_parameter_add(bpy.types.Operator):
+    bl_idname = "efx_re.expression_parameter_add"
+    bl_label = "Add Expression Parameter"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        obj = context.object
+        item = obj.efx_expression_parameters.add()
+        item.name = "Param"
+        obj.efx_expression_parameters_active_index = len(obj.efx_expression_parameters) - 1
+        return {"FINISHED"}
+
+
+class EFX_OT_expression_parameter_remove(bpy.types.Operator):
+    bl_idname = "efx_re.expression_parameter_remove"
+    bl_label = "Remove Expression Parameter"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        obj = context.object
+        index = obj.efx_expression_parameters_active_index
+        if 0 <= index < len(obj.efx_expression_parameters):
+            obj.efx_expression_parameters.remove(index)
+            obj.efx_expression_parameters_active_index = min(
+                index, len(obj.efx_expression_parameters) - 1
+            )
+        return {"FINISHED"}
+
+
 class EFX_PT_main(Panel):
     bl_idname = "EFX_PT_main"
     bl_label = "MHWs EFX"
@@ -375,6 +413,34 @@ class EFX_PT_object(Panel):
                     box.prop(uvar_item, "path")
                     box.prop(uvar_item, "group")
 
+            layout.label(text="Expression Parameters:")
+            row = layout.row()
+            row.template_list(
+                "EFX_UL_expression_parameters", "", obj, "efx_expression_parameters",
+                obj, "efx_expression_parameters_active_index", rows=3,
+            )
+            col = row.column(align=True)
+            col.operator("efx_re.expression_parameter_add", icon="ADD", text="")
+            col.operator("efx_re.expression_parameter_remove", icon="REMOVE", text="")
+
+            expr_index = obj.efx_expression_parameters_active_index
+            if 0 <= expr_index < len(obj.efx_expression_parameters):
+                expr_item = obj.efx_expression_parameters[expr_index]
+                box = layout.box()
+                box.prop(expr_item, "name")
+                box.prop(expr_item, "param_type")
+                if expr_item.param_type == "1":
+                    box.prop(expr_item, "color_value", text="Color")
+                elif expr_item.param_type == "2":
+                    box.prop(expr_item, "value1")
+                    box.prop(expr_item, "value2")
+                    box.prop(expr_item, "value3")
+                elif expr_item.param_type == "3":
+                    box.prop(expr_item, "value1")
+                    box.prop(expr_item, "value2")
+                else:
+                    box.prop(expr_item, "value1")
+
         elif type_tag == model.TYPE_ENTRY:
             row = layout.row(align=True)
             row.operator("efx_re.entry_copy", icon="COPYDOWN")
@@ -417,6 +483,7 @@ _CLASSES = (
     EFX_UL_bones,
     EFX_UL_field_parameters,
     EFX_UL_uvar_groups,
+    EFX_UL_expression_parameters,
     EFX_OT_field_info,
     EFX_OT_group_add,
     EFX_OT_group_remove,
@@ -426,6 +493,8 @@ _CLASSES = (
     EFX_OT_field_parameter_remove,
     EFX_OT_uvar_group_add,
     EFX_OT_uvar_group_remove,
+    EFX_OT_expression_parameter_add,
+    EFX_OT_expression_parameter_remove,
     EFX_PT_main,
     EFX_PT_object,
 )

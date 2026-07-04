@@ -52,15 +52,17 @@ Blender 对象模型**：Play → PlayEmitter 不应该做成"PointerProperty �
 对象"，而应该做成"PlayEmitter 拥有一个嵌套子集合（递归的 Body/Action/EffectGroups 结构）"
 ——即 Blender 场景里大概率是一层嵌套 Collection，而不是跨对象的裸指针。
 
-**决策（已定，2026-07-03；`FieldParameterValues`/`UvarGroups` 已于 2026-07-04 升级为有编辑
-UI，见下方对应的"结构调研与实现"一节，`ExpressionParameters` 仍维持本段原决策）**：
-`FieldParameterValues` 与 `ExpressionParameters` 均视为 MHWs 新增的、暂不深挖语义的子
-系统——**只做透传，不做字段级解析/编辑 UI**，与架构决策第 8 点对 Expression 的处理原则一致
-（结构化透传，UI 后置，不卡其他功能）。不再尝试把 `FieldParameterValues` 往 MHWI Extern
-"替换参数"机制上套（调研阶段的一个假设，已放弃——两边都没有确凿的消费端代码佐证这个映射，
-与其猜一个不确定的语义，不如先诚实地标记为"不透明"）。MHWI Extern 的第二种子类型
-（"external EFX references"）在 Wilds 侧目前没有找到任何结构对应物，视为可能已被移除/合并，
-等有真实样本再复核。
+**决策（已定，2026-07-03；`FieldParameterValues`/`UvarGroups`/`ExpressionParameters`（顶层
+参数表）已于 2026-07-04 全部升级为有编辑 UI，见下方对应的"结构调研与实现"一节——注意这里的
+"`ExpressionParameters`"专指 `EfxFile.ExpressionParameters` 这个顶层具名参数表，不是
+attribute 内容字段里那个更复杂的 `Expression`/`MaterialExpressions` 公式树，那个仍然按架构
+决策第 8 点结构化透传、不建字段级 UI，两者是完全不同的两套结构，容易望文生义搞混）**：
+最初调研阶段曾把这三个字段都归为"MHWs 新增、暂不深挖语义的子系统"，只做透传；后续陆续确认
+它们的二进制结构后逐一升级成了编辑 UI（细节见下方三个"结构调研与实现"小节）。不再尝试把
+`FieldParameterValues` 往 MHWI Extern"替换参数"机制上套（调研阶段的一个假设，已放弃——两边
+都没有确凿的消费端代码佐证这个映射，与其猜一个不确定的语义，不如先诚实地标记为"不透明"）。
+MHWI Extern 的第二种子类型（"external EFX references"）在 Wilds 侧目前没有找到任何结构
+对应物，视为可能已被移除/合并，等有真实样本再复核。
 
 **Blender 对象模型草案（已达成一致，实现时按此展开）**：命名跟随 RE-Engine-Lib 实际类名
 （`EfxFile.Entries: List<EFXEntry>`）叫 **Entry**，不叫 EFX-Editor（MHWI）习惯用的 Body——下面
@@ -72,9 +74,11 @@ UI，见下方对应的"结构调研与实现"一节，`ExpressionParameters` �
   `PlayEmitter`/`PlayEfx`；`PlayEmitter` 拥有嵌套子集合，不用 PointerProperty。
 - **Subselect**——不建单独对象类型，落在 Entry 对象上的一个字符串标签列表
   （对应 `EFXEntry.Groups`），文件级 `EffectGroups` 视为导出时派生数据。
-- **ExpressionParameters**——暂列为不透明数据块随文件透传，不建 PropertyGroup 编辑面板
-  （union 类型视图属性、公式引擎消费方式都还没搞清楚，比 `UvarGroups`/`FieldParameterValues`
-  更棘手，继续维持决策 8 的处理原则）。
+- **ExpressionParameters**——2026-07-04 升级为有编辑 UI：`EFX_ROOT.efx_expression_parameters`
+  列表，见下方"`ExpressionParameters` 结构调研与实现"一节（最初以为比 `UvarGroups`/
+  `FieldParameterValues` 更棘手，是因为把"C# 端三个 union 视图属性"和"Blender 侧要不要做
+  UI"这两件事混在一起了——union 属性早在 Phase 1 就被 `EfxBridge/Program.cs` 的
+  `StripUnsafeComputedProperties` 挡掉了，Python 侧看到的实际形状很规整）。
 - **UvarGroups**——2026-07-04 升级为有编辑 UI：`EFX_ROOT.efx_uvar_groups` 列表（最多 2 项），
   见下方"`UvarGroups` 结构调研与实现"一节。
 - **FieldParameterValues**——2026-07-04 升级为有编辑 UI：`EFX_ROOT.efx_field_parameters`
@@ -392,3 +396,107 @@ group: "VFX_group_common"}`），完整覆盖了读入路径，不需要像 `Fie
 
 测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON 文件，没有改动仓库里
 的任何样本文件。
+
+## `ExpressionParameters`（顶层参数表）结构调研与实现（2026-07-04）
+
+**先厘清和"棘手"这个印象的落差**：一开始把这个字段标记为"比 `FieldParameterValues`/
+`UvarGroups` 更难"，理由是 `EFXExpressionParameter`（`EfxFile.cs:400-448`）有三个"标签联合
+视图"计算属性——`Float2`/`Color`/`Range`，共享底层 `value1`/`value2`/`value3`，只有和当前
+`type` 匹配的那个可读，其余两个 getter 直接 `throw`。但这个坑早在 Phase 1 就被
+`EfxBridge/Program.cs` 的 `StripUnsafeComputedProperties`（文件头部注释里"已发现并绕过的坑"）
+挡掉了——JSON 序列化时这三个属性直接从 `JsonTypeInfo` 里剔除，Python 侧压根看不到它们，也
+不会因为读到不匹配的 union 分支而崩溃。真正棘手的其实是**攻击了错误的目标**：`docs/`
+之前一直把这个字段和 attribute 内容字段里那个更复杂的公式树（`IExpressionAttribute.
+Expression`/`IMaterialExpressionAttribute.MaterialExpressions`，`EfxFile.cs:612-621`，
+`EFXExpressionDataBase` 缺无参构造函数那个已知反序列化缺口就出在这里）混在一起考虑了——
+两者名字相似但完全是两套结构，后者依然按架构决策第 8 点结构化透传、不建字段级 UI，本节
+只讨论前者（`EfxFile.ExpressionParameters: List<EFXExpressionParameter>`，文件级具名参数
+表，和 `Bones`/`FieldParameterValues`/`UvarGroups` 同一个层级）。
+
+**字段清单**（`EFXExpressionParameter`，`EfxFile.cs:400-409`；`type` 取值见
+`EfxExpressionParameterType`，`EfxFile.cs:69-87`）：
+```
+expressionParameterNameUTF16Hash  uint     — 导出前被 vendor 无条件用 MurMur3 从 name 重算
+expressionParameterNameUTF8Hash   uint     — 同上（UTF8 版本）
+type                               enum     — 0=Float / 1=Color / 2=Range / 3=Float2
+value1 / value2 / value3          float    — 具体哪几个生效由 type 决定（见下）
+name                               string?  — 走 Strings.ExpressionParameterNames 平行表
+                                              （同 Bones/Actions/FieldParameterValues 机制）
+```
+`type` 语义（vendor 注释 + 真实样本双重印证，"数据形状"层面完全确认，"游戏侧用途"部分仍是
+推测——两者分开标注，不混为一谈）：
+- `Float (0)`：`value1` 生效，单个浮点值。
+- `Color (1)`：`value1` 的浮点数值**按位重新解释**成打包 `uint32` RGBA（`BitConverter.
+  SingleToInt32Bits`/`Int32BitsToSingle`），和 `via.Color.rgba` 走位打包 uint32 的手法完全
+  一样，`value2`/`value3` 未用。
+- `Range (2)`：`value1`/`value2`/`value3` 都生效，vendor 注释推测是
+  `{初始值, 最小值, 最大值}`（"X 总是落在 Y-Z 区间内"），**未证实**。
+- `Float2 (3)`：`value1`/`value2` 生效，`value3` 未用，vendor 注释"样本里只见过 0.0/1.0"，
+  疑似布尔语义，**未证实**。
+
+**哈希字段不需要在 Blender 侧维护同步**：通读确认 `EfxFile.cs:965-969` 的写出逻辑——
+```csharp
+foreach (var exprParam in ExpressionParameters) {
+    exprParam.expressionParameterNameUTF16Hash = MurMur3HashUtils.GetHash(exprParam.name ?? "");
+    exprParam.expressionParameterNameUTF8Hash = MurMur3HashUtils.GetUTF8Hash(exprParam.name ?? "");
+    exprParam.Write(handler);
+}
+```
+两个哈希在写之前**无条件**被覆盖重算，不像 `FieldParameterValues.fieldParameterNameHash`
+那样"改名字不会自动同步"——这里改名字天然保持同步，Blender 侧导出时随便填 0 占位即可，
+已用真实样本验证vendor 会正确算出和原文件一致的哈希（见下方实机验证）。
+
+**踩到一个真实的、和 NaN/Infinity 编码有关的正确性问题（不是理论风险，真实样本已经命中）**：
+`Color` 类型把一个浮点数的**位模式**当 RGBA 用，任何 `alpha≈255`（最常见的不透明色）叠加
+`blue>=128` 的组合，重新解释成 float 后指数位全 1，正好落进 NaN/Infinity 的位模式区间——
+`11_guide_110` 的真实样本里 9 条 `ExpressionParameters` 有 4 条（`colorR_N/P/D/T`）就是这种
+情况。`EfxBridge` 用 `JsonNumberHandling.AllowNamedFloatingPointLiterals`把 NaN/Infinity
+序列化成**带引号的字符串**（`"NaN"`，不是裸 token）；而 Python 内置 `json.dump` 对
+`float('nan')` 默认写的是**裸 token**（`NaN`，不带引号，`allow_nan=True` 的默认行为）——
+两者形式不一致。实测证实：把裸 token 喂给 `EfxBridge load` 会被 `System.Text.Json` 直接拒绝
+（`'N' is an invalid start of a value`），**即使开着 `AllowNamedFloatingPointLiterals` 也不
+接受裸 token，只接受带引号字符串**。这个坑对现有的 `EFXValueNode` 通用树是无害的——通用树
+按 `isinstance(value, float)` 判定 data_type，读到 JSON 字符串 `"NaN"` 时会分类成 `STRING`
+而不是 `FLOAT`，全程当不透明字符串囫囵存取，原样往返，从不会真的产生一个 Python `float`
+意义上的 NaN。但这次 `value1/2/3` 为了配合颜色轮控件需要用真正的 `FloatProperty`（数值参与
+颜色换算），必须显式转换：`model.json_float_in()`（导入时把 `"NaN"`/`"Infinity"` 字符串转
+成真正的 Python `float`，`float()` 内置就支持）、`model.json_float_out()`（导出时反过来，
+`math.isnan`/`math.isinf` 命中时手动转回带引号字符串，不依赖 `json.dump` 的默认行为）。
+
+**Blender 实现**：`EFX_ROOT.efx_expression_parameters`（`EFXExpressionParamItem` 列表，
+无数量上限，不像 `UvarGroups` 那样有二进制层面的硬限制）。字段形状简单固定、`type` 语义
+已确认到"哪几个字段生效"这一层，和 `UvarGroups` 一样选择手写具名字段而不是通用树：
+`name`/`param_type`（4 选项 `EnumProperty`）/`value1`/`value2`/`value3`（真正的
+`FloatProperty`）+ 一个 `color_value`（`FloatVectorProperty`，get/set 直接对 `value1` 做
+和 `via.Color` 一样的按位重解释，`type==Color` 时才有意义）。面板详情框按 `param_type` 只
+展示当前生效的字段（`Float` 只显示 `value1`，`Color` 显示颜色轮，`Range` 显示三个值，
+`Float2` 显示两个值）——和 `UvarGroups` 隐藏无效 `path`/`group` 输入框同一个思路，不新增
+判断模式。
+
+**实机验证（2026-07-04，Blender 5.1 + `diag/11_guide_110.efx.5571972.orig`）**：这个字段
+的运气和 `UvarGroups`一样好——真实样本有 9 条数据，且恰好覆盖了最需要验证的 NaN 场景。
+- Import 后逐条核对：`IsBlue`（`type=Float2`，`value1/2=0`）、`color_N/P/D/T`
+  （`type=Color`，`value1` 是有限但很极端的负浮点数）、`colorR_N/P/D/T`（`type=Color`，
+  `value1` 真的是 `float('nan')`，用 `math.isnan()` 直接断言确认）——与样本原始 JSON 完全
+  对应。
+- 颜色轮 get/set 正确解码：`color_N` 解出 RGB≈(85,216,44) alpha=255（一个合理的绿色），
+  `colorR_N` 的 NaN 位模式解出一个 alpha≈127 的半透明蓝色——两者都是合理的颜色值，位运算
+  逻辑正确。截图确认面板选中 `colorR_N` 时正确显示一个带透明棋盘格的颜色轮控件。
+- 直接检查 `io_tree.export_root_to_efxfile()` 的返回值：导出的 7 个 `ExpressionParameters`
+  字典（除两个哈希占位成 0 外）与原始样本逐字段相同，NaN 条目正确导出成带引号字符串
+  `"NaN"`（不是裸 token）。
+- **过真实 `EfxBridge load`/`dump` 完整走了一遍**（构造一个剥离 `Entries`/`Actions`/
+  `Bones`/`BoneRelations`/`FieldParameterValues`/`UvarGroups` 的最小 `EfxFile`，只保留原始
+  9 条 `ExpressionParameters`）：`load` 成功接受带引号的 `"NaN"` 字符串，`dump` 回来的 9
+  条记录（含 4 条 NaN）与原始样本逐字段相同，两个哈希字段也被 vendor 正确重算回和原始样本
+  一致的值——证明这条"必须用带引号字符串而不是裸 token"的判断是对的，不是纸上谈兵。
+- Add/Remove 操作符二态测试：Add 后数量 +1，Remove 后数量 -1，行为符合预期（这个字段没有
+  `UvarGroups` 那种数量上限，不需要拦截逻辑）。
+- 走真实 `bpy.ops.efx_re.export` operator 端到端验证：卡在一个已知的、和这轮改动完全无关
+  的既有缺口——但这次的报错路径确认是 `Entries[1].Attributes[13].Expression.
+  expressions[0].components[0].data`（attribute 内容字段里的公式树，`EFXExpressionDataBase`
+  缺无参构造函数），不是本节实现的顶层 `ExpressionParameters` 列表，进一步印证了本节开头
+  "两者是完全不同的两套结构"的判断。
+
+测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON/efx 测试文件，没有
+改动仓库里的任何样本文件。

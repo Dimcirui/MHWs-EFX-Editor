@@ -166,20 +166,22 @@ Expression 数据的 attribute 目前 dump 没问题，load 会失败。这与�
 
 MHWs 顶层数据结构（`Entries`/`Actions`/`EffectGroups`/`FieldParameterValues`/
 `ExpressionParameters`/`UvarGroups`/`Bones`）相对 MHWI 的对照调研、以及未知字段语义的
-cross-reference 结论，搬到了 [docs/TOPLEVEL_STRUCTURE.md](docs/TOPLEVEL_STRUCTURE.md)——
-这是当前阶段"设计尚未实现的顶层字段"要用到的主要参考资料。
+cross-reference 结论，搬到了 [docs/TOPLEVEL_STRUCTURE.md](docs/TOPLEVEL_STRUCTURE.md)。
+**这些顶层字段的编辑 UI 设计已全部完成**：`Bones`/`BoneRelations`、`FieldParameterValues`、
+`UvarGroups`、`ExpressionParameters`（顶层具名参数表）均已于 2026-07-04 做完，具体结构调研
+和实机验证记录见该文件对应小节。
 
 尚未做（按需排期，不卡当前）：
-- **`ExpressionParameters` 目前只做不透明透传，没有编辑 UI**——三个 union 视图属性
-  （Float2/Color/Range 共享底层 value1/2/3，只有匹配当前 type 的那个可读，见
-  [docs/TOPLEVEL_STRUCTURE.md](docs/TOPLEVEL_STRUCTURE.md)/`EfxBridge/Program.cs` 头部注释）
-  比 `Bones`/`FieldParameterValues`/`UvarGroups` 都更棘手，暂缓。`Bones`/`BoneRelations`
-  （2026-07-04）、`FieldParameterValues`（2026-07-04）、`UvarGroups`（2026-07-04）已经做完
-  编辑 UI，不在这个清单里了。
+- attribute 内容字段里的公式树（`Expression`/`MaterialExpressions`，`IExpressionAttribute`/
+  `IMaterialExpressionAttribute`）——注意这个和上面已经做完的顶层 `ExpressionParameters`
+  具名参数表是完全不同的两套结构，名字相似容易搞混（见
+  [docs/TOPLEVEL_STRUCTURE.md](docs/TOPLEVEL_STRUCTURE.md) 的专门说明）。这个公式树本身
+  还有一个已知的、和本项目改动无关的 vendor 反序列化缺口（`EFXExpressionDataBase` 缺无参
+  构造函数），继续按架构决策第 8 点结构化透传，不建字段级 UI。
 - 预设系统（架构决策 6 的另一半，复制/粘贴已经够用，用户明确说了预设先不做）
 - 新建 Action（复制/粘贴目前只做了 Entry 和 Attribute，Action 本身没有 Copy/New 操作，只能
   通过 import 获得；Attribute 粘贴支持粘到已有 Action 上）
-- Clip（TIML 同构）与 Expression（公式引擎）编辑器 UI
+- Clip（TIML 同构）编辑器 UI
 - 拖拽重排 UI（当前 Entry/Action/Attribute 顺序只反映 import 时的原始下标，新粘贴的对象固定
   排在同类兄弟的最后）
 - 尚未跑过大规模语料的 dump/load 回归（只验证过 `diag/` 里的 2 个样本，没有复现 Phase 0

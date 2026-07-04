@@ -22,6 +22,8 @@ vendor 的实际类名走。
 from __future__ import annotations
 
 import json
+import math
+import struct
 
 import bpy
 from bpy.props import (
@@ -74,10 +76,11 @@ ACTION_STRUCTURAL_KEYS = frozenset({"Attributes"})
 # ParentBone + Bones 表反向重建下标，见 docs/TOPLEVEL_STRUCTURE.md "Bones / BoneRelations
 # 结构调研"），FieldParameterValues 建成 EFX_ROOT.efx_field_parameters 列表 UI（见
 # EFXFieldParameterItem 的说明），UvarGroups 建成 EFX_ROOT.efx_uvar_groups 列表 UI（见
-# EFXUvarGroupItem 的说明），其余键原样存进 EFX_ROOT 的 efx_opaque_text。
+# EFXUvarGroupItem 的说明），ExpressionParameters 建成 EFX_ROOT.efx_expression_parameters
+# 列表 UI（见 EFXExpressionParamItem 的说明），其余键原样存进 EFX_ROOT 的 efx_opaque_text。
 ROOT_STRUCTURAL_KEYS = frozenset({
     "Entries", "Actions", "EffectGroups", "Bones", "BoneRelations", "FieldParameterValues",
-    "UvarGroups",
+    "UvarGroups", "ExpressionParameters",
 })
 
 
@@ -225,6 +228,33 @@ def is_bone_reference_field(node: EFXValueNode, attr_type: str | None) -> bool:
     `TypeLightning3D`，但字段 key 统一都是 `ParentBone`。
     """
     return attr_type is not None and node.key == "ParentBone" and node.data_type == "STRING"
+
+
+def json_float_in(value) -> float:
+    """把 EfxBridge dump 出来的一个浮点字段转成真正的 Python float，用于需要真数值控件
+    （而不是 EFXValueNode 通用树里那种"当字符串存"）的场景——目前只有 EFXExpressionParamItem
+    的 value1/2/3 用到。EfxBridge 用 `JsonNumberHandling.AllowNamedFloatingPointLiterals`
+    把 NaN/Infinity/-Infinity 序列化成**带引号的 JSON 字符串**（不是裸 token），
+    `json.load` 出来是 Python `str`，不能直接塞进 `FloatProperty`，这里统一转换
+    （`float()` 内置支持 "NaN"/"Infinity"/"-Infinity" 这几个词，大小写不敏感）。"""
+    return float(value)
+
+
+def json_float_out(value: float):
+    """`json_float_in` 的反函数，导出时用。不能简单指望 Python `json.dump` 处理非有限浮点数——
+    它默认给 NaN/Infinity/-Infinity 写裸 token（`allow_nan=True` 的默认行为），但已经用
+    `EfxBridge load` 实测证实 C# 端的 `System.Text.Json`（即使开了
+    `AllowNamedFloatingPointLiterals`）拒绝裸 token 形式（`'N' is an invalid start of a
+    value`），只认带引号的字符串形式——这不是理论风险，是 RGBA 按位重解释成浮点数时的常见
+    情况：`alpha≈255`（最常见的不透明色）叠加 `blue>=128` 就会落进 NaN 的位模式区间，真实样本
+    （`11_guide_110` 的好几个 `type=Color` 的 ExpressionParameter）已经命中过。这里手动转成
+    带引号字符串，交给 `json.dump` 当成普通字符串序列化，就能匹配 EfxBridge 自己 dump 时用的
+    同一种带引号形式。"""
+    if math.isnan(value):
+        return "NaN"
+    if math.isinf(value):
+        return "Infinity" if value > 0 else "-Infinity"
+    return value
 
 
 def _json_scalar_data_type(value) -> str:
@@ -417,6 +447,76 @@ class EFXUvarGroupItem(PropertyGroup):
 
 
 # ---------------------------------------------------------------------------
+# EFXExpressionParamItem —— EFX_ROOT 的公式引擎具名参数表
+# （对应 EfxFile.ExpressionParameters）
+# ---------------------------------------------------------------------------
+
+# EfxFile.cs:69-87 的 EfxExpressionParameterType 枚举，四个取值语义均已由 vendor 注释+真实
+# 样本确认到"数据形状"这一层（哪几个 value1/2/3 生效），游戏侧真正用途仍是猜测（Range/Float2
+# 的具体含义见下方 tooltip，不确定的部分只放在 tooltip 里，不写进下拉框标签）。
+_EXPR_PARAM_TYPE_ITEMS = (
+    ("0", "Float", "type == 0：单个浮点值，value1 生效，value2/value3 未用"),
+    ("1", "Color", "type == 1：value1 的浮点数值按位重新解释成打包 uint32 RGBA"
+                    "（同 via.Color 的序列化手法），value2/value3 未用"),
+    ("2", "Range", "type == 2：value1/value2/value3 三个浮点值都生效。vendor 注释推测是"
+                    "{初始值, 最小值, 最大值}（X 总是落在 Y-Z 区间内），未证实"),
+    ("3", "Float2", "type == 3：value1/value2 两个浮点值生效，value3 未用。vendor 注释里"
+                     "样本只见过 0.0/1.0，疑似布尔语义，未证实"),
+)
+
+
+def _get_expr_param_color(self) -> tuple:
+    raw = struct.unpack("<I", struct.pack("<f", self.value1))[0]
+    r = raw & 0xFF
+    g = (raw >> 8) & 0xFF
+    b = (raw >> 16) & 0xFF
+    a = (raw >> 24) & 0xFF
+    return (r / 255.0, g / 255.0, b / 255.0, a / 255.0)
+
+
+def _set_expr_param_color(self, value) -> None:
+    r, g, b, a = (max(0, min(255, round(c * 255))) for c in value)
+    raw = r | (g << 8) | (b << 16) | (a << 24)
+    self.value1 = struct.unpack("<f", struct.pack("<I", raw))[0]
+
+
+class EFXExpressionParamItem(PropertyGroup):
+    """对应 vendor `EFXExpressionParameter`（`EfxFile.cs:400-448`）。C# 侧有三个"标签联合视图"
+    计算属性（`Float2`/`Color`/`Range`，共享底层 `value1`/`value2`/`value3`，只有和当前 `type`
+    匹配的那个可读，其余两个 getter 直接 throw）——这正是 `EfxBridge/Program.cs` 头部注释里
+    "已发现并绕过的坑"那三个属性，桥接层已经把它们从 JSON 视图里剔除
+    （`StripUnsafeComputedProperties`），Python 侧看到的是稳定的扁平 7 键
+    （两个具名哈希 + `type` + `value1/2/3` + `name`），不需要再处理那个 union 问题。
+
+    两个具名哈希（`expressionParameterNameUTF16Hash`/`expressionParameterNameUTF8Hash`）
+    不需要在 Blender 侧保留字段——不像 `FieldParameterValues.fieldParameterNameHash`
+    那样有失配风险，这两个哈希在导出前会被 vendor **无条件**用 MurMur3 从 `name` 重新计算
+    （`EfxFile.cs:966-967`，在 `foreach` 循环里逐项覆盖后再 `Write()`），改名字天然保持同步，
+    导出时固定填 0 占位即可。
+
+    `value1`/`value2`/`value3` 用真正的 `FloatProperty`（不是 `EFXValueNode` 通用树）——这三个
+    字段形状简单固定、`type` 语义已确认到哪几个生效，值得做成真数值控件而不是通用树，尤其是
+    `Color` 类型可以直接复用现成的颜色轮（`color_value`，对 `value1` 的浮点位做和
+    `via.Color.rgba` 一样的按位重解释）。**这也是为什么需要 `model.json_float_in/out`**：
+    真实样本证实 `Color` 类型的 `value1` 经常是 NaN 位模式（`alpha≈255` 叠加 `blue>=128` 就会
+    落进这个区间，见 `docs/TOPLEVEL_STRUCTURE.md`），EfxBridge 的 JSON 表示把 NaN/Infinity
+    存成带引号字符串，不能直接塞进/读出 `FloatProperty`，需要显式转换（而不是像
+    `FieldParameterValues` 那样交给通用树，把 NaN 当字符串囫囵存过去——这里既要真数值参与颜色
+    运算，就必须显式处理）。
+    """
+
+    name: StringProperty(name="Name")
+    param_type: EnumProperty(name="Type", items=_EXPR_PARAM_TYPE_ITEMS, default="0")
+    value1: FloatProperty(name="Value 1")
+    value2: FloatProperty(name="Value 2")
+    value3: FloatProperty(name="Value 3")
+    color_value: FloatVectorProperty(
+        name="Color", subtype="COLOR", size=4, min=0.0, max=1.0,
+        get=_get_expr_param_color, set=_set_expr_param_color,
+    )
+
+
+# ---------------------------------------------------------------------------
 # 不透明剩余字段 —— 存成 bpy.data.texts 文本块，import/export 两边共用
 # ---------------------------------------------------------------------------
 
@@ -443,7 +543,10 @@ def load_opaque(obj: Object) -> dict:
 # Object 级属性注册（挂在 bpy.types.Object 上，四种 ~TYPE 对象按需使用其中一部分）
 # ---------------------------------------------------------------------------
 
-_CLASSES = (EFXValueNode, EFXGroupTag, EFXBoneItem, EFXFieldParameterItem, EFXUvarGroupItem)
+_CLASSES = (
+    EFXValueNode, EFXGroupTag, EFXBoneItem, EFXFieldParameterItem, EFXUvarGroupItem,
+    EFXExpressionParamItem,
+)
 
 
 def register():
@@ -484,6 +587,11 @@ def register():
     Object.efx_uvar_groups = CollectionProperty(type=EFXUvarGroupItem)
     Object.efx_uvar_groups_active_index = IntProperty()
 
+    # EFX_ROOT 专属：公式引擎具名参数表（对应 EfxFile.ExpressionParameters），见
+    # EFXExpressionParamItem 的说明。
+    Object.efx_expression_parameters = CollectionProperty(type=EFXExpressionParamItem)
+    Object.efx_expression_parameters_active_index = IntProperty()
+
     # EFX_ATTRIBUTE 专属：bookkeeping 标量 + 内容字段树。
     Object.efx_attr_type = StringProperty(
         name="Attribute Type",
@@ -503,6 +611,8 @@ def unregister():
     del Object.efx_version
     del Object.efx_unique_id
     del Object.efx_attr_type
+    del Object.efx_expression_parameters_active_index
+    del Object.efx_expression_parameters
     del Object.efx_uvar_groups_active_index
     del Object.efx_uvar_groups
     del Object.efx_field_parameters_active_index

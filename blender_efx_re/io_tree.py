@@ -178,6 +178,14 @@ def build_root_from_efxfile(
         item.path = uvar_dict.get("path") or ""
         item.group = uvar_dict.get("group") or ""
 
+    for expr_dict in efxfile_dict.get("ExpressionParameters", []) or []:
+        item = root_obj.efx_expression_parameters.add()
+        item.name = expr_dict.get("name", "") or ""
+        item.param_type = str(int(expr_dict.get("type", 0) or 0))
+        item.value1 = model.json_float_in(expr_dict.get("value1", 0.0))
+        item.value2 = model.json_float_in(expr_dict.get("value2", 0.0))
+        item.value3 = model.json_float_in(expr_dict.get("value3", 0.0))
+
     for index, entry_dict in enumerate(efxfile_dict.get("Entries", []) or []):
         build_entry_object(entry_dict, index, root_obj, main_collection)
 
@@ -288,6 +296,21 @@ def export_root_to_efxfile(root_obj: Object) -> dict:
     efxfile_dict["UvarGroups"] = [
         {"uvarType": int(item.uvar_type), "path": item.path, "group": item.group}
         for item in root_obj.efx_uvar_groups
+    ]
+    # 两个具名哈希固定填 0：vendor 导出前会无条件用 MurMur3 从 name 重新计算
+    # （EfxFile.cs:966-967），改名字天然保持同步，不需要 Python 侧维护，见
+    # EFXExpressionParamItem 的说明。
+    efxfile_dict["ExpressionParameters"] = [
+        {
+            "expressionParameterNameUTF16Hash": 0,
+            "expressionParameterNameUTF8Hash": 0,
+            "type": int(item.param_type),
+            "value1": model.json_float_out(item.value1),
+            "value2": model.json_float_out(item.value2),
+            "value3": model.json_float_out(item.value3),
+            "name": item.name,
+        }
+        for item in root_obj.efx_expression_parameters
     ]
     return efxfile_dict
 
