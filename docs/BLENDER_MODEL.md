@@ -617,3 +617,62 @@ setter bug 的位转换）、`EFXClipKeyframeItem`/`EFXClipCurveItem` 两个 Pro
 
 测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON/efx 测试文件，没有
 改动仓库里的任何样本文件。
+
+## Phase 1 补充 —— Expression 公式编辑 UI（2026-07-05）
+
+结构调研（`IExpressionAttribute` 接口族、后缀表达式栈的字段布局、三个真实 vendor bug 的
+根因和规避方案、`Expression`/`ExpressionBits` 只读别名 vs `expressions`/`expressionBits`
+真字段的对应关系）记录在 `docs/TOPLEVEL_STRUCTURE.md` "`Expression`（attribute 内容级，同
+Clip 是 BitSet 家族）结构调研与实现"一节，这里只记代码结构和实机验证结论摘要。和 Clip 同一个
+BitSet 家族，但编辑方式完全不同：不是节点树，是**一个文本框**（对齐 Blender 自己的 Driver
+表达式），后缀栈↔树↔文本的转换全部交给 `EfxBridge` 调 vendor 现成方法完成，Python 侧不重新
+实现解析器。
+
+**`tools/EfxBridge/Program.cs`**：`RunDump` 里 `efx.Read()` 之后加一行
+`efx.ParseExpressions()`（vendor 自带、此前从未被调用过的方法，把后缀栈重建成可读公式文本）。
+`RunLoad` 里 JSON 反序列化之后、`efx.WriteTo()` 之前加 `CompileExpressions(efx)`（自定义的
+递归遍历，镜像 `ParseExpressions()` 自己的遍历方式），对每个 `IExpressionAttribute` 把公式
+文本摊平回后缀栈——这一步顺带修了两个 vendor bug（`FlattenExpressionTree()` 没设
+`Version` 导致导出直接崩、具名参数 source 解析永远错判成 External），另外还注册了一个
+`FixedExpressionTreeJsonConverter` 覆盖 vendor 自带的、读字符串属性漏了一次
+`reader.Read()` 的转换器。三个 bug 的完整根因分析见 TOPLEVEL_STRUCTURE.md。新增
+`exprcheck` 子命令，给 Blender 侧的"Validate"按钮用，不用跑一次完整导出就能校验单条公式
+语法。
+
+**`model.py`**：`is_expression_attribute_dict()`（结构判断：`Expression`+`ExpressionBits`
+同时存在）、`EFXExpressionCurveItem`（`bit_index`/`bit_name`/`formula`/`formula_error`，
+比 `EFXClipCurveItem` 简单得多——没有关键帧集合）。`Object` 新增
+`efx_is_expression_attribute`/`efx_expression_bit_count`/`efx_expression_curves`。
+
+**`io_tree.py`**：`build_attribute_object()` 检测到 `is_expression_attribute_dict()` 时，
+把 `Expression`/`ExpressionBits`**以及**它们的小写真字段 `expressions`/`expressionBits`
+（内容两两相同，`IncludeFields=true` 下四个键都会出现）一并从通用树内容里摘掉，改用
+`_populate_expression_attribute()` 展开（按排序后的置位 bit 和 `parsedExpressions[]`
+一一对应，同 Clip 的 `clips[]` 消费顺序）；`export_attribute_object()` 对应用
+`_export_expression_attribute()` 只写 `parsedExpressions`（文本）+ 空的 `expressions`
+（留给 `CompileExpressions()` 摊平）。新增 `check_expression_bits()`（+
+`ExpressionBitError`）校验 `bit_index` 越界/重复，接进 `EFX_OT_export.execute()`。
+
+**`panels.py`**：`EFX_UL_expression_curves` + Add/Remove 操作符（同 Clip 的挑最低未用 bit
+逻辑）+ `EFX_OT_expression_formula_check`（调用 `exprcheck`，成功清空/失败写入
+`curve.formula_error`）。attribute 面板在 `efx_is_expression_attribute` 为真时插入一个
+"Expression"分区：曲线列表 → 选中曲线详情（Bit Index + 公式文本框 + Validate 按钮 +
+校验错误提示）。
+
+**实机验证（2026-07-05，Blender 5.1，via Blender MCP）**：两个真实样本
+（`11_guide_006` 12 个、`11_guide_110` 18 个 Expression attribute）。
+- Import 后逐个核对 `bit_index`/`bit_name`/`formula`，与 `EfxBridge dump`（开启
+  `ParseExpressions()`）结果完全一致，语义吻合（`bit_name == "color"` 对应
+  `Lerp(IsBlue, colorR_N, color_N)`）。
+- 两个样本纯直通往返（不经 Blender）全部公式文本逐条相同，确认三个 vendor bug 修复后往返
+  稳定；`EfxBridge roundtrip diag` 保持 4/4 稳定。
+- **过真实 `bpy.ops.efx_re.export()` 编辑一条含二元运算符嵌套+外部变量引用的公式**
+  （`Min(1, 2 + 3 * ext:speed)`）后导出、`EfxBridge dump` 复核：编辑的公式正确变成新内容，
+  其余 5 个未编辑的同类型 attribute 公式与导入前逐字相同（确认"重新摊平全部 Expression
+  attribute"不会误伤未改动数据）。
+- `check_expression_bits()` 四态测试、真实 export operator 越界拒绝测试均通过。
+- `EFX_OT_expression_formula_check`（"Validate"按钮）对合法/非法公式分别正确报告。
+- 截图确认 UI 渲染正确，且通用 Fields 树里不再重复出现 `Expression` 系的四个别名键。
+
+测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON/efx 测试文件，没有
+改动仓库里的任何样本文件。

@@ -111,6 +111,30 @@ def _populate_clip_attribute(obj: Object, attr_dict: dict) -> None:
                 kf.tangent_in_y = model.json_float_in(tangent.get("in_y", 0.0))
 
 
+def _populate_expression_attribute(obj: Object, attr_dict: dict) -> None:
+    """把一个 IExpressionAttribute 的 Expression/ExpressionBits 展开成 obj.efx_expression_*
+    系列属性——同 _populate_clip_attribute()，子曲线（这里是"子公式"）数组下标和排序后的置位
+    bit 下标一一对应，按 sorted(bits) 和 parsedExpressions[] 一起 zip 消费。公式内容直接读
+    EfxBridge（`efx.ParseExpressions()`，见 tools/EfxBridge/Program.cs）算好的
+    `parsedExpressions[].expression` 文本，不在这里重新解析后缀栈 `components`——见
+    EFXExpressionCurveItem 的说明。"""
+    expression = attr_dict.get("Expression") or {}
+    expression_bits = attr_dict.get("ExpressionBits") or {}
+
+    obj.efx_is_expression_attribute = True
+    obj.efx_expression_bit_count = int(expression_bits.get("bitCount", 0) or 0)
+
+    bit_names = expression_bits.get("bitNames") or []
+    sorted_bits = sorted(expression_bits.get("bits") or [])
+    parsed = expression.get("parsedExpressions") or []
+
+    for bit_index, entry in zip(sorted_bits, parsed):
+        curve = obj.efx_expression_curves.add()
+        curve.bit_index = bit_index
+        curve.bit_name = (bit_names[bit_index] if bit_index < len(bit_names) else None) or ""
+        curve.formula = entry.get("expression", "0") or "0"
+
+
 def build_attribute_object(attr_dict: dict, index: int, parent_obj: Object, collection: Collection) -> Object:
     attr_type = attr_dict.get("$type", "")
     obj = _new_empty(f"[{parent_obj.name}] {_short_attr_name(attr_type)}", collection)
@@ -144,6 +168,24 @@ def build_attribute_object(attr_dict: dict, index: int, parent_obj: Object, coll
         content.pop("clipData", None)
         content.pop("clipBits", None)
         _populate_clip_attribute(obj, attr_dict)
+    if model.is_expression_attribute_dict(attr_dict):
+        # Expression/ExpressionBits 走专属的 efx_expression_* 结构（见
+        # _populate_expression_attribute()），不进通用树——IMaterialExpressionAttribute
+        # 暴露的是不同的键名 MaterialExpressions，不受影响，仍然原样进通用树。
+        #
+        # 和 Clip 反过来：Clip 是"Clip/ClipBits 只读别名，clipData/clipBits 才是真字段"，
+        # Expression 是"Expression/ExpressionBits 是真字段（`EFXAttributeXxxExpression` 类的
+        # 属性，Expression 甚至带 setter），expressions/expressionBits 才是小写的实际
+        # 后备字段"——两者在 JSON 里内容完全相同（已用真实样本核对：
+        # attr["Expression"] == attr["expressions"]、attr["ExpressionBits"] ==
+        # attr["expressionBits"]），只是 System.Text.Json 把公开字段和公开属性都当成独立成员
+        # 各序列化一份。四个键都要从通用树里剔除，否则 Fields 列表里会重复显示一遍
+        # 一模一样的内容。
+        content.pop("Expression", None)
+        content.pop("ExpressionBits", None)
+        content.pop("expressions", None)
+        content.pop("expressionBits", None)
+        _populate_expression_attribute(obj, attr_dict)
     model.populate_dict_as_children(obj.efx_fields, content)
 
     leftover = {key: attr_dict[key] for key in ("efxrSize",) if key in attr_dict}
@@ -356,6 +398,23 @@ def _export_clip_attribute(obj: Object) -> tuple[dict, dict]:
     return clip_data, clip_bits
 
 
+def _export_expression_attribute(obj: Object) -> tuple[dict, dict]:
+    """_populate_expression_attribute() 的反函数。只写 parsedExpressions（文本公式），把
+    expressions（真正参与二进制写出的后缀栈）留空——EfxBridge 的 load 会在反序列化后调用
+    CompileExpressions()（tools/EfxBridge/Program.cs，逐个把公式文本摊平回 expressions，
+    同时规避三个 vendor bug，见 docs/TOPLEVEL_STRUCTURE.md）。parameters 留空数组：具名/
+    `p:`/`ext:` 前缀的标识符不需要预先提供，只有复用一个已存在 `const:` 参数的自定义
+    constantValue 时才用得上，v1 不处理这个边缘情况。"""
+    curves = sorted(obj.efx_expression_curves, key=lambda c: c.bit_index)
+    expression_dict = {
+        "version": obj.efx_version,
+        "parsedExpressions": [{"expression": c.formula, "parameters": []} for c in curves],
+        "expressions": [],
+    }
+    expression_bits = {"bitCount": obj.efx_expression_bit_count, "bits": [c.bit_index for c in curves]}
+    return expression_dict, expression_bits
+
+
 def export_attribute_object(obj: Object) -> dict:
     # $type 必须是字典的第一个键：C# 侧 EfxJsonTypeResolver 是流式读取多态判别字段来选定具体
     # EFXAttribute 子类的 JsonTypeInfo，不像 System.Text.Json 内置的 [JsonPolymorphic] 那样会
@@ -373,6 +432,11 @@ def export_attribute_object(obj: Object) -> dict:
         clip_data, clip_bits = _export_clip_attribute(obj)
         attr_dict["clipData"] = clip_data
         attr_dict["clipBits"] = clip_bits
+
+    if obj.efx_is_expression_attribute:
+        expression_dict, expression_bits = _export_expression_attribute(obj)
+        attr_dict["Expression"] = expression_dict
+        attr_dict["ExpressionBits"] = expression_bits
 
     nested_root = next(
         (child for child in obj.children if child.get("~TYPE") == model.TYPE_ROOT), None
@@ -546,5 +610,51 @@ def check_clip_bits(root_obj: Object) -> None:
     if issues:
         raise ClipBitError(
             "以下 Clip attribute 的曲线 bit_index 有问题（越界或重复），会导致导出出错或"
+            "静默丢数据，请先修正：\n" + "\n".join(f"  {m}" for m in issues)
+        )
+
+
+class ExpressionBitError(Exception):
+    """check_expression_bits() 校验失败时抛出：某个 Expression attribute 的公式 bit_index
+    越界或重复。和 ClipBitError 是同一个 BitSet 家族的同一类风险（越界让 C# 侧
+    `BitSet.SetBit()` 数组越界，重复让两条公式在写出时互相覆盖），按架构决策 9 直接拒绝导出，
+    不做自动修复。"""
+
+
+def _expression_bit_issues(attr_obj: Object) -> list:
+    if not attr_obj.efx_is_expression_attribute:
+        return []
+    bit_count = attr_obj.efx_expression_bit_count
+    issues = []
+    seen = set()
+    for curve in attr_obj.efx_expression_curves:
+        if not (0 <= curve.bit_index < bit_count):
+            issues.append(f"{attr_obj.name}: bit_index {curve.bit_index} 超出范围 [0, {bit_count})")
+        elif curve.bit_index in seen:
+            issues.append(f"{attr_obj.name}: bit_index {curve.bit_index} 被多条公式重复使用")
+        seen.add(curve.bit_index)
+    return issues
+
+
+def _walk_expression_issues(obj: Object) -> list:
+    """递归遍历一个 ~TYPE 对象树下所有 EFX_ATTRIBUTE（含嵌套 PlayEmitter.efxrData 子树里的），
+    收集 Expression bit 校验问题。和 _walk_clip_issues() 一样是纯局部校验，直接沿 Blender
+    parent-child 关系整棵树走一遍即可。"""
+    issues = []
+    tag = obj.get("~TYPE")
+    if tag == model.TYPE_ATTRIBUTE:
+        issues.extend(_expression_bit_issues(obj))
+    for child in obj.children:
+        if child.get("~TYPE") in (model.TYPE_ROOT, model.TYPE_ENTRY, model.TYPE_ACTION, model.TYPE_ATTRIBUTE):
+            issues.extend(_walk_expression_issues(child))
+    return issues
+
+
+def check_expression_bits(root_obj: Object) -> None:
+    """导出前校验：见 ExpressionBitError 的说明。"""
+    issues = _walk_expression_issues(root_obj)
+    if issues:
+        raise ExpressionBitError(
+            "以下 Expression attribute 的公式 bit_index 有问题（越界或重复），会导致导出出错或"
             "静默丢数据，请先修正：\n" + "\n".join(f"  {m}" for m in issues)
         )

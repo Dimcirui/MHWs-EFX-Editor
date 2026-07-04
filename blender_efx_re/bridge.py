@@ -9,13 +9,11 @@ blender_efx_re/bridge.py —— 调用 tools/EfxBridge（C#）的薄封装
 不解释 JSON 里的字段含义——那是 fields.py/operators.py 往上的事。中间表示是 EfxFile
 对象图的直译 JSON（字段名来自 C# 类本身），不是精简过的 Blender schema。
 
-已知缺口：EFXExpressionDataBase（Expression 公式引擎子系统用到的表达式节点树）目前
-无法反序列化——RE-Engine-Lib 自带的 EfxJsonTypeResolver 只给 EFXAttribute 注册了
-多态 $type 判别，没有覆盖这一层嵌套的多态类型。带 Expression 数据的 attribute 在
-dump（读→序列化）阶段没问题，但 load（反序列化→写）会抛
-System.NotSupportedException。这与 PLAN.md 架构决策第 8 点一致——Expression 是独立
-子系统，可以放到后面阶段做，不卡其他功能。当前调用方应预期这类文件在完整改动往返时
-可能失败，捕获 BridgeError 后按第 9 点原则整文件拒绝，不做半成品处理。
+2026-07-04 vendor 升级（`ebb1bc7`）已解决 EFXExpressionDataBase 的多态反序列化问题（自定义
+JsonPolymorphismOptions），本文件上一版记录的"Expression 数据 load 会抛
+NotSupportedException"缺口已不存在，见 docs/TOPLEVEL_STRUCTURE.md。dump/load 现在还会
+调用 vendor 的 `EfxFile.ParseExpressions()`/`FlattenExpressionTrees()`，把公式在人类可读
+文本和二进制后缀栈之间转换，见 tools/EfxBridge/Program.cs。
 """
 
 from __future__ import annotations
@@ -82,3 +80,15 @@ def load_efx(data: dict, efx_out_path: str | Path) -> None:
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(data, f)
         _run("load", str(json_path), str(efx_out_path))
+
+
+def check_expression(formula: str) -> str | None:
+    """校验一条 Expression 公式文本（`EfxExpressionStringParser.Parse` 的语法），合法返回
+    None，否则返回错误信息。给 panels.py 的"Validate"按钮用，让用户不用跑一次完整导出就能
+    知道公式写错了——真正的导出仍然靠 load_efx() 失败时抛 BridgeError 兜底，这里只是提前
+    反馈，不是唯一的校验关卡。"""
+    try:
+        _run("exprcheck", formula)
+    except BridgeError as ex:
+        return str(ex)
+    return None

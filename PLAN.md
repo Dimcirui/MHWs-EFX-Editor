@@ -175,12 +175,15 @@ cross-reference 结论，搬到了 [docs/TOPLEVEL_STRUCTURE.md](docs/TOPLEVEL_ST
 和实机验证记录见该文件对应小节。
 
 尚未做（按需排期，不卡当前）：
-- attribute 内容字段里的公式树（`Expression`/`MaterialExpressions`，`IExpressionAttribute`/
-  `IMaterialExpressionAttribute`）——注意这个和上面已经做完的顶层 `ExpressionParameters`
-  具名参数表是完全不同的两套结构，名字相似容易搞混（见
-  [docs/TOPLEVEL_STRUCTURE.md](docs/TOPLEVEL_STRUCTURE.md) 的专门说明）。此前反序列化会
-  失败的已知缺口已于 2026-07-04 随 vendor 升级解决（见上），现在纯粹是"还没建字段级编辑
-  UI"，结构化透传本身已经能正常工作，继续按架构决策第 8 点处理，UI 后置。
+- attribute 内容字段里的公式树，纯 `IExpressionAttribute`（15 个 attribute 类型）已于
+  2026-07-05 做完——文本公式编辑（对齐 Blender Driver 表达式），后缀栈↔文本转换全部靠
+  `EfxBridge` 调 vendor 现成的 `ParseExpressions()`/`FlattenExpressionTree()`，过程中发现
+  并绕过了三个真实 vendor bug（`Version` 未设导致导出崩溃、JSON 读取漏一次
+  `reader.Read()`、具名参数 source 解析永远错判成 External），结构调研和实机验证记录见
+  [docs/TOPLEVEL_STRUCTURE.md](docs/TOPLEVEL_STRUCTURE.md)。**`IMaterialExpressionAttribute`
+  （`MaterialExpressions`，不同键名，没有配对的 bits 键）仍未实现**，结构性排除、继续走
+  通用树透传——注意这个和上面已经做完的顶层 `ExpressionParameters` 具名参数表是完全不同的
+  两套结构，名字相似容易搞混。
 - 预设系统（架构决策 6 的另一半，复制/粘贴已经够用，用户明确说了预设先不做）
 - 新建 Action（复制/粘贴目前只做了 Entry 和 Attribute，Action 本身没有 Copy/New 操作，只能
   通过 import 获得；Attribute 粘贴支持粘到已有 Action 上）

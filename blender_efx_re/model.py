@@ -255,6 +255,19 @@ def is_clip_attribute_dict(attr_dict: dict) -> bool:
     return "mdfProperties" not in clip_data
 
 
+def is_expression_attribute_dict(attr_dict: dict) -> bool:
+    """一个 attribute 字典是不是 `IExpressionAttribute`（vendor `EfxFile.cs:993`，同一个
+    BitSet 家族的公式版本——`ExpressionBits` 选中哪些位由公式驱动，每个置位对应一条
+    `EFXExpressionObject`）。只按字段 key 结构性判断（`Expression`+`ExpressionBits` 同时
+    存在），不维护硬编码类型清单，原因同 `is_clip_attribute_dict()`。
+
+    不需要 `is_clip_attribute_dict()` 那种"减去 IMaterialXxxAttribute"的排除逻辑——
+    `IMaterialExpressionAttribute` 暴露的是完全不同的键名 `MaterialExpressions`（没有配对的
+    bits 键），不会和这两个键撞名，本轮不处理，继续走通用树透传。
+    """
+    return "Expression" in attr_dict and "ExpressionBits" in attr_dict
+
+
 def json_float_in(value) -> float:
     """把 EfxBridge dump 出来的一个浮点字段转成真正的 Python float，用于需要真数值控件
     （而不是 EFXValueNode 通用树里那种"当字符串存"）的场景——目前只有 EFXExpressionParamItem
@@ -645,6 +658,28 @@ class EFXClipCurveItem(PropertyGroup):
     keyframes_active_index: IntProperty()
 
 
+class EFXExpressionCurveItem(PropertyGroup):
+    """对应 `IExpressionAttribute` 的一条公式（`ExpressionBits` 里的一个置位 + 它驱动的一个
+    `EFXExpressionObject`）。和 `EFXClipCurveItem` 是同一个 BitSet 家族——`bit_index` 的
+    0-based 语义、"子曲线数组下标和排序后的置位 bit 下标一一对应"的约定完全相同（见
+    `EFXClipCurveItem` 的说明），已用真实样本验证（`11_guide_006` 里 `bit_name == "color"`
+    的那条公式是 `Lerp(IsBlue, colorR_N, color_N)`，语义吻合）。
+
+    公式本身不存成后缀栈（`EFXExpressionObject.components`），存成 vendor 自带的文本表示
+    （`formula`，如 `"min(1, clamp(TIMER, 30, 150))"`）——`EfxExpressionStringParser`/
+    `EFXExpressionTree.ToString()` 已经是现成、经过测试的双向转换（`EfxExpressionParser.cs`），
+    没有必要在 Python 这边再实现一遍递归下降解析器和优先级规则；后缀栈↔树↔文本的转换全部交给
+    EfxBridge（dump 时调用 `EfxFile.ParseExpressions()`，load 时调用
+    `EfxFile.FlattenExpressionTrees()`，见 tools/EfxBridge/Program.cs）。`formula_error` 是
+    纯 UI 态（"Validate" 按钮的校验结果），不参与导出。
+    """
+
+    bit_index: IntProperty(name="Bit Index", min=0)
+    bit_name: StringProperty(name="Bit Name")
+    formula: StringProperty(name="Formula", default="0")
+    formula_error: StringProperty(name="Error")
+
+
 # ---------------------------------------------------------------------------
 # 不透明剩余字段 —— 存成 bpy.data.texts 文本块，import/export 两边共用
 # ---------------------------------------------------------------------------
@@ -674,7 +709,7 @@ def load_opaque(obj: Object) -> dict:
 
 _CLASSES = (
     EFXValueNode, EFXGroupTag, EFXBoneItem, EFXFieldParameterItem, EFXUvarGroupItem,
-    EFXExpressionParamItem, EFXClipKeyframeItem, EFXClipCurveItem,
+    EFXExpressionParamItem, EFXClipKeyframeItem, EFXClipCurveItem, EFXExpressionCurveItem,
 )
 
 
@@ -749,8 +784,24 @@ def register():
     Object.efx_clip_curves = CollectionProperty(type=EFXClipCurveItem)
     Object.efx_clip_curves_active_index = IntProperty()
 
+    # EFX_ATTRIBUTE 专属，只在 is_expression_attribute_dict() 命中时有意义：
+    # IExpressionAttribute 的公式列表（对应 Expression/ExpressionBits），见
+    # EFXExpressionCurveItem 的说明。efx_is_expression_attribute 同 efx_is_clip_attribute，
+    # 持久标记，不靠"curves 是不是空"判断。
+    Object.efx_is_expression_attribute = BoolProperty(name="Is Expression Attribute")
+    Object.efx_expression_bit_count = IntProperty(
+        name="Bit Count",
+        description="ExpressionBits 的总位数，由 attribute 类型固定，导入时原样记录，不可编辑",
+    )
+    Object.efx_expression_curves = CollectionProperty(type=EFXExpressionCurveItem)
+    Object.efx_expression_curves_active_index = IntProperty()
+
 
 def unregister():
+    del Object.efx_expression_curves_active_index
+    del Object.efx_expression_curves
+    del Object.efx_expression_bit_count
+    del Object.efx_is_expression_attribute
     del Object.efx_clip_curves_active_index
     del Object.efx_clip_curves
     del Object.efx_clip_loop_type

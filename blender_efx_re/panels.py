@@ -6,7 +6,7 @@ import bpy
 from bpy.props import StringProperty
 from bpy.types import Panel, UIList
 
-from . import io_tree, model, semantics
+from . import bridge, io_tree, model, semantics
 
 # 知识表只在"attribute $type + 顶层内容字段 key"这一级生效（见 semantics.py 说明），confidence
 # 不是 "confirmed" 时在标签旁加一个问号图标，提醒这是未经游戏内实测验证的猜测，不是权威结论。
@@ -427,6 +427,83 @@ class EFX_OT_clip_keyframe_remove(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class EFX_UL_expression_curves(UIList):
+    bl_idname = "EFX_UL_expression_curves"
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        row = layout.row(align=True)
+        label = item.bit_name or f"Bit {item.bit_index}"
+        row.label(text=label, icon="DRIVER", translate=False)
+        row.label(text=item.formula, translate=False)
+
+
+class EFX_OT_expression_curve_add(bpy.types.Operator):
+    bl_idname = "efx_re.expression_curve_add"
+    bl_label = "Add Expression"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        obj = context.object
+        used = {curve.bit_index for curve in obj.efx_expression_curves}
+        bit_index = next((i for i in range(obj.efx_expression_bit_count) if i not in used), None)
+        if bit_index is None:
+            self.report(
+                {"ERROR"},
+                f"所有 {obj.efx_expression_bit_count} 个 bit 都已经有公式了，不能再添加",
+            )
+            return {"CANCELLED"}
+        curve = obj.efx_expression_curves.add()
+        curve.bit_index = bit_index
+        obj.efx_expression_curves_active_index = len(obj.efx_expression_curves) - 1
+        return {"FINISHED"}
+
+
+class EFX_OT_expression_curve_remove(bpy.types.Operator):
+    bl_idname = "efx_re.expression_curve_remove"
+    bl_label = "Remove Expression"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        obj = context.object
+        index = obj.efx_expression_curves_active_index
+        if 0 <= index < len(obj.efx_expression_curves):
+            obj.efx_expression_curves.remove(index)
+            obj.efx_expression_curves_active_index = min(index, len(obj.efx_expression_curves) - 1)
+        return {"FINISHED"}
+
+
+def _active_expression_curve(obj):
+    index = obj.efx_expression_curves_active_index
+    if 0 <= index < len(obj.efx_expression_curves):
+        return obj.efx_expression_curves[index]
+    return None
+
+
+class EFX_OT_expression_formula_check(bpy.types.Operator):
+    """调用 EfxBridge 的 exprcheck 子命令校验当前活动公式的语法（`EfxExpressionStringParser`
+    的语法），不需要跑一次完整导出——见 bridge.check_expression() 的说明。真正的导出仍然靠
+    check_expression_bits()（bit_index 校验）+ load_efx() 失败兜底，这里只是提前反馈。"""
+
+    bl_idname = "efx_re.expression_formula_check"
+    bl_label = "Validate Formula"
+    bl_options = {"REGISTER"}
+
+    def execute(self, context):
+        curve = _active_expression_curve(context.object)
+        if curve is None:
+            return {"CANCELLED"}
+        try:
+            error = bridge.check_expression(curve.formula)
+        except bridge.BridgeError as ex:
+            error = str(ex)
+        curve.formula_error = error or ""
+        if error:
+            self.report({"ERROR"}, error)
+        else:
+            self.report({"INFO"}, "公式合法")
+        return {"FINISHED"}
+
+
 class EFX_PT_main(Panel):
     bl_idname = "EFX_PT_main"
     bl_label = "MHWs EFX"
@@ -609,6 +686,29 @@ class EFX_PT_object(Panel):
                             row.prop(kf, "tangent_in_x")
                             row.prop(kf, "tangent_in_y")
 
+            if obj.efx_is_expression_attribute:
+                expr_box = layout.box()
+                expr_box.label(text=f"Expression (bit count: {obj.efx_expression_bit_count}):")
+
+                row = expr_box.row()
+                row.template_list(
+                    "EFX_UL_expression_curves", "", obj, "efx_expression_curves",
+                    obj, "efx_expression_curves_active_index", rows=3,
+                )
+                col = row.column(align=True)
+                col.operator("efx_re.expression_curve_add", icon="ADD", text="")
+                col.operator("efx_re.expression_curve_remove", icon="REMOVE", text="")
+
+                curve = _active_expression_curve(obj)
+                if curve is not None:
+                    sub_box = expr_box.box()
+                    sub_box.prop(curve, "bit_index")
+                    row = sub_box.row(align=True)
+                    row.prop(curve, "formula", text="")
+                    row.operator("efx_re.expression_formula_check", icon="CHECKMARK", text="")
+                    if curve.formula_error:
+                        sub_box.label(text=curve.formula_error, icon="ERROR")
+
             layout.label(text="Fields:")
             root_obj = io_tree.find_root(obj)
             for node in obj.efx_fields:
@@ -623,6 +723,7 @@ _CLASSES = (
     EFX_UL_expression_parameters,
     EFX_UL_clip_curves,
     EFX_UL_clip_keyframes,
+    EFX_UL_expression_curves,
     EFX_OT_field_info,
     EFX_OT_group_add,
     EFX_OT_group_remove,
@@ -638,6 +739,9 @@ _CLASSES = (
     EFX_OT_clip_curve_remove,
     EFX_OT_clip_keyframe_add,
     EFX_OT_clip_keyframe_remove,
+    EFX_OT_expression_curve_add,
+    EFX_OT_expression_curve_remove,
+    EFX_OT_expression_formula_check,
     EFX_PT_main,
     EFX_PT_object,
 )

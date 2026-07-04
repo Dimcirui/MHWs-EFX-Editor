@@ -51,13 +51,23 @@
 using System.Text.Json;
 using ReeLib;
 using ReeLib.Efx;
+using ReeLib.Efx.Structs.Basic;
+using ReeLib.Efx.Structs.Common;
 
-static JsonSerializerOptions CreateBridgeJsonOptions() => new(EfxJsonTypeResolver.jsonOptions)
+static JsonSerializerOptions CreateBridgeJsonOptions()
 {
-    // EFX 里的 float 字段会出现 Infinity/NaN（例如"无上限"语义），默认 JSON 数字语法
-    // 不支持这两个字面量，需要显式放开（写成 "Infinity"/"NaN" 字符串形式的具名浮点值）。
-    NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals,
-};
+    var options = new JsonSerializerOptions(EfxJsonTypeResolver.jsonOptions)
+    {
+        // EFX 里的 float 字段会出现 Infinity/NaN（例如"无上限"语义），默认 JSON 数字语法
+        // 不支持这两个字面量，需要显式放开（写成 "Infinity"/"NaN" 字符串形式的具名浮点值）。
+        NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals,
+    };
+    // 插到最前面：System.Text.Json 按 Converters 列表顺序找第一个 CanConvert 命中的，插在最前
+    // 保证盖过 vendor 自带的（有 bug 的）EFXExpressionTreeJsonConverter，见
+    // FixedExpressionTreeJsonConverter 的说明。
+    options.Converters.Insert(0, new FixedExpressionTreeJsonConverter());
+    return options;
+}
 
 if (args.Length >= 1 && args[0] == "dump")
 {
@@ -67,6 +77,10 @@ if (args.Length >= 1 && args[0] == "load")
 {
     return RunLoad(args);
 }
+if (args.Length >= 1 && args[0] == "exprcheck")
+{
+    return RunExprCheck(args);
+}
 
 if (args.Length < 2 || args[0] != "roundtrip")
 {
@@ -74,6 +88,7 @@ if (args.Length < 2 || args[0] != "roundtrip")
     Console.WriteLine("  dotnet <dll> roundtrip <目录或文件路径> [--verbose] [--dump <输出目录>]");
     Console.WriteLine("  dotnet <dll> dump <efx 文件路径> <json 输出路径>");
     Console.WriteLine("  dotnet <dll> load <json 文件路径> <efx 输出路径>");
+    Console.WriteLine("  dotnet <dll> exprcheck <公式文本>");
     return 1;
 }
 
@@ -224,6 +239,10 @@ static int RunDump(string[] args)
         var handler = new FileHandler(efxPath);
         var efx = new EfxFile(handler);
         efx.Read();
+        // Expression/MaterialExpressions 的 parsedExpressions 默认是 null（vendor 只在显式调用
+        // ParseExpressions() 时才反向重建成人类可读的公式字符串+参数列表），不主动调用的话
+        // dump 出来的 JSON 里公式内容永远拿不到，Blender 侧没法展示/编辑。
+        efx.ParseExpressions();
 
         var json = JsonSerializer.Serialize(efx, CreateBridgeJsonOptions());
         File.WriteAllText(jsonOutPath, json);
@@ -254,6 +273,14 @@ static int RunLoad(string[] args)
         var efx = JsonSerializer.Deserialize<EfxFile>(json, CreateBridgeJsonOptions())
             ?? throw new Exception("反序列化结果为 null");
 
+        // Python 侧只写 Expression.parsedExpressions（人类可读的公式字符串——反序列化时已经
+        // 由 vendor 的 EFXExpressionTreeJsonConverter 调用 EfxExpressionStringParser.Parse()
+        // 编译成树了），不写 expressions（真正参与二进制写出的扁平后缀栈）。这里补一步把树
+        // 摊平回 expressions，镜像 EfxFile.ParseExpressions() 自己的遍历方式（Entries + 递归
+        // Actions/efxrData），但只处理 IExpressionAttribute——IMaterialExpressionAttribute
+        // 本轮不碰，维持原样透传。
+        CompileExpressions(efx);
+
         efx.WriteTo(efxOutPath);
         Console.WriteLine($"OK: {jsonPath} -> {efxOutPath}");
         return 0;
@@ -263,5 +290,134 @@ static int RunLoad(string[] args)
         Console.WriteLine($"[ERROR] {jsonPath}");
         Console.WriteLine(ex.ToString());
         return 1;
+    }
+}
+
+static void CompileExpressions(EfxFile file)
+{
+    foreach (var entry in file.Entries)
+    {
+        foreach (var attr in entry.Attributes)
+        {
+            if (attr is IExpressionAttribute expr && expr.Expression != null)
+            {
+                expr.Expression.expressions.Clear();
+                // 不直接调用 EfxFile.FlattenExpressionTrees()——它内部用 `new
+                // EFXExpressionObject()`（无参构造函数）造新对象，Version 留在默认值，而
+                // EFXExpressionObject 是 [RszVersionedObject]（`struct3Count` 字段只在
+                // Version > DD2 时才写/读），Version 不对会导致写出的字节和这个文件真实版本号
+                // 要求的字段布局对不上，读回来直接在别处崩溃（EFXExpressionData 的多态判别
+                // 字段错位，报 NotImplementedException）。改成自己逐个 tree 摊平，手动补上
+                // 正确的 Version（照抄 EfxFile.cs 里 `param.Version = Header.Version` 那种
+                // 现成写法）。
+                foreach (var tree in expr.Expression.ParsedExpressions ?? new())
+                {
+                    // EfxExpressionStringParser.Parse() 解析裸标识符（不带 p:/ext:/const: 前缀）
+                    // 时，StoreNewParameters() 一律先打上 source=External，只有调用方传进来的
+                    // parameters 参数里有同 hash 的条目才会在 Parse() 末尾被换回正确 source——
+                    // 我们的 parsedExpressions 只存公式文本，不预先提供这份 parameters
+                    // 上下文（同一个 hash 具体是 Parameter 引用还是真的 External，只有查
+                    // ExpressionParameters 表才知道，没必要在 Python 端重新实现一遍标识符
+                    // 提取）。而 FlattenExpression() 的 ParameterHash 分支只在 tree.parameters
+                    // 里"还没有这个 hash"时才会去查 FindParameterByHash 补 source——Parse()
+                    // 已经把每个 hash 都加进去了（哪怕 source 是错的 External），所以这个补救
+                    // 分支永远不会触发。这里在摊平之前先手动跑一遍同样的查表校正，效果等价于
+                    // 一开始就传对 parameters，但不用在 Python 端重复解析公式文本。
+                    for (int i = 0; i < tree.parameters.Count; i++)
+                    {
+                        var p = tree.parameters[i];
+                        if (p.source != ExpressionParameterSource.Parameter && file.FindParameterByHash(p.parameterNameHash) != null)
+                        {
+                            p.source = ExpressionParameterSource.Parameter;
+                            tree.parameters[i] = p;
+                        }
+                    }
+                    var flat = file.FlattenExpressionTree(tree);
+                    flat.Version = file.Header!.Version;
+                    expr.Expression.AddExpression(flat);
+                }
+            }
+        }
+    }
+    foreach (var action in file.Actions)
+    {
+        foreach (var a in action.Attributes.OfType<EFXAttributePlayEmitter>())
+        {
+            if (a.efxrData != null) CompileExpressions(a.efxrData);
+        }
+    }
+}
+
+static int RunExprCheck(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.WriteLine("用法: dotnet <dll> exprcheck <公式文本>");
+        return 1;
+    }
+    var formula = args[1];
+
+    try
+    {
+        EfxExpressionStringParser.Parse(formula, new List<EFXExpressionParameterName>());
+        Console.WriteLine("OK");
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ERROR] {ex.Message}");
+        return 1;
+    }
+}
+
+// vendor 自带的 EFXExpressionTreeJsonConverter.Read()（EfxFile.cs）读 "expression" 这个字符串
+// 属性时有个真实 bug：读到 PropertyName token 后直接调用 reader.GetString()，没有先
+// reader.Read() 前进到值 token——Utf8JsonReader.GetString() 在 PropertyName token 上合法调用
+// 但返回的是属性名本身（字面量 "expression"），不是它的值。结果是任何走 load 的 Expression
+// 公式，不管原文写的是什么，解析出来的都是同一个 identifier "expression"（对应
+// parameterHash = MurMur3("expression")）——已用真实样本复现确认（dump→load→dump 后 6 个
+// TypeBillboard3DExpression attribute 全部退化成同一个 ext:2062838256）。vendor 是 git
+// submodule，不在这层直接改提交，照抄原始逻辑只补一行 reader.Read() 再挂进
+// CreateBridgeJsonOptions()（System.Text.Json 按顺序找第一个匹配的 converter，插在列表最前面
+// 就能盖过 vendor 自己注册的那个）。
+sealed class FixedExpressionTreeJsonConverter : System.Text.Json.Serialization.JsonConverter<EFXExpressionTree>
+{
+    public override EFXExpressionTree? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException($"Expression tree should be object at {reader.TokenStartIndex}");
+        }
+
+        var expr = "";
+        var parameters = new List<EFXExpressionParameterName>();
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+        {
+            if (reader.TokenType == JsonTokenType.PropertyName)
+            {
+                var prop = reader.GetString();
+                switch (prop)
+                {
+                    case "expression":
+                        reader.Read();
+                        expr = reader.GetString()!;
+                        break;
+                    case "parameters":
+                        parameters = JsonSerializer.Deserialize<List<EFXExpressionParameterName>>(ref reader, options) ?? [];
+                        break;
+                }
+            }
+        }
+
+        return EfxExpressionStringParser.Parse(expr, parameters);
+    }
+
+    public override void Write(Utf8JsonWriter writer, EFXExpressionTree value, JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("expression", value.root.ToString());
+        writer.WritePropertyName("parameters");
+        JsonSerializer.Serialize(writer, value.parameters, options);
+        writer.WriteEndObject();
     }
 }

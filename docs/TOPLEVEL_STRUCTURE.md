@@ -717,3 +717,140 @@ PlayEmitter.efxrData 子树**——Clip 的 bit 校验是纯局部的（不依�
 
 测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON/efx 测试文件，没有
 改动仓库里的任何样本文件。
+
+## `Expression`（attribute 内容级，同 Clip 是 BitSet 家族）结构调研与实现
+
+### 结构
+
+`IExpressionAttribute`（`EfxFile.cs:993`）：`EFXExpressionList? Expression { get; set; }` +
+`BitSet ExpressionBits { get; }`，和 Clip 的 `IClipAttribute` 是同一个 BitSet 家族——0-based
+`bit_index`、"子项数组下标和排序后的置位 bit 下标一一对应"的约定完全相同（已用真实样本验证，
+`11_guide_006` 里 `bit_name == "color"` 的公式是 `Lerp(IsBlue, colorR_N, color_N)`，语义吻合）。
+区别在于每个置位驱动的不是关键帧曲线，而是一条**后缀表达式栈**
+（`EFXExpressionObject.components: EFXExpressionData[]`，每项是
+`Float`/`BinaryOperator`/`UnaryOperator`(仅 Negation)/`Function`/`ParameterHash` 五选一，
+`ExpressionData.cs`）。
+
+**`Expression`/`ExpressionBits` 是只读别名，不是真字段**——和 Clip 反过来：Clip 是
+`Clip`/`ClipBits` 只读别名、`clipData`/`clipBits` 才是真字段；Expression 具体类
+（如 `EFXAttributeNoiseExpression`，`EfxMiscStructs.cs:453`）里是
+`Expression { get => expressions; set => expressions = value; }` / `ExpressionBits =>
+expressionBits`，真正的公开字段是小写的 `expressions`/`expressionBits`。`IncludeFields=true`
+下两边都会被序列化，JSON 里同时出现四个键，内容两两相同（已用真实样本核对）。Blender 侧
+四个键全部从通用树里剔除（`build_attribute_object()`），只从大写两个键读/写，实测两条路径
+效果等价（`ExpressionBits` 虽然只读，但 `BitSet` 是引用类型，`System.Text.Json` 在
+`IgnoreReadOnlyProperties=false` 时会取现有实例原地填充，不需要走 setter）。
+
+**函数语义**（`EfxExpressionFunction`，`ExpressionTree.cs:24-41`）：`Unary0`-`Unary10`
+（一元，真实数学含义未确认，vendor 注释猜测 sin/cos/tan/atan2/inverse/reciprocal/sqrt/
+pow2/pow3/root3/exp/abs/ceil/floor/clamp01/log 但没有一一对应）、`Lerp`/`InvLerp`/`Clamp`
+（三元，参数序 `(left, arg2, arg3)`）；`Min`/`Max` 不是 Function，是单独的 `BinaryOperator`
+（二元）。
+
+### 编辑方式：文本公式，不是节点树，也不在 Python 里重新实现解析器
+
+vendor 自带一套完整的文本公式语法解析器+打印器
+（`EfxExpressionStringParser.Parse`/`EFXExpressionTree.ToString()`，
+`EfxExpressionParser.cs`），把后缀栈和 `min(1, clamp(x, 30, 150))` 这样的可读文本互转
+（标识符语法：`p:hash`/`ext:hash`/`const:hash` 或裸名字，裸名字按 MurMur3 哈希查具名参数表）。
+这和 Blender 自己的 Driver 表达式（一个文本框 + 一份具名变量表）是同一个心智模型，比造一个
+节点树编辑器的实现成本低得多，也不需要在 Python 里重新实现一遍这个递归下降解析器——所有
+文本↔树↔后缀栈的转换全部靠 `EfxBridge` 调用 vendor 现成的方法完成：
+
+- `dump` 时调用 `EfxFile.ParseExpressions()`（`EfxFile.cs:1201`，递归 Entries+Actions/efxrData，
+  这个方法之前在 vendor 库和 EfxBridge 里都从未被调用过，纯粹是个可选的便利方法），把
+  `Expression.ParsedExpressions` 填成 `[{"expression": "<文本>", "parameters": [...]}]`。
+- `load` 时反过来，对每个 `IExpressionAttribute` 清空 `expressions`，把
+  `ParsedExpressions`（这时候已经是 JSON 反序列化时被 `EfxExpressionStringParser.Parse()`
+  编译好的树，见下面的 bug 1）摊平回 `expressions`。
+- Blender 侧（`EFXExpressionCurveItem`）只存一个 `formula: StringProperty`，没有任何递归
+  节点结构。
+
+这个设计意味着**在这一轮调研里连续发现并绕过了三个真实的 vendor bug**，全部是"文本公式"这条
+路径此前从未被任何调用方走过、纯二进制读写路径完全正常但没人测过 JSON 往返（对照 Clip 的
+`IntValue` setter bug、ExpressionParameters 的三个坑——同一类"没人真正用过的代码路径里趴着
+bug"）：
+
+**Bug 1：`EfxFile.FlattenExpressionTree()` 没有正确设置 `Version`**
+（`EfxFile.cs:1236`）。这个方法用 `new EFXExpressionObject()`（无参构造函数）造新对象，
+`Version` 留在默认值 0；而 `EFXExpressionObject` 是 `[RszVersionedObject(typeof(EfxVersion))]`，
+`struct3Count` 字段只在 `Version > DD2` 时才写/读（`ExpressionData.cs:126`）。`Version=0`
+时写出的字节少 4 个字节，但读回来时（文件的真实版本号远高于 DD2）读取端会按"有 `struct3Count`"
+去解析，直接读串位，后续 `EFXExpressionData` 的多态判别字段 `type` 读出乱码值，抛
+`NotImplementedException: Unhandled switch case`。已用真实样本复现确认（不修复的话，任何
+Expression 公式编辑一律无法导出）。规避方案：`EfxBridge` 不直接调用
+`FlattenExpressionTrees()`，改成自己遍历 `ParsedExpressions` 逐个调用底层的
+`FlattenExpressionTree(tree)`，手动补上 `flat.Version = file.Header!.Version`
+（照抄 `EfxFile.cs` 里 `param.Version = Header.Version` 的现成写法），见
+`tools/EfxBridge/Program.cs` 的 `CompileExpressions()`。
+
+**Bug 2：`EFXExpressionTreeJsonConverter.Read()` 读 `"expression"` 字符串属性时漏了一次
+`reader.Read()`**（`EfxFile.cs` 内部类，私有，无法从 `EfxBridge` 外部直接修）。
+读到 `PropertyName` token 后直接调用 `reader.GetString()`——`Utf8JsonReader.GetString()`
+在 `PropertyName` token 上合法调用，但返回的是**属性名本身**（字面量 `"expression"`），
+不是紧跟着的值。结果是任何走 `load` 的 Expression 公式，不管原文写的是什么，解析出来的都是
+同一个裸标识符 `"expression"`（对应 `parameterHash = MurMur3("expression")`）——已用真实样本
+复现确认（6 个 `TypeBillboard3DExpression` attribute 的公式全部退化成同一个
+`ext:2062838256`）。规避方案：由于是 vendor 私有内部类无法直接打补丁，在 `EfxBridge` 自己的
+`CreateBridgeJsonOptions()` 里注册一个照抄原始逻辑、只补一行 `reader.Read()` 的
+`FixedExpressionTreeJsonConverter`，插到 `Converters` 列表最前面——`System.Text.Json`
+按顺序找第一个 `CanConvert`命中的转换器，插在最前面就能盖过 vendor 自己注册的那个，不需要
+改 vendor 提交。
+
+**Bug 3：具名标识符的 `source`（Parameter/Constant/External）在"纯文本公式、不预先提供
+`parameters` 上下文"的场景下永远解析成 `External`，即使这个名字明明在 `ExpressionParameters`
+表里**。根源在 `EfxExpressionStringParser.ParseIdentifier()`：裸名字（不带 `p:`/`ext:`/
+`const:` 前缀）一律先标成 `source = Unknown`；`Parse()` 末尾的 `StoreNewParameters()`
+把所有 `Unknown` 强制改写成 `External`，只有调用方传进 `Parse()` 的 `parameters` 参数里
+有同 hash 的条目（带正确 `source`）才会在最后一步被换回来。而 `FlattenExpression()` 的
+`ParameterHash` 分支只在 `tree.parameters` 里"还没有这个 hash"时才会去查
+`FindParameterByHash()` 补救——`Parse()` 已经把每个 hash 都加进去了（哪怕 source 是错的
+`External`），补救分支永远不会触发。我们的 `parsedExpressions` 只存公式文本，不预先提供
+`parameters`（没必要在 Python 端重新解析公式文本提取标识符），所以每次都会踩中这个问题。
+规避方案：`CompileExpressions()` 在摊平之前，对 `tree.parameters` 里每个非 `Parameter`
+source 的条目手动查一遍 `file.FindParameterByHash()`，查到就纠正成 `Parameter`——效果等价于
+一开始就传对 `parameters`，但不需要 Python 端重复解析逻辑。已用真实样本验证：修复前
+`Lerp(IsBlue, colorR_N, color_N)` 这种引用具名参数的公式，往返一次后变成
+`Lerp(ext:2800915016, ext:2239261228, ext:1397525639)`（source 错误导致名字解析不出来，
+只能显示裸哈希），修复后往返结果和原始完全一致。
+
+以上三个 bug 均通过 `tools/EfxBridge/Program.cs` 自身的代码绕过，没有修改 `vendor/`
+子模块——延续 Clip/ExpressionParameters 阶段"不确定就别动 vendor 提交，在自己的桥接层修"
+的做法。
+
+**`IMaterialExpressionAttribute`（`MaterialExpressions`，不同的键名，没有配对的 bits 键）
+本轮不处理，继续走通用树透传**——`ParseExpressions()` 顺带也会填充它的 `ParsedExpressions`
+（`EfxFile.cs:1208-1210`），这对我们没有直接影响，但顺带修复了一个我们之前记录过的潜在问题：
+`EFXMaterialExpressionListJsonConverter.Write()`（`EfxFile.cs:433-436`）在 `ParsedExpressions
+== null` 时会整个字段写成裸 `null`（丢弃 `expressions`/`indices`/`version`）——现在 dump 时
+`ParsedExpressions` 不再是 null 了，这个数据丢失风险不会在我们自己的 dump/load 往返里触发。
+没有专门验证 `IMaterialExpressionAttribute` 的完整正确性，仅供以后实现它时参考。
+
+### 实机验证（2026-07-05，Blender 5.1 + `diag/11_guide_006.efx.5571972.orig` +
+`diag/11_guide_110.efx.5571972.orig`）
+
+- Import 后逐个核对 12 个（`11_guide_006`）/18 个（`11_guide_110`）Expression attribute 的
+  `bit_index`/`bit_name`/`formula`，与 `EfxBridge dump`（打开 `ParseExpressions()` 后）
+  的 `parsedExpressions[].expression` 完全一致，`bit_name == "color"` 的公式语义吻合
+  （`Lerp(IsBlue, colorR_N, color_N)`）。
+- 两个样本纯直通往返（不经 Blender，`dump→load→dump`）：全部 Expression 公式文本逐条
+  完全相同（12 条 / 18 条），确认三个 bug 修复后通用往返稳定。
+- 过真实 `bpy.ops.efx_re.export()` 编辑一条公式（`Min(1, 2 + 3 * ext:speed)`，含二元运算符
+  嵌套、外部变量引用）后导出、`EfxBridge dump` 复核：编辑的那条公式正确变成新内容
+  （`Min(1, (2 + (3 * speed)))`，`speed` 正确解析成已知外部变量），其余 5 个未编辑的
+  `TypeBillboard3DExpression` attribute 的公式与导入前逐字完全相同（验证了"重新摊平所有
+  Expression attribute，不只是被编辑的那个"这个设计不会误伤未改动的数据）。
+- `check_expression_bits()` 四态测试：合法放行；`bit_index=999`（超出 `bit_count=13`）
+  正确拒绝；两条曲线设成同一个 `bit_index` 正确拒绝；恢复合法状态后正确放行——全部通过。
+- 走真实 `bpy.ops.efx_re.export` operator 用越界 `bit_index` 触发拒绝：operator 在调用
+  C# 桥接之前就报错、不写文件。
+- `EFX_OT_expression_formula_check`（"Validate"按钮）测试：合法公式报告"公式合法"并清空
+  `formula_error`；非法公式（`"Min(1, "`，缺右括号）正确捕获 vendor 解析器的报错信息并写入
+  `formula_error`。
+- 截图确认 UI 渲染正确：曲线列表显示"color / Lerp(IsBlue, colorR_N, color_N)"，选中后显示
+  Bit Index 字段、公式文本框、Validate 按钮；确认通用 Fields 树里不再重复出现
+  `expressionBits`/`expressions`（四个别名键已从内容树里正确剔除，只剩这个 attribute 类真正
+  未建 UI 的 `unkn*` 字段）。
+
+测试完成后同样清空了 Blender 实例里的场景对象/collection 和临时 JSON/efx 测试文件，没有
+改动仓库里的任何样本文件。
