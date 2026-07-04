@@ -160,6 +160,83 @@ REFramework/TDB 反射）几乎在所有交叉点上互相印证（`entryIndex` 
 `FieldParameterValue.type` 触发路径分支的取值集合），这让人对两边的可信度都更有信心——不是
 一边猜另一边抄，是两套独立方法收敛到同一结论。
 
+## `Bones` / `BoneRelations` 结构调研（2026-07-04）
+
+此前只标注"概念上与 MHWI PARENTOPTIONS 一致"，没有深挖。这次直接读 vendor 源码
+（`REE-Lib/OtherFiles/EfxFile.cs`）搞清楚了完整机制，关键结论：**Blender 侧完全不需要处理
+裸下标**——C# 后端自己在读时就把下标解析成骨骼名字字符串，写时再从名字反查下标，架构决策 4
+"跨引用一律用对象身份而非裸下标"在这里天然成立，甚至不需要我们自己实现。
+
+**字段清单**（`EfxFile.cs:657-671`）：
+```
+Bones          List<EFXBone>   — {name: string, value: uint}，文件级命名骨骼表
+BoneRelations  List<short>     — 纯下标数组，按"遇到顺序"消费，不认字段名
+```
+`EFXBone`（`EfxFile.cs:590-596`）只有 `name` + `value` 两个字段；`value` 语义未知（**不是**
+`nameHash`——`nameHash` 是写入时临时用 MurMur3 对 `name` 现算的，`value` 是独立存储的另一个
+量，磁盘上两者都在但语义分开）。读写只在 `Header.Version > EfxVersion.DMC5`（MHWilds 满足）
+时才生效（`EfxFile.cs:787,971`）——老版本游戏没有这套机制。
+
+**下标→名字的解析机制**（`SetupBoneReferences()`，`EfxFile.cs:853-891`，读完整个文件后跑一遍）：
+维护一个跨全部 `Entries`/`Attributes` 的顺序计数器，每遇到一个实现了 `IBoneRelationAttribute`
+接口（`interface IBoneRelationAttribute { string? ParentBone { get; set; } }`，`EfxFile.cs:607`）
+的 attribute，就消费 `BoneRelations` 里的下一个下标值，去 `Bones` 表里查名字，写进该 attribute
+的 `.ParentBone` 属性（下标 `-1` 或越界 → `ParentBone = null`，"没有父骨骼"）。写回时
+（`EfxFile.cs:982-989`）反过来：按同样的遍历顺序，对每个 `IBoneRelationAttribute`，用
+`Bones.FindIndex(b => b.name == parented.ParentBone)` 查出下标重新写回 `BoneRelations`——
+**`BoneRelations` 本身在导出时是完全重新生成的派生数据**，和 `EffectGroups` 的处理方式
+（结论 2）是同一个模式，Blender 侧不需要透传、更不需要编辑它。
+
+**已确认对 MHWilds 生效的 4 个 `IBoneRelationAttribute` 实现类**（各自还带一个同名概念但
+*完全独立存储*的"原始字段"，见下方风险提示）：
+`EFXAttributeParentOptions.BoneName`（真实样本 `$type` 命中确认）、
+`EFXAttributeAttractor.boneName`（真实样本命中确认）、
+`EFXAttributeVanishArea3D.JointName`（真实样本命中确认）、
+`EFXAttributeTypeLightning3D.boneName`（未在样本里出现，靠版本解析算法确认，见下）。
+
+**订正（2026-07-04，实现骨骼编辑 UI 前复核发现）：最初列了 6 个类，其中
+`EFXAttributeTypeLightning3DV1` 和 `EFXAttributeTypeStrainRibbonV2` 经复核不适用于
+MHWilds，已剔除。** 原因是 `EfxAttributeTypeRemapper.GenerateEfxLookup()`
+（`EfxAttributeTypes.cs:408-465`）按 `EfxStructAttribute` 声明的版本列表做"精确匹配，否则退回
+`GameOrder`（`EfxFile.AllVersions`，即 `EfxVersion` 枚举声明顺序，恰好是游戏发布顺序）里
+最近的更早版本"这套解析规则，同一个 `EfxAttributeType` 在不同游戏版本下可能对应不同的具体类：
+- `TypeLightning3D`：`EFXAttributeTypeLightning3DV1`（RE7/RE2/DMC5）实现接口，但
+  `EFXAttributeTypeLightning3D`（RE8/MHRiseSB/**DD2**）也实现接口——MHWilds 没有专属覆盖，
+  退回"最近的更早版本"命中 DD2（比 RE7/RE2/DMC5 更晚），所以 MHWilds 用的是后者
+  （`EFXAttributeTypeLightning3D`，不是 V1）——**结论不变，只是排除了不适用的 V1**。
+- `TypeStrainRibbon`：`EFXAttributeTypeStrainRibbonV2`（RE8/RERT）实现接口，但
+  `EFXAttributeTypeStrainRibbonV3`（**RE4**，声明注释里直接写"past this is wild territory
+  for Wilds"，内部还有 `[RszVersion(EfxVersion.MHWilds, ...)]` 门控字段，证实一直沿用到
+  MHWilds）**不**实现 `IBoneRelationAttribute`——RE4 比 RE8/RERT 更接近 MHWilds，退回逻辑命中
+  V3，MHWilds 的 `TypeStrainRibbon` attribute 实际上**没有**索引表骨骼绑定能力，只剩一个
+  纯遗留、无下标关联的 `boneName` 字符串字段。**这个类从骨骼引用字段清单里整个删掉**（不是
+  当前 4 个之一，Blender 侧不应该给它挂 `prop_search`）。
+- `ParentOptions`/`Attractor`/`VanishArea3D` 三个已经是真实样本 `$type` 直接命中的，不受这套
+  退回逻辑的不确定性影响，结论不需要重新核对。
+
+**风险 1（真实数据校验，2026-07-04）：`BoneName`/`boneName`/`JointName` 与 `ParentBone` 是
+两个独立存储位置，不是同一个值的两种展现方式。** 用 `EfxBridge dump` 复核了仓库里唯二的样本
+（`guide_006`/`guide_110`），全部 20 处 `IBoneRelationAttribute` 实例里，`BoneName` 系字段
+（`[RszInlineWString(ByteSize=True)]`，无版本门控，MHWilds 下仍然真实读写）**全部是空字符串
+`""`**，`ParentBone`（纯运行时属性，不参与 RSZ 读写，只由 `SetupBoneReferences()`/写出逻辑
+维护）**全部是 `null`**——两者在这两个样本里表现一致（都是"无绑定"），但样本恰好都没有真实
+用到骨骼绑定，**无法确认 `BoneName` 在有真实绑定的文件里是否也保持为空**。从代码结构看，
+`BoneName` 这个字段从 RE7 就存在（`EfxStruct` 版本列表包含 RE7/RE2/DMC5），推测是老版本游戏
+直接内联骨骼名字的机制；RE3+ 引入 `Bones`/`BoneRelations` 下标表后，`BoneName` 字段本身
+在新版本里大概率是废弃但仍被读写的遗留字段（新工具链不再往里写东西，但字节布局保留兼容）。
+**这个推测目前只有 0 个正样本佐证**，等有真实带骨骼绑定的 MHWs 样本（或能重新访问
+`MHWILDS_EXTRACT/EFX` 那 9241 个语料）时应该批量确认：是否存在任何非空 `BoneName` 与非
+`null` 的 `ParentBone` 同时出现、且两者不一致的情况。
+
+**风险 2（代码读出的真实设计隐患，非样本问题）：`ParentBone` 与 `Bones` 表失配时静默降级为
+"无父骨骼"，不报错。** 写出逻辑 `Bones.FindIndex(b => b.name == parented.ParentBone)`——如果
+`ParentBone` 是某个不在 `Bones` 表里的名字，`FindIndex` 返回 `-1`，直接当成"没有父骨骼"写进
+文件，**没有任何异常或警告**。这意味着如果 Blender 侧允许用户把某个 attribute 的骨骼引用
+改成一个新名字、却忘了同步维护文件级 `Bones` 表，导出会静默产生"看起来正常但绑定丢失"的
+文件——这正是架构决策 9 想避免的那类"错误结构骗过用户"情况，只是这次是我们自己的 Python
+胶水层要对齐这个纪律，不是 C# 后端解析失败那种情况。**设计骨骼编辑 UI 时必须堵上这个口子**
+（校验/自动同步二选一，见下方 Blender 设计讨论）。
+
 ## 哈希调研补记（2026-07-04）
 
 排查过"`unkn` 字段是否也像 TIML 那样带可还原的哈希"这个思路（动机：姊妹项目在 MHWI 侧靠

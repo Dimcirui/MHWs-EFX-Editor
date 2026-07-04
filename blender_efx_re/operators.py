@@ -66,6 +66,12 @@ class EFX_OT_export(Operator, ExportHelper):
             self.report({"ERROR"}, "选中一个属于某个 EFX_ROOT 对象树的对象（Entry/Action/Attribute/Root 均可）")
             return {"CANCELLED"}
 
+        try:
+            io_tree.check_bone_references(root_obj)
+        except io_tree.BoneReferenceError as ex:
+            self.report({"ERROR"}, str(ex))
+            return {"CANCELLED"}
+
         data = io_tree.export_root_to_efxfile(root_obj)
 
         try:

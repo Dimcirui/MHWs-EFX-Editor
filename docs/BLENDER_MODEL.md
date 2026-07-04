@@ -248,3 +248,94 @@ dict **完全相等**（除了 Blender 对象名因去重多了 `.001`，这不�
 数据里）原样带过去，粘贴后的对象在 Outliner 里靠 Blender 自己的 `.001` 去重后缀区分，但
 游戏侧数据本身目前没有 UI 能重新编辑成不一样的值——这是既有的"opaque 字段没有编辑 UI"设计
 边界，复制/粘贴没有让它变得更好也没有变得更差，等以后要给这些字段建编辑 UI 时一起解决。
+
+## Phase 1 补充 —— Bones / BoneRelations 编辑 UI（2026-07-04）
+
+结构调研见 [TOPLEVEL_STRUCTURE.md](TOPLEVEL_STRUCTURE.md)"Bones / BoneRelations 结构调研"
+一节；这里记录 Blender 侧怎么落地。用户明确了当前策略：骨骼在游戏里到底怎么工作还没搞清楚
+（等用户或朋友继续研究），所以**只做强制手动维护，不做"自动补齐缺失骨骼"的便利按钮**——
+校验失败就直接拒绝导出，把决定权留给用户。
+
+**数据模型**（`model.py`）：
+- 新增 `EFXBoneItem`（`name` + `value` 两个字段）。`value` 语义未知，按"结构性 UI 先做，
+  标注后补"存成十进制字符串而不是 `IntProperty`——vendor 是 `uint32`，`IntProperty` 是有符号
+  32 位，字符串存全量精度，避免真遇到高位字段被截断，思路和 `EFXValueNode` 的 BIGINT 处理
+  一致。
+- `ROOT_STRUCTURAL_KEYS` 加入 `Bones`/`BoneRelations`：`Bones` 建 UI（`EFX_ROOT.efx_bones`
+  collection），`BoneRelations` 和 `EffectGroups` 同一个模式——导出时固定给空数组，交给 C#
+  后端从各 attribute 当前的 `ParentBone` 反查重建下标（`EfxFile.cs:982-989` 已确认）。
+- 新增 `is_bone_reference_field()`：纯结构判断（`node.key == "ParentBone"`），不维护一份
+  硬编码的 attribute 类型清单——`ParentBone` 是 C# 接口 `IBoneRelationAttribute` 统一定义的
+  属性名，任何实现了这个接口的 attribute 在 JSON 里都会出现这个键，vendor 升级新增实现类
+  时这里不用跟着改代码。
+
+**Import/Export**（`io_tree.py`）：
+- `build_root_from_efxfile()` 从 `Bones` 数组填 `efx_bones`；`export_root_to_efxfile()` 从
+  `efx_bones` 反填 `Bones`，`BoneRelations` 固定 `[]`。
+- `build_attribute_object()` 新增一步规整：`ParentBone` 是 `null`（无绑定）时改存成空字符串
+  `""`——C# 写出逻辑用 `string.IsNullOrEmpty(ParentBone)` 判断"无父骨骼"，`null`/`""`
+  语义完全等价，但 `EFXValueNode` 的 `NULL` data_type 没有可编辑的 slot（画不出
+  `prop_search`），所以统一转成可编辑的 `STRING` 空值，导出行为不变。
+- 新增 `check_bone_references()`：导出前扫描顶层文件自己 Entries/Actions 下每个 attribute 的
+  `ParentBone`，非空就必须能在 `efx_bones` 里找到同名条目，找不到直接抛
+  `BoneReferenceError`（`EFX_OT_export` 捕获后 `{"ERROR"}` + `{"CANCELLED"}`，不写文件）。
+  这里堵的是一个真实读出来的设计隐患：C# 后端写出时 `Bones.FindIndex(name)` 找不到会**静默**
+  写成 `-1`（"无父骨骼"），不报任何异常——如果不在 Python 侧提前拦，用户改错骨骼名字会在
+  完全没有报错提示的情况下丢失绑定，这正是架构决策 9 想避免的"错误结构骗过用户"，只是这次
+  堵漏洞的是我们自己的胶水层，不是 C# 解析失败那种情况。
+- **已知范围限制**：这次的编辑 UI 和校验只覆盖顶层文件自己的 Bones/Entries/Actions，不递归
+  进嵌套 `PlayEmitter.efxrData` 子树。原因是 vendor 源码本身读写不对称——读时嵌套文件的骨骼
+  引用查的是外层文件的 `Bones`（`parentFile?.Bones ?? Bones`，`EfxFile.cs:855`），写时却查
+  嵌套文件自己的 `Bones`（`EfxFile.cs:984`，不查 `parentFile`）——这意味着嵌套树里如果真的
+  用了骨骼绑定，重新导出后大概率会失效，但这是 vendor 自身的行为，不是这个功能能堵上的坑。
+  面板上 `draw_node()` 给嵌套树里的 `ParentBone` 字段画 `prop_search` 时，`io_tree.find_root()`
+  会定位到最近的外层 `EFX_ROOT`（可能是嵌套的那个，不是最外层文件），意味着嵌套树内的骨骼
+  搜索框实际会对着一个大概率是空的 `efx_bones` 列表——不会报错崩溃（`prop_search` 允许自由
+  输入，不强制列表内选择），只是自动补全用不上。等有真实带嵌套骨骼绑定的样本、确认 vendor
+  这条路径实际行为后再决定要不要专门处理。
+
+**UI**（`panels.py`）：`EFX_PT_object` 的 Root 面板新增一个 `EFX_UL_bones` 列表（对齐
+Subselect Groups 列表的样式，一行显示 name + value，`+`/`-` 增删）；`draw_node()` 检测到
+`ParentBone` 字段时画 `layout.prop_search(node, "string_value", root_obj, "efx_bones", ...)`
+——和 Blender 挑选顶点组/骨骼同一个"输入名字、自动补全"控件，而不是裸文本框，降低打错字
+概率（虽然 `prop_search` 本身不强制限制输入必须在列表里，真正兜底的是上面的导出前校验）。
+
+**实机验证（2026-07-04，Blender 5.1.2，via Blender MCP）**：写完代码时这个仓库还没连上运行
+中的 Blender，只做了 `py_compile` + 逐行走查；随后连上真实实例补了完整验证。第一步先发现
+Blender 里已经装了同名冲突的插件（`bl_ext.user_default.efx_editor` 其实是姊妹项目
+EFX-Editor/MHWI，不是本项目——本项目的 `id` 是 `mhws_efx_editor`，两者不冲突，只是这个环境
+之前没装过本项目）；本项目也从未真正打包安装过（`dist/` 下有一个旧 zip，内容早于这轮改动）。
+用 Python 重新打了 zip（`__init__.py` + `blender_manifest.toml` + `blender_efx_re/`，排除
+`__pycache__`），但 `bpy.ops.extensions.package_install_files` 在无头脚本调用下没有实际生效
+（返回 `FINISHED` 但不出现在已装插件列表里，怀疑是这个操作符设计为异步/依赖 UI 事件循环，
+脚本一次性调用拿不到真正完成的状态）——改用更直接的开发期做法：把仓库根目录加进
+`sys.path`，直接 `import blender_efx_re; blender_efx_re.register()`，绕开扩展安装 UI，效果
+等价（`blender_efx_re` 本身是个独立包，不依赖外层扩展包装）。
+
+验证结果：
+- 注册无异常（只有一条"面板类重复注册，注销先前的"信息级提示，是前一次残留状态，非本轮改动
+  引入的问题）。
+- Import `diag/11_guide_006.efx.5571972.orig`（7 Entries，0 Actions，104 条 entry 级
+  attribute）成功，`EFX_ROOT.efx_bones` 正确为空（对应样本 `Bones: []`）。
+- Root 面板截图确认 Bones 列表正确渲染（空列表 + `+`/`-` 按钮），`efx_re.bone_add` 增加一条
+  `pelvis`/`42` 后再截图确认。
+- `[start_in] ParentOptions`（真实样本里的 attribute）的 `ParentBone` 字段截图确认画的是
+  带搜索图标的 `prop_search` 控件，与同一 attribute 上 `BoneName`（遗留字段，未做特殊处理）
+  的普通文本框视觉上明显不同；`Attractor`/`VanishArea3D` 两个 attribute 也各自命中
+  `is_bone_reference_field()==True`，与 `ParentOptions` 行为一致（这三个是
+  docs/TOPLEVEL_STRUCTURE.md 里真实样本 `$type` 确认适用于 MHWilds 的类型）。
+- `check_bone_references()` 二态测试都通过：设成 `efx_bones` 里存在的名字（`pelvis`）不报错；
+  改成不存在的名字（`nonexistent_bone`）正确抛 `BoneReferenceError`，报错文案包含具体
+  attribute 对象名和骨骼名字。
+- 走真实 `bpy.ops.efx_re.export` operator 端到端验证：骨骼名字不合法时，operator 在**调用
+  C# 桥接之前**就报 `{"ERROR"}` 并返回 `{"CANCELLED"}`（脚本调用下 Blender 把
+  `self.report({'ERROR'}, ...)` 转成 `RuntimeError` 抛出，属于脚本环境下的正常行为，不是
+  bug）；改成合法名字后，operator 正确放行、继续往下走，实际卡在一个已知的、和这轮改动完全
+  无关的既有缺口（`EFXExpressionDataBase` 反序列化不支持，见"Blender 实机验证"一节）——
+  这恰恰证明我们的校验只在真正该拒绝时拒绝，不会误伤合法数据，且 `Bones`/`BoneRelations`
+  的 JSON payload 本身没有让 C# 桥接层多报任何新错误。
+- 直接检查 `io_tree.export_root_to_efxfile()` 的返回值，确认 `Bones` 正确导出成
+  `[{"name": "pelvis", "value": 42}]`、`BoneRelations` 正确固定为 `[]`。
+
+测试完成后清空了这个 Blender 实例里的场景对象/collection（避免留下测试脏数据误导下次
+session），没有改动仓库里的任何样本文件。

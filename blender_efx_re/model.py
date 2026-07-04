@@ -69,8 +69,11 @@ ACTION_STRUCTURAL_KEYS = frozenset({"Attributes"})
 
 # EfxFile 顶层字典里，Entries/Actions 单独按子对象处理，EffectGroups 整体不透传
 # （导出时固定输出空数组，靠 C# 后端 UpdateEffectGroups() 从各 Entry 的 Groups 反向重建，
-# 见 PLAN.md 验证记录），其余键原样存进 EFX_ROOT 的 efx_opaque_text。
-ROOT_STRUCTURAL_KEYS = frozenset({"Entries", "Actions", "EffectGroups"})
+# 见 PLAN.md 验证记录），Bones 建成 EFX_ROOT.efx_bones 列表 UI，BoneRelations 和
+# EffectGroups 一样整体不透传（导出时固定输出空数组，靠 C# 后端从每个 attribute 的
+# ParentBone + Bones 表反向重建下标，见 docs/TOPLEVEL_STRUCTURE.md "Bones / BoneRelations
+# 结构调研"），其余键原样存进 EFX_ROOT 的 efx_opaque_text。
+ROOT_STRUCTURAL_KEYS = frozenset({"Entries", "Actions", "EffectGroups", "Bones", "BoneRelations"})
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +207,21 @@ def is_static_random_node(node: EFXValueNode) -> bool:
     return {c.key for c in node.children} == {"s", "r"}
 
 
+def is_bone_reference_field(node: EFXValueNode, attr_type: str | None) -> bool:
+    """一个字符串叶子字段是不是"骨骼父级引用"（vendor `IBoneRelationAttribute.ParentBone`）。
+
+    只按字段 key 结构性判断（key == "ParentBone"），不维护一份硬编码的 attribute 类型清单：
+    这个属性名是 C# 接口 `IBoneRelationAttribute` 统一定义的，任何实现了这个接口的 attribute
+    类在 JSON 里都会出现这个键，以后 vendor 升级新增实现类也自动覆盖，不用改这里的代码。
+    `attr_type` 只用来确认调用方是在画 attribute 的顶层内容字段（不是某个嵌套子对象的
+    子字段——理论上不会有别的嵌套结构恰好也叫这个名字，但保持和知识表查询一致的"只在顶层
+    生效"约束）。见 docs/TOPLEVEL_STRUCTURE.md "Bones / BoneRelations 结构调研"一节：MHWilds
+    实际生效的 4 个实现类分别叫 `EFXAttributeParentOptions`/`Attractor`/`VanishArea3D`/
+    `TypeLightning3D`，但字段 key 统一都是 `ParentBone`。
+    """
+    return attr_type is not None and node.key == "ParentBone" and node.data_type == "STRING"
+
+
 def _json_scalar_data_type(value) -> str:
     if value is None:
         return "NULL"
@@ -294,6 +312,22 @@ class EFXGroupTag(PropertyGroup):
 
 
 # ---------------------------------------------------------------------------
+# EFXBoneItem —— EFX_ROOT 的文件级命名骨骼表（对应 EfxFile.Bones）
+# ---------------------------------------------------------------------------
+
+class EFXBoneItem(PropertyGroup):
+    """对应 vendor `EFXBone { name, value }`（`EfxFile.cs:590-596`）。`value` 语义未知
+    （不是 nameHash——nameHash 是导出时用 MurMur3 对 name 现算的，value 是独立存的另一个量，
+    见 docs/TOPLEVEL_STRUCTURE.md），按"结构性 UI 先做，标注后补"的原则存成十进制字符串而不是
+    IntProperty——vendor 声明是 uint32，IntProperty 是有符号 32 位，为了不因为某个样本恰好
+    取值超过 2^31-1 就静默截断/报错，用字符串存全量精度，和 EFXValueNode 的 BIGINT 处理是
+    同一个考量。"""
+
+    name: StringProperty(name="Bone Name")
+    value: StringProperty(name="Value", default="0")
+
+
+# ---------------------------------------------------------------------------
 # 不透明剩余字段 —— 存成 bpy.data.texts 文本块，import/export 两边共用
 # ---------------------------------------------------------------------------
 
@@ -320,7 +354,7 @@ def load_opaque(obj: Object) -> dict:
 # Object 级属性注册（挂在 bpy.types.Object 上，四种 ~TYPE 对象按需使用其中一部分）
 # ---------------------------------------------------------------------------
 
-_CLASSES = (EFXValueNode, EFXGroupTag)
+_CLASSES = (EFXValueNode, EFXGroupTag, EFXBoneItem)
 
 
 def register():
@@ -344,6 +378,13 @@ def register():
     Object.efx_groups = CollectionProperty(type=EFXGroupTag)
     Object.efx_groups_active_index = IntProperty()
 
+    # EFX_ROOT 专属：文件级命名骨骼表（对应 EfxFile.Bones）。任何 attribute 的 ParentBone
+    # 字段都靠名字引用这里的条目（见 is_bone_reference_field()/panels.py 的 prop_search），
+    # 不是裸下标——真正的裸下标表 BoneRelations 完全由 C# 后端导出时重算，见
+    # ROOT_STRUCTURAL_KEYS 的说明。
+    Object.efx_bones = CollectionProperty(type=EFXBoneItem)
+    Object.efx_bones_active_index = IntProperty()
+
     # EFX_ATTRIBUTE 专属：bookkeeping 标量 + 内容字段树。
     Object.efx_attr_type = StringProperty(
         name="Attribute Type",
@@ -363,6 +404,8 @@ def unregister():
     del Object.efx_version
     del Object.efx_unique_id
     del Object.efx_attr_type
+    del Object.efx_bones_active_index
+    del Object.efx_bones
     del Object.efx_groups_active_index
     del Object.efx_groups
     del Object.efx_index

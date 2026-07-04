@@ -71,6 +71,14 @@ def build_attribute_object(attr_dict: dict, index: int, parent_obj: Object, coll
         key: value for key, value in attr_dict.items()
         if key not in model.ATTRIBUTE_BOOKKEEPING_KEYS and key not in model.ATTRIBUTE_NESTED_ROOT_KEYS
     }
+    if content.get("ParentBone") is None and "ParentBone" in content:
+        # C# 侧 ParentBone 是 string?，无绑定时可能是 null，也可能压根不存在（老结构体没有
+        # 这个属性）——只在真的存在这个键时才规整。规整成 "" 而不是保留 null：C# 写出逻辑用
+        # string.IsNullOrEmpty(ParentBone) 判断"无父骨骼"，null 和 "" 语义完全等价
+        # （EfxFile.cs:984），但 EFXValueNode 的 NULL data_type 没有可编辑的 slot，画不出
+        # prop_search 控件，所以统一存成空字符串，导出行为不变。见
+        # model.is_bone_reference_field()/panels.py 的骨骼搜索控件。
+        content["ParentBone"] = ""
     model.populate_dict_as_children(obj.efx_fields, content)
 
     leftover = {key: attr_dict[key] for key in ("efxrSize",) if key in attr_dict}
@@ -146,6 +154,11 @@ def build_root_from_efxfile(
 
     leftover = {k: v for k, v in efxfile_dict.items() if k not in model.ROOT_STRUCTURAL_KEYS}
     model.save_opaque(root_obj, leftover)
+
+    for bone_dict in efxfile_dict.get("Bones", []) or []:
+        item = root_obj.efx_bones.add()
+        item.name = bone_dict.get("name", "") or ""
+        item.value = str(int(bone_dict.get("value", 0) or 0))
 
     for index, entry_dict in enumerate(efxfile_dict.get("Entries", []) or []):
         build_entry_object(entry_dict, index, root_obj, main_collection)
@@ -240,4 +253,58 @@ def export_root_to_efxfile(root_obj: Object) -> dict:
     # 每个 Entry 的 Groups 反向重建 efxEntryIndexes + 两个哈希字段，传空数组即可，
     # 见 PLAN.md 验证记录（读 vendor EfxFile.cs:893 UpdateEffectGroups() 的结论）。
     efxfile_dict["EffectGroups"] = []
+    efxfile_dict["Bones"] = [
+        {"name": item.name, "value": int(item.value or "0")} for item in root_obj.efx_bones
+    ]
+    # BoneRelations 和 EffectGroups 同一个模式：C# 后端 DoWrite() 按每个 attribute 当前的
+    # ParentBone 对 Bones 表重新 FindIndex，完整重算下标数组，传空数组即可，见
+    # docs/TOPLEVEL_STRUCTURE.md "Bones / BoneRelations 结构调研"（EfxFile.cs:982-989）。
+    efxfile_dict["BoneRelations"] = []
     return efxfile_dict
+
+
+class BoneReferenceError(Exception):
+    """check_bone_references() 校验失败时抛出：某个 attribute 的 ParentBone 引用了不在
+    efx_bones 列表里的名字。不在这里静默放行——见 check_bone_references() 的说明。"""
+
+
+def _missing_bone_refs(parent_obj: Object, known_names: set) -> list:
+    missing = []
+    for attr_obj in typed_children(parent_obj, model.TYPE_ATTRIBUTE):
+        for node in attr_obj.efx_fields:
+            if (
+                node.key == "ParentBone"
+                and node.data_type == "STRING"
+                and node.string_value
+                and node.string_value not in known_names
+            ):
+                missing.append(f'{attr_obj.name}: "{node.string_value}"')
+    return missing
+
+
+def check_bone_references(root_obj: Object) -> None:
+    """导出前校验：任何 attribute 的 ParentBone 字段只要非空，必须能在 root_obj.efx_bones
+    里找到同名条目。C# 后端写出时用 Bones.FindIndex(name) 反查下标，找不到会静默写成 -1
+    （"无父骨骼"），不报任何异常或警告（见 docs/TOPLEVEL_STRUCTURE.md "风险 2"）——这正是
+    架构决策 9 想避免的"错误结构骗过用户"，只是这次是我们自己的 Python 胶水层要对齐这个纪律，
+    不是 C# 解析失败那种情况。找到不一致就直接拒绝导出，不做自动同步/静默降级——用户没有
+    确认过"骨骼在游戏里到底怎么工作"之前，宁可让用户手动维护 efx_bones 列表。
+
+    只检查顶层文件自己的 Entries/Actions，不递归进嵌套 PlayEmitter.efxrData 子树：vendor 源码
+    读时用 `parentFile?.Bones ?? Bones` 解析嵌套文件里的骨骼引用（用外层文件的 Bones 表），
+    但写时用的是当前文件自己的 `Bones`（不查 parentFile），读写不对称——嵌套树的骨骼引用重新
+    导出后大概率会失效，这是 vendor 自身的行为、不是这个校验函数能堵上的，范围先收在顶层，
+    等有真实带嵌套骨骼绑定的样本确认这条路径实际行为后再决定要不要处理。
+    """
+    known_names = {item.name for item in root_obj.efx_bones}
+    missing = []
+    for entry_obj in typed_children(root_obj, model.TYPE_ENTRY):
+        missing.extend(_missing_bone_refs(entry_obj, known_names))
+    for action_obj in typed_children(root_obj, model.TYPE_ACTION):
+        missing.extend(_missing_bone_refs(action_obj, known_names))
+    if missing:
+        raise BoneReferenceError(
+            "以下 attribute 的 ParentBone 引用了不在 Bones 列表里的骨骼名字，"
+            "导出会静默丢失绑定，请先在 Root 面板的 Bones 列表里添加对应名字：\n"
+            + "\n".join(f"  {m}" for m in missing)
+        )

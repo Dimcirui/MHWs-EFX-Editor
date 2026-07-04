@@ -6,7 +6,7 @@ import bpy
 from bpy.props import StringProperty
 from bpy.types import Panel, UIList
 
-from . import model, semantics
+from . import io_tree, model, semantics
 
 # 知识表只在"attribute $type + 顶层内容字段 key"这一级生效（见 semantics.py 说明），confidence
 # 不是 "confirmed" 时在标签旁加一个问号图标，提醒这是未经游戏内实测验证的猜测，不是权威结论。
@@ -71,17 +71,31 @@ def _draw_scalar_prop(layout, node, text: str = "") -> None:
     layout.prop(node, attr, text=text)
 
 
-def draw_node(layout, node, attr_type: str | None = None) -> None:
+def draw_node(layout, node, attr_type: str | None = None, root_obj=None) -> None:
     """递归绘制一个 EFXValueNode：标量画一行 prop()，OBJECT/ARRAY 画一个可折叠 box 递归绘制
     children。ui_expand 只影响面板显示，不参与导出——见 model.py 里 EFXValueNode 的说明。
 
     attr_type 只在最外层调用（EFX_PT_object.draw()）传入，用来查知识表；递归到子字段时传
     None——Vector 类型的 x/y/z 这类子字段名字本身已经够自解释，知识表不索引这一层。
+    root_obj 同理只在最外层传（该 attribute 所属的 EFX_ROOT），供 ParentBone 字段画
+    prop_search 时定位 efx_bones 列表；递归到子字段时不需要，因为骨骼引用字段结构上必然只出现
+    在 attribute 的顶层内容字段，不会嵌套在子对象里（见 model.is_bone_reference_field()）。
     """
     entry = semantics.get_field_entry(attr_type, node.key) if attr_type else None
     label_text = (entry.get("label_zh") if entry else None) or node.key
 
     dtype = node.data_type
+    if root_obj is not None and model.is_bone_reference_field(node, attr_type):
+        # ParentBone：按名字引用 EFX_ROOT.efx_bones 里的条目，不是裸下标（C# 后端自己在
+        # 读时把下标解析成名字、写时再反查回下标，见 docs/TOPLEVEL_STRUCTURE.md）。用 Blender
+        # 原生 prop_search——和挑选顶点组/骨骼同一个"输入名字、自动补全校验"控件，比裸文本框
+        # 更不容易手滑打错字；导出前 io_tree.check_bone_references() 还会再校验一遍防止
+        # 引用了列表外的名字（那种情况 C# 后端会静默丢弃绑定，不报错）。
+        row = layout.row(align=True)
+        _draw_label(row, label_text, entry)
+        row.prop_search(node, "string_value", root_obj, "efx_bones", text="", icon="BONE_DATA")
+        return
+
     if dtype == "OBJECT" and model.is_rgba_color_node(node):
         # via.Color 在 JSON 里的真实形状是单键 {"rgba": <打包 uint32>}，不是 [R,G,B,A] 四个
         # 独立字段（C# 端 R/G/B/A 是 [JsonIgnore] 计算属性，不落盘）——见 model.py 的说明。
@@ -165,6 +179,42 @@ class EFX_OT_group_remove(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class EFX_UL_bones(UIList):
+    bl_idname = "EFX_UL_bones"
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        row = layout.row(align=True)
+        row.prop(item, "name", text="", emboss=False, icon="BONE_DATA")
+        row.prop(item, "value", text="")
+
+
+class EFX_OT_bone_add(bpy.types.Operator):
+    bl_idname = "efx_re.bone_add"
+    bl_label = "Add Bone"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        obj = context.object
+        item = obj.efx_bones.add()
+        item.name = "Bone"
+        obj.efx_bones_active_index = len(obj.efx_bones) - 1
+        return {"FINISHED"}
+
+
+class EFX_OT_bone_remove(bpy.types.Operator):
+    bl_idname = "efx_re.bone_remove"
+    bl_label = "Remove Bone"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        obj = context.object
+        index = obj.efx_bones_active_index
+        if 0 <= index < len(obj.efx_bones):
+            obj.efx_bones.remove(index)
+            obj.efx_bones_active_index = min(index, len(obj.efx_bones) - 1)
+        return {"FINISHED"}
+
+
 class EFX_PT_main(Panel):
     bl_idname = "EFX_PT_main"
     bl_label = "MHWs EFX"
@@ -201,6 +251,15 @@ class EFX_PT_object(Panel):
         if type_tag == model.TYPE_ROOT:
             layout.operator("efx_re.entry_paste", icon="PASTEDOWN")
 
+            layout.label(text="Bones:")
+            row = layout.row()
+            row.template_list(
+                "EFX_UL_bones", "", obj, "efx_bones", obj, "efx_bones_active_index", rows=3,
+            )
+            col = row.column(align=True)
+            col.operator("efx_re.bone_add", icon="ADD", text="")
+            col.operator("efx_re.bone_remove", icon="REMOVE", text="")
+
         elif type_tag == model.TYPE_ENTRY:
             row = layout.row(align=True)
             row.operator("efx_re.entry_copy", icon="COPYDOWN")
@@ -233,15 +292,19 @@ class EFX_PT_object(Panel):
             row.label(text=f"IsTypeAttribute {obj.efx_is_type_attribute}")
 
             layout.label(text="Fields:")
+            root_obj = io_tree.find_root(obj)
             for node in obj.efx_fields:
-                draw_node(layout, node, attr_type=obj.efx_attr_type)
+                draw_node(layout, node, attr_type=obj.efx_attr_type, root_obj=root_obj)
 
 
 _CLASSES = (
     EFX_UL_groups,
+    EFX_UL_bones,
     EFX_OT_field_info,
     EFX_OT_group_add,
     EFX_OT_group_remove,
+    EFX_OT_bone_add,
+    EFX_OT_bone_remove,
     EFX_PT_main,
     EFX_PT_object,
 )
