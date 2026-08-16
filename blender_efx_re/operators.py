@@ -12,7 +12,7 @@ from bpy.props import StringProperty
 from bpy.types import Operator
 from bpy_extras.io_utils import ExportHelper, ImportHelper
 
-from . import bridge, io_tree
+from . import bridge, io_tree, transform3d_view
 
 
 def _summarize(data: dict) -> str:
@@ -41,6 +41,7 @@ class EFX_OT_import(Operator, ImportHelper):
 
         name = bpy.path.basename(self.filepath)
         root_obj = io_tree.build_root_from_efxfile(data, context.scene.collection, name)
+        transform3d_view.sync_all_transform3d(root_obj)
 
         self.report({"INFO"}, f"已导入 '{root_obj.name}'：{_summarize(data)}")
         return {"FINISHED"}

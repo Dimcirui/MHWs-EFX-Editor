@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import bpy
-from bpy.props import StringProperty
+from bpy.props import BoolProperty, StringProperty
 from bpy.types import Panel, UIList
 
 from . import bridge, io_tree, model, semantics
@@ -59,12 +59,16 @@ _SCALAR_PROP_ATTR = {
 }
 
 
-def _draw_scalar_prop(layout, node, text: str = "") -> None:
+def _draw_scalar_prop(layout, node, text: str = "", prop_name: str | None = None) -> None:
     """画一个标量节点自身的值控件（不画字段名标签）。XYZ/static-random 并排列布局和普通单行
     布局共用这个函数，只是传的 layout/text 不同——单行布局传 text=""（标签已经在旁边画过），
     并排列布局传 text="X"/"Value" 这类，让 Blender 把短标签内联画在数值框左边（对齐姊妹项目
-    EFX-Editor `comp_row.prop(item, "int3_value", index=0, text="X")` 的做法）。"""
-    attr = _SCALAR_PROP_ATTR.get(node.data_type)
+    EFX-Editor `comp_row.prop(item, "int3_value", index=0, text="X")` 的做法）。
+
+    `prop_name` 显式指定要绑定的属性名，覆盖按 `data_type` 推算的默认值——目前只有"角度显示"
+    开关命中时会传 `"degrees_value"`（画弧度制角度字段的 X/Y/Z 分量），见 `draw_node()` 的
+    XYZ 分支。"""
+    attr = prop_name or _SCALAR_PROP_ATTR.get(node.data_type)
     if attr is None:
         layout.label(text="null", translate=False)
         return
@@ -113,8 +117,18 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None) -> None
         _draw_label(row, label_text, entry)
         by_key = {c.key: c for c in node.children}
         cols = row.row(align=True)
+        # 弧度制角度字段（知识表 unit == "angle_radians"，目前只标注了 Transform3D.
+        # LocalRotation）+ Scene.efx_re_angle_degrees 开关同时命中时，X/Y/Z 分量改画
+        # degrees_value（Blender ANGLE 子类型代理属性，按度显示/输入，内部仍存弧度，见
+        # model.py EFXValueNode 的说明），不改变 float_value 本身。
+        show_degrees = (
+            entry is not None and entry.get("unit") == "angle_radians"
+            and getattr(bpy.context.scene, "efx_re_angle_degrees", False)
+        )
         for key in xyz_order:
-            _draw_scalar_prop(cols, by_key[key], text=key)
+            child = by_key[key]
+            prop_name = "degrees_value" if show_degrees and child.data_type == "FLOAT" else None
+            _draw_scalar_prop(cols, child, text=key, prop_name=prop_name)
         return
 
     if dtype == "OBJECT" and model.is_static_random_node(node):
@@ -515,6 +529,8 @@ class EFX_PT_main(Panel):
         layout = self.layout
         layout.operator("efx_re.import", icon="IMPORT")
         layout.operator("efx_re.export", icon="EXPORT")
+        layout.operator("efx_re.sync_transform3d_to_view", icon="FILE_REFRESH")
+        layout.prop(context.scene, "efx_re_angle_degrees")
 
 
 class EFX_PT_object(Panel):
@@ -750,8 +766,21 @@ _CLASSES = (
 def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
+    # 纯 UI 开关：弧度制角度字段（知识表 unit == "angle_radians"）在面板里按度显示/编辑，
+    # 不改变 efx_fields 里存储的弧度原值。默认关——对齐姊妹项目 EFX-Editor
+    # Scene.efx_blender_coords 同类开关的默认状态（默认显示原始存储值，不做单位转换）。
+    bpy.types.Scene.efx_re_angle_degrees = BoolProperty(
+        name="Angle fields in degrees",
+        description="把已知是弧度制的角度字段（目前只有 Transform3D 的 LocalRotation）"
+                    "按度显示/编辑，不影响实际存储的弧度值",
+        default=False,
+    )
 
 
 def unregister():
+    try:
+        del bpy.types.Scene.efx_re_angle_degrees
+    except AttributeError:
+        pass
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)

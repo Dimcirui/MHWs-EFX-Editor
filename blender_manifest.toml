@@ -11,10 +11,7 @@ maintainer = "Dimcirui"
 
 blender_version_min = "4.3.0"
 
-# TODO: 尚未定；姊妹项目 EFX-Editor 用 GPL-3.0-or-later，本项目 vendor 的
-# RE-Engine-Lib 是 MIT，两者不冲突，但本项目自身代码的许可证还没有正式决定。
-# 发布前必须补上，否则 Blender 扩展系统校验会失败。
-# license = ["SPDX:GPL-3.0-or-later"]
+license = ["SPDX:GPL-3.0-or-later"]
 
 tags = ["Import-Export"]
 

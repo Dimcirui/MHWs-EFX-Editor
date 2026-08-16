@@ -51,6 +51,16 @@
         "tester": "community (NSACloud/RE-Engine-EFX-Template fork)",
         "date": "2026-07-04"
       }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeTransform3D": {
+      "LocalRotation": {
+        "unit": "angle_radians",
+        "tooltip_zh": "弧度制欧拉角（不是度）。panels.py 的\"角度显示\"开关可以按度显示/编辑，存储值本身不受影响。",
+        "confidence": "confirmed",
+        "evidence": "用户直接确认",
+        "tester": "user",
+        "date": "2026-07-07"
+      }
     }
   }
 }

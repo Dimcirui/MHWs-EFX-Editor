@@ -249,8 +249,8 @@ def build_root_from_efxfile(
     """
     own_collection = bpy.data.collections.new(name)
     parent_collection.children.link(own_collection)
-    main_collection = bpy.data.collections.new(f"{name}_Main")
-    own_collection.children.link(main_collection)
+    entries_collection = bpy.data.collections.new(f"{name}_Entries")
+    own_collection.children.link(entries_collection)
     actions_collection = bpy.data.collections.new(f"{name}_Actions")
     own_collection.children.link(actions_collection)
 
@@ -306,7 +306,7 @@ def build_root_from_efxfile(
             item.rgba_str = str(int(value.get("rgba", 0) or 0))
 
     for index, entry_dict in enumerate(efxfile_dict.get("Entries", []) or []):
-        build_entry_object(entry_dict, index, root_obj, main_collection)
+        build_entry_object(entry_dict, index, root_obj, entries_collection)
 
     for index, action_dict in enumerate(efxfile_dict.get("Actions", []) or []):
         build_action_object(action_dict, index, root_obj, actions_collection)
@@ -338,8 +338,8 @@ def find_root(obj: Object | None) -> Object | None:
 
 
 def root_collections(root_obj: Object) -> tuple[Collection, Collection]:
-    """返回一个 EFX_ROOT 对象的 (main_collection, actions_collection)。按
-    build_root_from_efxfile() 里固定的链接顺序取（先 link main_collection 再 link
+    """返回一个 EFX_ROOT 对象的 (entries_collection, actions_collection)。按
+    build_root_from_efxfile() 里固定的链接顺序取（先 link entries_collection 再 link
     actions_collection），不靠名字匹配——Collection 和 Object 各自的去重命名空间是独立的，
     root_obj.name 撞名被 Blender 加 .001 后缀时，不代表它的 own_collection 名字也跟着变，
     反过来也一样，所以不能假设两者同名。供 copy_paste.py 的 Paste Entry 找粘贴目标用。"""

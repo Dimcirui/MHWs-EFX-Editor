@@ -97,11 +97,11 @@ class EFX_OT_entry_paste(Operator):
             return {"CANCELLED"}
 
         root_obj = io_tree.find_root(context.object)
-        main_collection, _ = io_tree.root_collections(root_obj)
+        entries_collection, _ = io_tree.root_collections(root_obj)
         siblings = io_tree.typed_children(root_obj, model.TYPE_ENTRY)
         new_index = _next_index(siblings)
 
-        new_obj = io_tree.build_entry_object(data, new_index, root_obj, main_collection)
+        new_obj = io_tree.build_entry_object(data, new_index, root_obj, entries_collection)
         self.report({"INFO"}, f"已粘贴为新 Entry '{new_obj.name}'")
         return {"FINISHED"}
 

@@ -178,6 +178,18 @@ class EFXValueNode(PropertyGroup):
         get=_get_rgba_color, set=_set_rgba_color,
     )
 
+    # 只在这个节点是弧度制角度字段的标量子节点（如 Transform3D.LocalRotation 的 X/Y/Z）时才
+    # 有意义——纯 UI 层的角度显示代理，get/set 直接读写 float_value 本身（原始存储值不变，
+    # 弧度），subtype="ANGLE" 让 Blender 的属性控件自动按度显示/接受输入、内部仍以弧度传给
+    # get/set，不需要手动 math.degrees()/radians() 转换。是否使用这个属性而不是
+    # float_value 由 panels.py 按 Scene.efx_re_angle_degrees 开关 + 字段知识表的
+    # unit == "angle_radians" 标注决定，见 panels.py draw_node() 的说明。
+    degrees_value: FloatProperty(
+        name="Value", subtype="ANGLE",
+        get=lambda self: self.float_value,
+        set=lambda self, value: setattr(self, "float_value", value),
+    )
+
 
 # Blender 递归 PropertyGroup 的标准写法：CollectionProperty(type=...) 需要引用一个已存在的类，
 # 不能在类体内自引用，所以先定义类本身，再把递归属性补进去，最后统一注册。必须写进
@@ -235,6 +247,65 @@ def is_bone_reference_field(node: EFXValueNode, attr_type: str | None) -> bool:
     `TypeLightning3D`，但字段 key 统一都是 `ParentBone`。
     """
     return attr_type is not None and node.key == "ParentBone" and node.data_type == "STRING"
+
+
+def _node_scalar(node: EFXValueNode) -> float:
+    if node.data_type == "FLOAT":
+        return node.float_value
+    if node.data_type == "INT":
+        return float(node.int_value)
+    return 0.0
+
+
+def read_xyz_node(node: EFXValueNode):
+    """按 `xyz_child_order()` 探测到的键序，读出一个三分量向量节点的 `(x, y, z)` 标量值；
+    不是三分量向量形状时返回 `None`。供 `transform3d_field_values()` 复用。"""
+    order = xyz_child_order(node)
+    if order is None:
+        return None
+    by_key = {c.key: c for c in node.children}
+    return tuple(_node_scalar(by_key[k]) for k in order)
+
+
+def find_field(fields, key: str):
+    """在一个 `EFXValueNode` collection（如 `obj.efx_fields`）里按顶层 `key` 找第一个匹配的
+    节点，找不到返回 `None`。"""
+    for node in fields:
+        if node.key == key:
+            return node
+    return None
+
+
+_TRANSFORM3D_KEYS = ("LocalPosition", "LocalRotation", "LocalScale", "RotationOrder")
+
+
+def transform3d_field_values(obj: Object):
+    """从一个 attribute 对象的 `efx_fields` 里探测并读出 `EFXAttributeTransform3D`
+    （`EfxTransform.cs:104-116`）的 `(pos_xyz, rot_xyz, scale_xyz, rotation_order_raw)`——
+    只按字段 key 结构性判断（`LocalPosition`+`LocalRotation`+`LocalScale`+`RotationOrder`
+    四键同时存在且都是三分量向量/标量形状），不用 `$type` 精确字符串匹配，原因同
+    `is_clip_attribute_dict()`。四键有一个不存在或形状不对就返回 `None`——已核对同样带
+    `LocalRotation`+`RotationOrder`（+`LocalScale`）组合的其它 attribute 类型
+    （`EmitterShape3D`、`MeshEmitter`/`V2`、`Fade` 系列）均没有 `LocalPosition`，四键齐全
+    目前只有 `EFXAttributeTransform3D` 一个类型命中。`rotation_order_raw` 原样返回该节点的
+    标量值（`str` 枚举名或 `int` 下标），换算交给 `coords.rotation_order_to_euler_order()`。
+    只读，不写——供 `transform3d_view.py` 算视口变换用，不参与导出。"""
+    nodes = [find_field(obj.efx_fields, key) for key in _TRANSFORM3D_KEYS]
+    if any(node is None for node in nodes):
+        return None
+    pos_node, rot_node, scale_node, order_node = nodes
+    pos = read_xyz_node(pos_node)
+    rot = read_xyz_node(rot_node)
+    scale = read_xyz_node(scale_node)
+    if pos is None or rot is None or scale is None:
+        return None
+    if order_node.data_type == "STRING":
+        order_raw = order_node.string_value
+    elif order_node.data_type == "INT":
+        order_raw = order_node.int_value
+    else:
+        order_raw = 0
+    return pos, rot, scale, order_raw
 
 
 def is_clip_attribute_dict(attr_dict: dict) -> bool:

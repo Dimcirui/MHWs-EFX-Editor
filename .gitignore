@@ -13,3 +13,20 @@ Thumbs.db
 
 # Packaged addon zips
 dist/
+
+# 诊断用游戏资产（Capcom 原始 EFX，不可分发）
+diag/
+diag2/
+*.efx
+*.efx.*
+
+# Bridge dump 中间产物
+*.efx.json
+
+# 内部开发笔记（不随插件本体公开）
+PLAN.md
+KNOWN_UPSTREAM_ISSUES.md
+docs/
+
+# 本地工具配置
+.claude/
