@@ -6,7 +6,7 @@ Monster Hunter Wilds（RE Engine）`.efx` 特效文件的 Blender 编辑插件�
 
 详见 [PLAN.md](PLAN.md)。
 
-姊妹项目（MHWI/MT Framework，独立不依赖）：[EFX-Editor](../EFX-Editor)
+姊妹项目（MHWI/MT Framework，独立不依赖）：[EFX-Editor](../MHW-EFX-Editor)
 
 ## 克隆
 
