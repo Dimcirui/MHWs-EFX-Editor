@@ -13,6 +13,7 @@ from . import model
 from . import coords
 from . import io_tree
 from . import attribute_types
+from . import bitfield
 from . import transform3d_view
 from . import operators
 from . import copy_paste
@@ -21,7 +22,7 @@ from . import panels
 
 __all__ = [
     "bridge", "i18n", "semantics", "model", "coords", "io_tree", "transform3d_view",
-    "attribute_types", "operators", "copy_paste", "structure_ops", "panels",
+    "attribute_types", "bitfield", "operators", "copy_paste", "structure_ops", "panels",
 ]
 
 
@@ -30,6 +31,7 @@ def register():
     attribute_types.reload_catalogue()
     i18n.register()
     model.register()
+    bitfield.register()
     transform3d_view.register()
     operators.register()
     copy_paste.register()
@@ -43,5 +45,6 @@ def unregister():
     copy_paste.unregister()
     operators.unregister()
     transform3d_view.unregister()
+    bitfield.unregister()
     model.unregister()
     i18n.unregister()

@@ -22,6 +22,8 @@ blender_efx_re/semantics/mhws_attribute_types.json`，随仓库分发。
                 不用命名空间：`Main` 一个就占 77 个、`Misc` 占 45 个，对着面板选类型的人
                 毫无意义。分类文案在 i18n.py 里按 `category.<id>` 取。
     fields      dump/load 走的 JSON 键名
+    fieldEnums  {字段名: 枚举类型名}。成员表在清单顶层的 `enums` 里按类型名去重存一份——
+                897 个枚举字段只涉及 27 个枚举类型，逐字段展开会把清单撑大一个数量级。
 """
 
 from __future__ import annotations
@@ -47,10 +49,16 @@ def _catalogue() -> dict:
     by_name: dict[str, dict] = {}
     by_type: dict[str, dict] = {}
     readable: list[dict] = []
+    enums: dict[str, list] = {}
+    field_enums: dict[tuple, str] = {}
     try:
         with open(_CATALOGUE_JSON, "r", encoding="utf-8") as f:
             data = json.load(f)
+        enums = data.get("enums") or {}
         for item in data.get("types") or []:
+            for field_name, enum_name in (item.get("fieldEnums") or {}).items():
+                if item.get("type"):
+                    field_enums[(item["type"], field_name)] = enum_name
             by_name[item["name"]] = item
             if item.get("type"):
                 by_type[item["type"]] = item
@@ -62,7 +70,7 @@ def _catalogue() -> dict:
     readable.sort(key=lambda i: i["name"])
     categories = sorted({i.get("category") or "misc" for i in readable})
     _cache = {"by_name": by_name, "by_type": by_type, "readable": readable,
-              "categories": categories}
+              "categories": categories, "enums": enums, "field_enums": field_enums}
     return _cache
 
 
@@ -88,6 +96,27 @@ def readable_types(category: str = "ALL") -> list[dict]:
 def categories() -> list[str]:
     """清单里实际出现过的分类 id，按字母排序。"""
     return _catalogue()["categories"]
+
+
+def enum_members(attr_type_fullname: str, field_key: str) -> Optional[list]:
+    """一个字段如果在 C# 侧声明成枚举，返回它的成员表 `[[值, 显示名], ...]`；否则 None。
+
+    成员名去掉 `枚举名_` 前缀（vendor 里叫 `RotationOrder_XYZ`，面板上显示 `XYZ` 就够了，
+    前缀是字段自己的标签在说的事）。
+    """
+    cat = _catalogue()
+    enum_name = cat["field_enums"].get((attr_type_fullname, field_key))
+    if enum_name is None:
+        return None
+    members = cat["enums"].get(enum_name)
+    if not members:
+        return None
+    prefix = enum_name + "_"
+    out = []
+    for m in members:
+        name = m.get("name") or str(m.get("value"))
+        out.append([m["value"], name[len(prefix):] if name.startswith(prefix) else name])
+    return out
 
 
 def by_name(name: str) -> Optional[dict]:

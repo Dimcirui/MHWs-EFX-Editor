@@ -1,6 +1,434 @@
 {
  "game": "MHWilds",
  "count": 282,
+ "enums": {
+  "AxisType": [
+   {
+    "value": 0,
+    "name": "AxisType_PositiveX"
+   },
+   {
+    "value": 1,
+    "name": "AxisType_PositiveY"
+   },
+   {
+    "value": 2,
+    "name": "AxisType_PositiveZ"
+   },
+   {
+    "value": 3,
+    "name": "AxisType_NegativeX"
+   },
+   {
+    "value": 4,
+    "name": "AxisType_NegativeY"
+   },
+   {
+    "value": 5,
+    "name": "AxisType_NegativeZ"
+   }
+  ],
+  "AxisXYZ": [
+   {
+    "value": 0,
+    "name": "AxisXYZ_X"
+   },
+   {
+    "value": 1,
+    "name": "AxisXYZ_Y"
+   },
+   {
+    "value": 2,
+    "name": "AxisXYZ_Z"
+   }
+  ],
+  "DistortionType": [
+   {
+    "value": 0,
+    "name": "Blur"
+   },
+   {
+    "value": 1,
+    "name": "Refract"
+   },
+   {
+    "value": 2,
+    "name": "BlurTexture"
+   }
+  ],
+  "EffectBoundsType": [
+   {
+    "value": 0,
+    "name": "EffectBoundsType_None"
+   },
+   {
+    "value": 1,
+    "name": "EffectBoundsType_Sphere"
+   },
+   {
+    "value": 2,
+    "name": "EffectBoundsType_AABB"
+   },
+   {
+    "value": 3,
+    "name": "EffectBoundsType_OBB"
+   }
+  ],
+  "EmitterColorOperator": [
+   {
+    "value": 0,
+    "name": "EmitterColorOperator_Overwrite"
+   },
+   {
+    "value": 1,
+    "name": "EmitterColorOperator_Multiply"
+   }
+  ],
+  "ExpressionAssignType": [
+   {
+    "value": -1,
+    "name": "ForceWord"
+   },
+   {
+    "value": 0,
+    "name": "Add"
+   },
+   {
+    "value": 1,
+    "name": "Subtract"
+   },
+   {
+    "value": 2,
+    "name": "Multiply"
+   },
+   {
+    "value": 3,
+    "name": "Divide"
+   },
+   {
+    "value": 4,
+    "name": "Assign"
+   }
+  ],
+  "Finish": [
+   {
+    "value": 0,
+    "name": "Finish_None"
+   },
+   {
+    "value": 1,
+    "name": "Finish_Kill"
+   },
+   {
+    "value": 2,
+    "name": "Finish_Freeze"
+   }
+  ],
+  "LifeType": [
+   {
+    "value": 0,
+    "name": "LifeType_None"
+   },
+   {
+    "value": 1,
+    "name": "LifeType_AppearOnly"
+   },
+   {
+    "value": 2,
+    "name": "LifeType_SyncKeepHold"
+   },
+   {
+    "value": 3,
+    "name": "LifeType_KeepHold"
+   },
+   {
+    "value": 4,
+    "name": "LifeType_FinishKeep"
+   }
+  ],
+  "LuminanceBleedSamplingType": [
+   {
+    "value": 0,
+    "name": "LuminanceBleedSamplingType_Default"
+   },
+   {
+    "value": 1,
+    "name": "LuminanceBleedSamplingType_NoSubpixel"
+   }
+  ],
+  "LuminanceBleedType": [
+   {
+    "value": 0,
+    "name": "LuminanceBleedType_None"
+   },
+   {
+    "value": 1,
+    "name": "LuminanceBleedType_Transparent"
+   },
+   {
+    "value": 2,
+    "name": "LuminanceBleedType_PostTransparent"
+   }
+  ],
+  "NodeBillboardType": [
+   {
+    "value": 0,
+    "name": "NodeBillboardType_Bezier"
+   },
+   {
+    "value": 1,
+    "name": "NodeBillboardType_Spline"
+   },
+   {
+    "value": 2,
+    "name": "NodeBillboardType_Num"
+   }
+  ],
+  "PlayOrder": [
+   {
+    "value": 0,
+    "name": "PlayOrder_Forward"
+   },
+   {
+    "value": 1,
+    "name": "PlayOrder_Reverse"
+   },
+   {
+    "value": 2,
+    "name": "PlayOrder_RandomReverse"
+   }
+  ],
+  "PlayType": [
+   {
+    "value": 0,
+    "name": "PlayType_Pause"
+   },
+   {
+    "value": 1,
+    "name": "PlayType_Loop"
+   },
+   {
+    "value": 2,
+    "name": "PlayType_Finish"
+   },
+   {
+    "value": 3,
+    "name": "PlayType_Play"
+   }
+  ],
+  "PtColorOperator": [
+   {
+    "value": 0,
+    "name": "PtColorOperator_Overwrite"
+   },
+   {
+    "value": 1,
+    "name": "PtColorOperator_Multiply"
+   }
+  ],
+  "Repeat": [
+   {
+    "value": 0,
+    "name": "Repeat_None"
+   },
+   {
+    "value": 1,
+    "name": "Repeat_U"
+   },
+   {
+    "value": 2,
+    "name": "Repeat_V"
+   },
+   {
+    "value": 3,
+    "name": "Repeat_UV"
+   }
+  ],
+  "RotationCorrectType": [
+   {
+    "value": 0,
+    "name": "RotationCorrectType_None"
+   },
+   {
+    "value": 1,
+    "name": "RotationCorrectType_ParallelCamera"
+   },
+   {
+    "value": 2,
+    "name": "RotationCorrectType_ParallelCameraAxisY"
+   },
+   {
+    "value": 3,
+    "name": "RotationCorrectType_ToCamera"
+   },
+   {
+    "value": 4,
+    "name": "RotationCorrectType_ToCameraAxisY"
+   }
+  ],
+  "RotationOrder": [
+   {
+    "value": 0,
+    "name": "RotationOrder_XYZ"
+   },
+   {
+    "value": 1,
+    "name": "RotationOrder_YZX"
+   },
+   {
+    "value": 2,
+    "name": "RotationOrder_ZXY"
+   },
+   {
+    "value": 3,
+    "name": "RotationOrder_ZYX"
+   },
+   {
+    "value": 4,
+    "name": "RotationOrder_YXZ"
+   },
+   {
+    "value": 5,
+    "name": "RotationOrder_XZY"
+   }
+  ],
+  "ShadowType": [
+   {
+    "value": 0,
+    "name": "ShadowType_None"
+   },
+   {
+    "value": 1,
+    "name": "ShadowType_Enable"
+   },
+   {
+    "value": 2,
+    "name": "ShadowType_ShadowOnly"
+   },
+   {
+    "value": 3,
+    "name": "ShadowType_Translucent"
+   },
+   {
+    "value": 4,
+    "name": "ShadowType_TranslucentShadowOnly"
+   }
+  ],
+  "Shape2DType": [
+   {
+    "value": 0,
+    "name": "Shape2DType_Square"
+   },
+   {
+    "value": 1,
+    "name": "Shape2DType_Circle"
+   }
+  ],
+  "Shape3DType": [
+   {
+    "value": 0,
+    "name": "Shape3DType_Box"
+   },
+   {
+    "value": 1,
+    "name": "Shape3DType_Sphere"
+   },
+   {
+    "value": 2,
+    "name": "Shape3DType_Cylinder"
+   }
+  ],
+  "SolidBodyShapeType": [
+   {
+    "value": 0,
+    "name": "SolidBodyShapeType_Sphere"
+   },
+   {
+    "value": 1,
+    "name": "SolidBodyShapeType_Box"
+   },
+   {
+    "value": 2,
+    "name": "SolidBodyShapeType_Card"
+   },
+   {
+    "value": 3,
+    "name": "SolidBodyShapeType_Tetrahedron"
+   },
+   {
+    "value": 4,
+    "name": "SolidBodyShapeType_Capsule"
+   }
+  ],
+  "SortType": [
+   {
+    "value": 0,
+    "name": "SortType_ByPosition"
+   },
+   {
+    "value": 1,
+    "name": "SortType_ByAlpha"
+   },
+   {
+    "value": 2,
+    "name": "SortType_None"
+   }
+  ],
+  "TerrainSnapType": [
+   {
+    "value": 0,
+    "name": "TerrainSnapType_UnderSnap"
+   },
+   {
+    "value": 1,
+    "name": "TerrainSnapType_AlwaysSnap"
+   }
+  ],
+  "VelocityAttenuationType": [
+   {
+    "value": 0,
+    "name": "VelocityAttenuationType_Unknown"
+   }
+  ],
+  "VelocityEmitType": [
+   {
+    "value": 0,
+    "name": "VelocityEmitType_Unknown"
+   }
+  ],
+  "VelocityShapeType": [
+   {
+    "value": 0,
+    "name": "VelocityShapeType_Unknown"
+   }
+  ],
+  "VelocityType": [
+   {
+    "value": 0,
+    "name": "VelocityType_Direction"
+   },
+   {
+    "value": 1,
+    "name": "VelocityType_Normal"
+   },
+   {
+    "value": 2,
+    "name": "VelocityType_Radial"
+   },
+   {
+    "value": 3,
+    "name": "VelocityType_Spread"
+   },
+   {
+    "value": 4,
+    "name": "VelocityType_ScreenSpace"
+   },
+   {
+    "value": 5,
+    "name": "VelocityType_Max"
+   }
+  ]
+ },
  "types": [
   {
    "itemTypeId": 1,
@@ -24,6 +452,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -33,6 +462,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -74,6 +504,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -83,6 +514,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -100,6 +532,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "transform"
   },
   {
@@ -116,6 +549,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "transform"
   },
   {
@@ -125,6 +559,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -189,6 +624,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "transform"
   },
   {
@@ -212,6 +648,13 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "posX": "ExpressionAssignType",
+    "posY": "ExpressionAssignType",
+    "rot": "ExpressionAssignType",
+    "scaleX": "ExpressionAssignType",
+    "scaleY": "ExpressionAssignType"
+   },
    "category": "transform"
   },
   {
@@ -231,6 +674,9 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "RotationOrder": "RotationOrder"
+   },
    "category": "transform"
   },
   {
@@ -247,6 +693,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "transform"
   },
   {
@@ -316,6 +763,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "transform"
   },
   {
@@ -334,6 +782,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "transform"
   },
   {
@@ -361,6 +810,17 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "translationX": "ExpressionAssignType",
+    "translationY": "ExpressionAssignType",
+    "translationZ": "ExpressionAssignType",
+    "rotationX": "ExpressionAssignType",
+    "rotationY": "ExpressionAssignType",
+    "rotationZ": "ExpressionAssignType",
+    "scaleX": "ExpressionAssignType",
+    "scaleY": "ExpressionAssignType",
+    "scaleZ": "ExpressionAssignType"
+   },
    "category": "transform"
   },
   {
@@ -388,6 +848,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "basic"
   },
   {
@@ -414,6 +875,16 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "unkn1_1": "ExpressionAssignType",
+    "unkn1_2": "ExpressionAssignType",
+    "unkn1_3": "ExpressionAssignType",
+    "unkn1_4": "ExpressionAssignType",
+    "unkn1_5": "ExpressionAssignType",
+    "unkn1_6": "ExpressionAssignType",
+    "unkn1_7": "ExpressionAssignType",
+    "unkn1_8": "ExpressionAssignType"
+   },
    "category": "basic"
   },
   {
@@ -455,6 +926,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "basic"
   },
   {
@@ -480,6 +952,15 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "spawnNum": "ExpressionAssignType",
+    "spawnNumRange": "ExpressionAssignType",
+    "intervalFrame": "ExpressionAssignType",
+    "intervalFrameRange": "ExpressionAssignType",
+    "emitterDelayFrame": "ExpressionAssignType",
+    "emitterDelayFrameRange": "ExpressionAssignType",
+    "speed": "ExpressionAssignType"
+   },
    "category": "basic"
   },
   {
@@ -497,6 +978,10 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "ColorOperator": "EmitterColorOperator",
+    "AlphaOperator": "EmitterColorOperator"
+   },
    "category": "emitter"
   },
   {
@@ -516,6 +1001,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "emitter"
   },
   {
@@ -535,6 +1021,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -550,6 +1037,9 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "SortType": "SortType"
+   },
    "category": "particle"
   },
   {
@@ -576,6 +1066,9 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "Repeat": "Repeat"
+   },
    "category": "render_billboard"
   },
   {
@@ -607,6 +1100,21 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "color": "ExpressionAssignType",
+    "alpha": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType"
+   },
    "category": "render_billboard"
   },
   {
@@ -639,6 +1147,9 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "ShadowType": "ShadowType"
+   },
    "category": "render_billboard"
   },
   {
@@ -670,6 +1181,21 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "color": "ExpressionAssignType",
+    "colorRange": "ExpressionAssignType",
+    "alpha": "ExpressionAssignType",
+    "alphaRate": "ExpressionAssignType",
+    "emissive": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "size": "ExpressionAssignType",
+    "sizeRand": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType"
+   },
    "category": "render_billboard"
   },
   {
@@ -693,6 +1219,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_billboard"
   },
   {
@@ -712,6 +1239,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_billboard"
   },
   {
@@ -746,6 +1274,21 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "color": "ExpressionAssignType",
+    "ukn2": "ExpressionAssignType",
+    "ukn3": "ExpressionAssignType",
+    "ukn4": "ExpressionAssignType",
+    "ukn5": "ExpressionAssignType",
+    "ukn6": "ExpressionAssignType",
+    "size": "ExpressionAssignType",
+    "ukn8": "ExpressionAssignType",
+    "ukn9": "ExpressionAssignType",
+    "ukn10": "ExpressionAssignType",
+    "ukn11": "ExpressionAssignType",
+    "ukn12": "ExpressionAssignType",
+    "ukn13": "ExpressionAssignType"
+   },
    "category": "render_billboard"
   },
   {
@@ -795,6 +1338,12 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "PlayType": "PlayType",
+    "PlayOrder": "PlayOrder",
+    "RotationOrder": "RotationOrder",
+    "FrontAxis": "AxisXYZ"
+   },
    "category": "render_mesh"
   },
   {
@@ -816,6 +1365,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_mesh"
   },
   {
@@ -867,6 +1417,33 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "color1": "ExpressionAssignType",
+    "color1Rand": "ExpressionAssignType",
+    "alpha": "ExpressionAssignType",
+    "alphaRand": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType",
+    "unkn18": "ExpressionAssignType",
+    "unkn19": "ExpressionAssignType",
+    "unkn20": "ExpressionAssignType",
+    "unkn21": "ExpressionAssignType",
+    "unkn22": "ExpressionAssignType",
+    "unkn23": "ExpressionAssignType",
+    "unkn24": "ExpressionAssignType",
+    "unkn25": "ExpressionAssignType"
+   },
    "category": "render_mesh"
   },
   {
@@ -915,6 +1492,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -961,6 +1539,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -1047,6 +1626,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -1096,6 +1676,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -1126,6 +1707,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -1174,6 +1756,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -1222,6 +1805,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -1241,6 +1825,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -1277,6 +1862,23 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "unkn1": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "color1": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "color2": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "color3": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType"
+   },
    "category": "render_ribbon"
   },
   {
@@ -1336,6 +1938,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -1355,6 +1958,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -1391,6 +1995,23 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "color": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType"
+   },
    "category": "render_ribbon"
   },
   {
@@ -1472,6 +2093,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -1491,6 +2113,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -1525,6 +2148,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -1575,6 +2199,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -1594,6 +2219,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -1628,6 +2254,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -1637,6 +2264,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -1646,6 +2274,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -1655,6 +2284,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -1745,6 +2375,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_strain"
   },
   {
@@ -1764,6 +2395,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_strain"
   },
   {
@@ -1807,6 +2439,30 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "color": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "posX": "ExpressionAssignType",
+    "posY": "ExpressionAssignType",
+    "posZ": "ExpressionAssignType",
+    "terminalPosX": "ExpressionAssignType",
+    "terminalPosY": "ExpressionAssignType",
+    "terminalPosZ": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "color2": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "color3": "ExpressionAssignType",
+    "unkn18": "ExpressionAssignType",
+    "color4": "ExpressionAssignType",
+    "unkn20": "ExpressionAssignType",
+    "unkn21": "ExpressionAssignType",
+    "unkn22": "ExpressionAssignType"
+   },
    "category": "render_strain"
   },
   {
@@ -1857,6 +2513,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -1876,6 +2533,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -1912,6 +2570,23 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "unkn1": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "color1": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "color2": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "color3": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType"
+   },
    "category": "render_ribbon"
   },
   {
@@ -1947,6 +2622,25 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "color": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "scale": "ExpressionAssignType",
+    "scaleRand": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType"
+   },
    "category": "render_ribbon"
   },
   {
@@ -1984,6 +2678,27 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "color": "ExpressionAssignType",
+    "alpha": "ExpressionAssignType",
+    "size1": "ExpressionAssignType",
+    "size2": "ExpressionAssignType",
+    "emissive": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "size": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType",
+    "unkn18": "ExpressionAssignType",
+    "unkn19": "ExpressionAssignType"
+   },
    "category": "render_ribbon"
   },
   {
@@ -2019,6 +2734,25 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "unkn1": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType"
+   },
    "category": "render_ribbon"
   },
   {
@@ -2054,6 +2788,25 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "color": "ExpressionAssignType",
+    "alpha": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "color2": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "color3": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType"
+   },
    "category": "render_ribbon"
   },
   {
@@ -2063,6 +2816,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -2098,6 +2852,25 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "color": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType"
+   },
    "category": "render_ribbon"
   },
   {
@@ -2131,6 +2904,10 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "RotationOrder": "RotationOrder",
+    "OrientDirectionUpVector": "AxisXYZ"
+   },
    "category": "render_polygon"
   },
   {
@@ -2150,6 +2927,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_polygon"
   },
   {
@@ -2187,6 +2965,27 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "color": "ExpressionAssignType",
+    "alpha": "ExpressionAssignType",
+    "emissive": "ExpressionAssignType",
+    "colorStrength": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "scale": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "size": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType",
+    "unkn18": "ExpressionAssignType",
+    "unkn19": "ExpressionAssignType"
+   },
    "category": "render_polygon"
   },
   {
@@ -2213,6 +3012,9 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "RotationOrder": "RotationOrder"
+   },
    "category": "render_polygon"
   },
   {
@@ -2222,6 +3024,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -2231,6 +3034,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -2259,6 +3063,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -2294,6 +3099,9 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "Axis": "AxisType"
+   },
    "category": "render_polygon"
   },
   {
@@ -2303,6 +3111,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -2333,6 +3142,9 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "Axis": "AxisType"
+   },
    "category": "render_polygon"
   },
   {
@@ -2342,6 +3154,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -2370,6 +3183,15 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "color": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType"
+   },
    "category": "render_polygon"
   },
   {
@@ -2394,6 +3216,9 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "RotationOrder": "RotationOrder"
+   },
    "category": "render_other"
   },
   {
@@ -2430,6 +3255,26 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "color": "ExpressionAssignType",
+    "colorRand": "ExpressionAssignType",
+    "alpha": "ExpressionAssignType",
+    "alphaRand": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType",
+    "unkn18": "ExpressionAssignType"
+   },
    "category": "render_other"
   },
   {
@@ -2446,6 +3291,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "velocity"
   },
   {
@@ -2478,6 +3324,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "velocity"
   },
   {
@@ -2509,6 +3356,21 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "speed": "ExpressionAssignType",
+    "speedRand": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "gravity": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "angle": "ExpressionAssignType",
+    "angleRand": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType"
+   },
    "category": "velocity"
   },
   {
@@ -2525,6 +3387,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "velocity"
   },
   {
@@ -2554,6 +3417,9 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "VelocityType": "VelocityType"
+   },
    "category": "velocity"
   },
   {
@@ -2596,6 +3462,27 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "speed": "ExpressionAssignType",
+    "speedRand": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "velocityX": "ExpressionAssignType",
+    "velocityXRandom": "ExpressionAssignType",
+    "velocityY": "ExpressionAssignType",
+    "velocityYRandom": "ExpressionAssignType",
+    "velocityZ": "ExpressionAssignType",
+    "velocityZRandom": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType",
+    "unkn18": "ExpressionAssignType",
+    "unkn19": "ExpressionAssignType"
+   },
    "category": "velocity"
   },
   {
@@ -2612,6 +3499,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "transform"
   },
   {
@@ -2634,6 +3522,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "transform"
   },
   {
@@ -2664,6 +3553,20 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "rotateSpeedX": "ExpressionAssignType",
+    "rotateSpeedXRand": "ExpressionAssignType",
+    "rotateSpeedY": "ExpressionAssignType",
+    "rotateSpeedYRand": "ExpressionAssignType",
+    "rotateSpeedZ": "ExpressionAssignType",
+    "rotateSpeedZRand": "ExpressionAssignType",
+    "ukn1_7": "ExpressionAssignType",
+    "ukn1_8": "ExpressionAssignType",
+    "ukn1_9": "ExpressionAssignType",
+    "ukn1_10": "ExpressionAssignType",
+    "ukn1_11": "ExpressionAssignType",
+    "ukn1_12": "ExpressionAssignType"
+   },
    "category": "transform"
   },
   {
@@ -2680,6 +3583,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "transform"
   },
   {
@@ -2703,6 +3607,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "transform"
   },
   {
@@ -2729,6 +3634,16 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "scale": "ExpressionAssignType",
+    "scaleRand": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType"
+   },
    "category": "transform"
   },
   {
@@ -2751,6 +3666,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -2783,6 +3699,22 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "positionX": "ExpressionAssignType",
+    "positionY": "ExpressionAssignType",
+    "positionZ": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType"
+   },
    "category": "misc"
   },
   {
@@ -2802,6 +3734,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "basic"
   },
   {
@@ -2826,6 +3759,14 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "appearLife": "ExpressionAssignType",
+    "appearLifeRand": "ExpressionAssignType",
+    "keepLife": "ExpressionAssignType",
+    "keepLifeRand": "ExpressionAssignType",
+    "vanishLife": "ExpressionAssignType",
+    "vanishLifeRand": "ExpressionAssignType"
+   },
    "category": "basic"
   },
   {
@@ -2845,6 +3786,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "basic"
   },
   {
@@ -2863,6 +3805,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "basic"
   },
   {
@@ -2887,6 +3830,14 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "speed": "ExpressionAssignType",
+    "speedRand": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType"
+   },
    "category": "basic"
   },
   {
@@ -2908,6 +3859,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "basic"
   },
   {
@@ -2932,6 +3884,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "basic"
   },
   {
@@ -2951,6 +3904,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "basic"
   },
   {
@@ -2968,6 +3922,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "basic"
   },
   {
@@ -2988,6 +3943,10 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "ShapeType": "Shape2DType",
+    "DivideAxis": "AxisXYZ"
+   },
    "category": "emitter"
   },
   {
@@ -3011,6 +3970,13 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "unkn1": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "size": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType"
+   },
    "category": "emitter"
   },
   {
@@ -3042,6 +4008,12 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "ShapeType": "Shape3DType",
+    "RangeDivideAxis": "AxisXYZ",
+    "RotationOrder": "RotationOrder",
+    "RotationCorrect": "RotationCorrectType"
+   },
    "category": "emitter"
   },
   {
@@ -3069,6 +4041,17 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "rangeXMin": "ExpressionAssignType",
+    "rangeXMax": "ExpressionAssignType",
+    "rangeYMin": "ExpressionAssignType",
+    "rangeYMax": "ExpressionAssignType",
+    "rangeZMin": "ExpressionAssignType",
+    "rangeZMax": "ExpressionAssignType",
+    "spawnNum": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType"
+   },
    "category": "emitter"
   },
   {
@@ -3087,6 +4070,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "basic"
   },
   {
@@ -3107,6 +4091,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -3127,6 +4112,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -3136,6 +4122,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -3157,6 +4144,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -3175,6 +4163,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -3201,6 +4190,16 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "unkn1": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType"
+   },
    "category": "misc"
   },
   {
@@ -3229,6 +4228,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -3247,6 +4247,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -3256,6 +4257,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -3349,6 +4351,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_strain"
   },
   {
@@ -3391,6 +4394,32 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "unkn1": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "posX": "ExpressionAssignType",
+    "posY": "ExpressionAssignType",
+    "posZ": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType",
+    "unkn18": "ExpressionAssignType",
+    "unkn19": "ExpressionAssignType",
+    "unkn20": "ExpressionAssignType",
+    "unkn21": "ExpressionAssignType",
+    "unkn22": "ExpressionAssignType",
+    "unkn23": "ExpressionAssignType",
+    "unkn24": "ExpressionAssignType"
+   },
    "category": "render_strain"
   },
   {
@@ -3485,6 +4514,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_lightning"
   },
   {
@@ -3551,6 +4581,56 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "color": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "terminalPosX": "ExpressionAssignType",
+    "terminalPosY": "ExpressionAssignType",
+    "terminalPosZ": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType",
+    "unkn18": "ExpressionAssignType",
+    "unkn19": "ExpressionAssignType",
+    "unkn20": "ExpressionAssignType",
+    "unkn21": "ExpressionAssignType",
+    "unkn22": "ExpressionAssignType",
+    "unkn23": "ExpressionAssignType",
+    "unkn24": "ExpressionAssignType",
+    "unkn25": "ExpressionAssignType",
+    "unkn26": "ExpressionAssignType",
+    "unkn27": "ExpressionAssignType",
+    "unkn28": "ExpressionAssignType",
+    "unkn29": "ExpressionAssignType",
+    "unkn30": "ExpressionAssignType",
+    "unkn31": "ExpressionAssignType",
+    "unkn32": "ExpressionAssignType",
+    "unkn33": "ExpressionAssignType",
+    "unkn34": "ExpressionAssignType",
+    "unkn35": "ExpressionAssignType",
+    "unkn36": "ExpressionAssignType",
+    "unkn37": "ExpressionAssignType",
+    "unkn38": "ExpressionAssignType",
+    "unkn39": "ExpressionAssignType",
+    "unkn40": "ExpressionAssignType",
+    "unkn41": "ExpressionAssignType",
+    "unkn42": "ExpressionAssignType",
+    "unkn43": "ExpressionAssignType",
+    "unkn44": "ExpressionAssignType",
+    "unkn45": "ExpressionAssignType",
+    "unkn46": "ExpressionAssignType",
+    "unkn47": "ExpressionAssignType",
+    "unkn48": "ExpressionAssignType"
+   },
    "category": "render_lightning"
   },
   {
@@ -3639,6 +4719,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_lightning"
   },
   {
@@ -3669,6 +4750,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_lightning"
   },
   {
@@ -3733,6 +4815,51 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "terminalPosX": "ExpressionAssignType",
+    "terminalPosY": "ExpressionAssignType",
+    "terminalPosZ": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType",
+    "unkn18": "ExpressionAssignType",
+    "unkn19": "ExpressionAssignType",
+    "unkn20": "ExpressionAssignType",
+    "unkn21": "ExpressionAssignType",
+    "unkn22": "ExpressionAssignType",
+    "unkn23": "ExpressionAssignType",
+    "unkn24": "ExpressionAssignType",
+    "unkn25": "ExpressionAssignType",
+    "unkn26": "ExpressionAssignType",
+    "unkn27": "ExpressionAssignType",
+    "unkn28": "ExpressionAssignType",
+    "unkn29": "ExpressionAssignType",
+    "unkn30": "ExpressionAssignType",
+    "unkn31": "ExpressionAssignType",
+    "unkn32": "ExpressionAssignType",
+    "unkn33": "ExpressionAssignType",
+    "unkn34": "ExpressionAssignType",
+    "unkn35": "ExpressionAssignType",
+    "unkn36": "ExpressionAssignType",
+    "unkn37": "ExpressionAssignType",
+    "unkn38": "ExpressionAssignType",
+    "unkn39": "ExpressionAssignType",
+    "unkn40": "ExpressionAssignType",
+    "unkn41": "ExpressionAssignType",
+    "unkn42": "ExpressionAssignType",
+    "unkn43": "ExpressionAssignType",
+    "unkn44": "ExpressionAssignType"
+   },
    "category": "render_lightning"
   },
   {
@@ -3748,6 +4875,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_lightning"
   },
   {
@@ -3765,6 +4893,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "particle"
   },
   {
@@ -3786,6 +4915,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_lightning"
   },
   {
@@ -3852,6 +4982,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "basic"
   },
   {
@@ -3882,6 +5013,20 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "ukn1": "ExpressionAssignType",
+    "ukn2": "ExpressionAssignType",
+    "ukn3": "ExpressionAssignType",
+    "ukn4": "ExpressionAssignType",
+    "ukn5": "ExpressionAssignType",
+    "ukn6": "ExpressionAssignType",
+    "ukn7": "ExpressionAssignType",
+    "ukn8": "ExpressionAssignType",
+    "ukn9": "ExpressionAssignType",
+    "ukn10": "ExpressionAssignType",
+    "ukn11": "ExpressionAssignType",
+    "ukn12": "ExpressionAssignType"
+   },
    "category": "basic"
   },
   {
@@ -3903,6 +5048,9 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "DistortionType": "DistortionType"
+   },
    "category": "misc"
   },
   {
@@ -3926,6 +5074,13 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "unkn1": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType"
+   },
    "category": "misc"
   },
   {
@@ -3935,6 +5090,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -3951,6 +5107,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "basic"
   },
   {
@@ -3965,6 +5122,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -3984,6 +5142,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_other"
   },
   {
@@ -4013,6 +5172,19 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "unkn1": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "cullingRadius": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "cullingDistance": "ExpressionAssignType"
+   },
    "category": "render_other"
   },
   {
@@ -4030,6 +5202,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "particle"
   },
   {
@@ -4050,6 +5223,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "particle"
   },
   {
@@ -4059,6 +5233,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -4074,6 +5249,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "basic"
   },
   {
@@ -4093,6 +5269,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "fade"
   },
   {
@@ -4113,6 +5290,10 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "minAngle": "ExpressionAssignType",
+    "maxAngle": "ExpressionAssignType"
+   },
    "category": "fade"
   },
   {
@@ -4134,6 +5315,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "fade"
   },
   {
@@ -4152,6 +5334,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "fade"
   },
   {
@@ -4174,6 +5357,12 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "nearStart": "ExpressionAssignType",
+    "nearEnd": "ExpressionAssignType",
+    "farStart": "ExpressionAssignType",
+    "farEnd": "ExpressionAssignType"
+   },
    "category": "fade"
   },
   {
@@ -4191,6 +5380,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "fade"
   },
   {
@@ -4200,6 +5390,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -4222,6 +5413,10 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "ShapeType": "EffectBoundsType",
+    "RotationOrder": "RotationOrder"
+   },
    "category": "fade"
   },
   {
@@ -4241,6 +5436,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -4262,6 +5458,10 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "BleedType": "LuminanceBleedType",
+    "SamplingType": "LuminanceBleedSamplingType"
+   },
    "category": "misc"
   },
   {
@@ -4283,6 +5483,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "transform"
   },
   {
@@ -4333,6 +5534,9 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "Type": "NodeBillboardType"
+   },
    "category": "render_billboard"
   },
   {
@@ -4393,6 +5597,50 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "posX_1": "ExpressionAssignType",
+    "posY_1": "ExpressionAssignType",
+    "posZ_1": "ExpressionAssignType",
+    "rangeX_1": "ExpressionAssignType",
+    "rangeY_1": "ExpressionAssignType",
+    "rangeZ_1": "ExpressionAssignType",
+    "color_1": "ExpressionAssignType",
+    "alpha_1": "ExpressionAssignType",
+    "posX_2": "ExpressionAssignType",
+    "posY_2": "ExpressionAssignType",
+    "posZ_2": "ExpressionAssignType",
+    "rangeX_2": "ExpressionAssignType",
+    "rangeY_2": "ExpressionAssignType",
+    "rangeZ_2": "ExpressionAssignType",
+    "color_2": "ExpressionAssignType",
+    "alpha_2": "ExpressionAssignType",
+    "posX_3": "ExpressionAssignType",
+    "posY_3": "ExpressionAssignType",
+    "posZ_3": "ExpressionAssignType",
+    "rangeX_3": "ExpressionAssignType",
+    "rangeY_3": "ExpressionAssignType",
+    "rangeZ_3": "ExpressionAssignType",
+    "color_3": "ExpressionAssignType",
+    "alpha_3": "ExpressionAssignType",
+    "posX_4": "ExpressionAssignType",
+    "posY_4": "ExpressionAssignType",
+    "posZ_4": "ExpressionAssignType",
+    "rangeX_4": "ExpressionAssignType",
+    "rangeY_4": "ExpressionAssignType",
+    "rangeZ_4": "ExpressionAssignType",
+    "color_4": "ExpressionAssignType",
+    "alpha_4": "ExpressionAssignType",
+    "unkn33": "ExpressionAssignType",
+    "unkn34": "ExpressionAssignType",
+    "sizeUnkn": "ExpressionAssignType",
+    "sizeUnknRand": "ExpressionAssignType",
+    "scaleUnkn": "ExpressionAssignType",
+    "scaleUnknRand": "ExpressionAssignType",
+    "speedUnkn": "ExpressionAssignType",
+    "speedUnknRand": "ExpressionAssignType",
+    "unkn41": "ExpressionAssignType",
+    "unkn42": "ExpressionAssignType"
+   },
    "category": "render_billboard"
   },
   {
@@ -4420,6 +5668,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "fluid"
   },
   {
@@ -4429,6 +5678,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -4449,6 +5699,10 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType"
+   },
    "category": "fluid"
   },
   {
@@ -4549,6 +5803,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "fluid"
   },
   {
@@ -4611,6 +5866,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "fluid"
   },
   {
@@ -4627,6 +5883,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "basic"
   },
   {
@@ -4644,6 +5901,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "transform"
   },
   {
@@ -4663,6 +5921,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "transform"
   },
   {
@@ -4690,6 +5949,17 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "posX": "ExpressionAssignType",
+    "posY": "ExpressionAssignType",
+    "posZ": "ExpressionAssignType",
+    "rotationX": "ExpressionAssignType",
+    "rotationY": "ExpressionAssignType",
+    "rotationZ": "ExpressionAssignType",
+    "scaleX": "ExpressionAssignType",
+    "scaleY": "ExpressionAssignType",
+    "scaleZ": "ExpressionAssignType"
+   },
    "category": "transform"
   },
   {
@@ -4709,6 +5979,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "transform"
   },
   {
@@ -4728,6 +5999,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "transform"
   },
   {
@@ -4746,6 +6018,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "velocity"
   },
   {
@@ -4764,6 +6037,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "velocity"
   },
   {
@@ -4781,6 +6055,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "velocity"
   },
   {
@@ -4799,6 +6074,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "velocity"
   },
   {
@@ -4834,6 +6110,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "particle"
   },
   {
@@ -4856,6 +6133,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "particle"
   },
   {
@@ -4888,6 +6166,9 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "FinishType": "Finish"
+   },
    "category": "particle"
   },
   {
@@ -4912,6 +6193,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "particle"
   },
   {
@@ -4929,6 +6211,10 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "ColorOperator": "PtColorOperator",
+    "AlphaOperator": "PtColorOperator"
+   },
    "category": "particle"
   },
   {
@@ -4948,6 +6234,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "particle"
   },
   {
@@ -4967,6 +6254,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "particle"
   },
   {
@@ -4976,6 +6264,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -4994,6 +6283,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "particle"
   },
   {
@@ -5012,6 +6302,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "particle"
   },
   {
@@ -5052,6 +6343,9 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "RotationOrder": "RotationOrder"
+   },
    "category": "emitter"
   },
   {
@@ -5071,6 +6365,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "emitter"
   },
   {
@@ -5105,6 +6400,24 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "emitRate": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType"
+   },
    "category": "emitter"
   },
   {
@@ -5121,6 +6434,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "emitter"
   },
   {
@@ -5137,6 +6451,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5164,6 +6479,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "field"
   },
   {
@@ -5182,6 +6498,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "field"
   },
   {
@@ -5220,6 +6537,28 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "unkn1": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType",
+    "unkn18": "ExpressionAssignType",
+    "unkn19": "ExpressionAssignType",
+    "unkn20": "ExpressionAssignType"
+   },
    "category": "field"
   },
   {
@@ -5239,6 +6578,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "field"
   },
   {
@@ -5248,6 +6588,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5257,6 +6598,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5279,6 +6621,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "field"
   },
   {
@@ -5288,6 +6631,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5297,6 +6641,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5326,6 +6671,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5347,6 +6693,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5356,6 +6703,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5371,6 +6719,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5380,6 +6729,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5389,6 +6739,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5405,6 +6756,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5422,6 +6774,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5455,6 +6808,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5474,6 +6828,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5503,6 +6858,19 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "posX": "ExpressionAssignType",
+    "posY": "ExpressionAssignType",
+    "posZ": "ExpressionAssignType",
+    "posX_2": "ExpressionAssignType",
+    "posY_2": "ExpressionAssignType",
+    "posZ_2": "ExpressionAssignType",
+    "attractionForce": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11_Wilds": "ExpressionAssignType"
+   },
    "category": "misc"
   },
   {
@@ -5525,6 +6893,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "vortexel"
   },
   {
@@ -5547,6 +6916,12 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "unkn1": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType"
+   },
    "category": "vortexel"
   },
   {
@@ -5583,6 +6958,12 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "EmitType": "VelocityEmitType",
+    "Shape": "VelocityShapeType",
+    "Direction": "VelocityShapeType",
+    "Attenuation": "VelocityAttenuationType"
+   },
    "category": "vortexel"
   },
   {
@@ -5611,6 +6992,18 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "unkn1": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType"
+   },
    "category": "vortexel"
   },
   {
@@ -5629,6 +7022,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "particle"
   },
   {
@@ -5651,6 +7045,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "vortexel"
   },
   {
@@ -5660,6 +7055,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5680,6 +7076,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "vortexel"
   },
   {
@@ -5689,6 +7086,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5718,6 +7116,9 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "Shape": "SolidBodyShapeType"
+   },
    "category": "vortexel"
   },
   {
@@ -5736,6 +7137,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "vortexel"
   },
   {
@@ -5756,6 +7158,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "vortexel"
   },
   {
@@ -5770,6 +7173,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "emitter"
   },
   {
@@ -5788,6 +7192,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5797,6 +7202,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5806,6 +7212,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5815,6 +7222,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -5831,6 +7239,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "velocity"
   },
   {
@@ -5857,6 +7266,9 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "RotationOrder": "RotationOrder"
+   },
    "category": "velocity"
   },
   {
@@ -5879,6 +7291,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "velocity"
   },
   {
@@ -5904,6 +7317,15 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "unkn1": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType"
+   },
    "category": "velocity"
   },
   {
@@ -5920,6 +7342,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "velocity"
   },
   {
@@ -5949,6 +7372,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "velocity"
   },
   {
@@ -5969,6 +7393,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "velocity"
   },
   {
@@ -5991,6 +7416,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "velocity"
   },
   {
@@ -6023,6 +7449,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "particle"
   },
   {
@@ -6045,6 +7472,12 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "Field1": "ExpressionAssignType",
+    "Field2": "ExpressionAssignType",
+    "Field3": "ExpressionAssignType",
+    "Field4": "ExpressionAssignType"
+   },
    "category": "particle"
   },
   {
@@ -6059,6 +7492,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6074,6 +7508,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6090,6 +7525,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6123,6 +7559,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6142,6 +7579,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6178,6 +7616,26 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "unkn1": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType",
+    "unkn18": "ExpressionAssignType"
+   },
    "category": "misc"
   },
   {
@@ -6187,6 +7645,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6209,6 +7668,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6218,6 +7678,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6241,6 +7702,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "emitter"
   },
   {
@@ -6280,6 +7742,29 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "emitRate": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType",
+    "unkn18": "ExpressionAssignType",
+    "unkn19": "ExpressionAssignType",
+    "unkn20": "ExpressionAssignType",
+    "unkn21": "ExpressionAssignType"
+   },
    "category": "emitter"
   },
   {
@@ -6299,6 +7784,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6336,6 +7822,10 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "GreenChLifeType": "LifeType",
+    "RedChLifeType": "LifeType"
+   },
    "category": "misc"
   },
   {
@@ -6376,6 +7866,30 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "particleColor": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "colorIntensityGreen": "ExpressionAssignType",
+    "colorSaturate": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "particleColor2": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "colorIntensityRed": "ExpressionAssignType",
+    "alpha1": "ExpressionAssignType",
+    "alpha2": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType",
+    "unkn18": "ExpressionAssignType",
+    "unkn19": "ExpressionAssignType",
+    "unkn20": "ExpressionAssignType",
+    "unkn21": "ExpressionAssignType",
+    "unkn22": "ExpressionAssignType"
+   },
    "category": "misc"
   },
   {
@@ -6412,6 +7926,11 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "SpecularLifeType": "LifeType",
+    "SheetLifeType": "LifeType",
+    "GtoBLifeType": "LifeType"
+   },
    "category": "misc"
   },
   {
@@ -6457,6 +7976,35 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "particleColor": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "colorIntensityGreen": "ExpressionAssignType",
+    "colorSaturate": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "particleColor2": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "colorIntensityRed": "ExpressionAssignType",
+    "alpha1": "ExpressionAssignType",
+    "alpha2": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType",
+    "unkn18": "ExpressionAssignType",
+    "unkn19": "ExpressionAssignType",
+    "unkn20": "ExpressionAssignType",
+    "unkn21": "ExpressionAssignType",
+    "unkn22": "ExpressionAssignType",
+    "unkn23": "ExpressionAssignType",
+    "unkn24": "ExpressionAssignType",
+    "unkn25": "ExpressionAssignType",
+    "unkn26": "ExpressionAssignType",
+    "unkn27": "ExpressionAssignType"
+   },
    "category": "misc"
   },
   {
@@ -6481,6 +8029,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "particle"
   },
   {
@@ -6502,6 +8051,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6527,6 +8077,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6536,6 +8087,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6562,6 +8114,9 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "SnapType": "TerrainSnapType"
+   },
    "category": "misc"
   },
   {
@@ -6579,6 +8134,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6594,6 +8150,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6603,6 +8160,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6620,6 +8178,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6629,6 +8188,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6638,6 +8198,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6647,6 +8208,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -6678,6 +8240,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_billboard"
   },
   {
@@ -6710,6 +8273,22 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "colorR": "ExpressionAssignType",
+    "colorG": "ExpressionAssignType",
+    "colorB": "ExpressionAssignType",
+    "colorA": "ExpressionAssignType",
+    "colorRate": "ExpressionAssignType",
+    "alpha2": "ExpressionAssignType",
+    "particleSize": "ExpressionAssignType",
+    "particleSizeRand": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType"
+   },
    "category": "render_billboard"
   },
   {
@@ -6742,6 +8321,9 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "OrientDirectionUpVector": "AxisXYZ"
+   },
    "category": "render_polygon"
   },
   {
@@ -6779,6 +8361,27 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "unkn1": "ExpressionAssignType",
+    "unkn2": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType",
+    "unkn18": "ExpressionAssignType",
+    "unkn19": "ExpressionAssignType"
+   },
    "category": "render_polygon"
   },
   {
@@ -6812,6 +8415,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -6839,6 +8443,17 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "color": "ExpressionAssignType",
+    "alpha": "ExpressionAssignType",
+    "unkn3": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "colorRate": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "size": "ExpressionAssignType",
+    "sizeRange": "ExpressionAssignType"
+   },
    "category": "render_ribbon"
   },
   {
@@ -6873,6 +8488,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_ribbon"
   },
   {
@@ -6904,6 +8520,21 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "color": "ExpressionAssignType",
+    "alpha": "ExpressionAssignType",
+    "alphaRate": "ExpressionAssignType",
+    "unkn4": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType"
+   },
    "category": "render_ribbon"
   },
   {
@@ -6952,6 +8583,12 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "PlayType": "PlayType",
+    "PlayOrder": "PlayOrder",
+    "RotationOrder": "RotationOrder",
+    "OrientDirectionUpVector": "AxisXYZ"
+   },
    "category": "render_mesh"
   },
   {
@@ -6971,6 +8608,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_mesh"
   },
   {
@@ -7011,6 +8649,27 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "color": "ExpressionAssignType",
+    "colorRand": "ExpressionAssignType",
+    "alpha": "ExpressionAssignType",
+    "alphaRate": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn11": "ExpressionAssignType",
+    "size": "ExpressionAssignType",
+    "sizeRand": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType",
+    "unkn18": "ExpressionAssignType",
+    "unkn19": "ExpressionAssignType"
+   },
    "category": "render_mesh"
   },
   {
@@ -7103,6 +8762,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_mesh"
   },
   {
@@ -7122,6 +8782,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_mesh"
   },
   {
@@ -7163,6 +8824,28 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {
+    "unkn1": "ExpressionAssignType",
+    "color1R": "ExpressionAssignType",
+    "color1G": "ExpressionAssignType",
+    "color1B": "ExpressionAssignType",
+    "unkn5": "ExpressionAssignType",
+    "unkn6": "ExpressionAssignType",
+    "unkn7": "ExpressionAssignType",
+    "unkn8": "ExpressionAssignType",
+    "unkn9": "ExpressionAssignType",
+    "unkn10": "ExpressionAssignType",
+    "unkn12": "ExpressionAssignType",
+    "unkn13": "ExpressionAssignType",
+    "unkn14": "ExpressionAssignType",
+    "unkn15": "ExpressionAssignType",
+    "unkn16": "ExpressionAssignType",
+    "unkn17": "ExpressionAssignType",
+    "unkn18": "ExpressionAssignType",
+    "unkn19": "ExpressionAssignType",
+    "unkn20": "ExpressionAssignType",
+    "unkn21": "ExpressionAssignType"
+   },
    "category": "render_mesh"
   },
   {
@@ -7267,6 +8950,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "render_lightning"
   },
   {
@@ -7276,6 +8960,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -7292,6 +8977,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "emitter"
   },
   {
@@ -7301,6 +8987,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -7310,6 +8997,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -7319,6 +9007,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -7338,6 +9027,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "fluid"
   },
   {
@@ -7358,6 +9048,7 @@
     "UniqueID",
     "Version"
    ],
+   "fieldEnums": {},
    "category": "fluid"
   },
   {
@@ -7367,6 +9058,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -7376,6 +9068,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   },
   {
@@ -7385,6 +9078,7 @@
    "readable": false,
    "error": null,
    "fields": [],
+   "fieldEnums": {},
    "category": "misc"
   }
  ],

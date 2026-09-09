@@ -66,6 +66,7 @@ static JsonSerializerOptions CreateBridgeJsonOptions()
     // 保证盖过 vendor 自带的（有 bug 的）EFXExpressionTreeJsonConverter，见
     // FixedExpressionTreeJsonConverter 的说明。
     options.Converters.Insert(0, new FixedExpressionTreeJsonConverter());
+    options.Converters.Insert(0, new FloatKeepsDecimalPointConverter());
     return options;
 }
 
@@ -402,6 +403,10 @@ static int RunTypes(string[] args)
 
     var options = CreateBridgeJsonOptions();
     var items = new List<object>();
+    var enumDefs = new Dictionary<string, List<object>>();
+    // `type`（EfxAttributeType）和 `Version`（EfxVersion）虽然也是枚举，但属于记账字段，
+    // 面板上不画（见 model.ATTRIBUTE_BOOKKEEPING_KEYS），成员表也没必要塞进清单。
+    var bookkeepingEnums = new HashSet<string> { "EfxAttributeType", "EfxVersion" };
     foreach (var (typeId, attrType) in EfxAttributeTypeRemapper.GetAllTypes(version).OrderBy(kv => kv.Key))
     {
         EFXAttribute? instance = null;
@@ -416,6 +421,7 @@ static int RunTypes(string[] args)
         }
 
         var fields = new List<string>();
+        var fieldEnums = new Dictionary<string, string>();
         if (instance != null)
         {
             // 从序列化器自己的 JsonTypeInfo 拿属性名，**不实际序列化**：键名一样是权威的
@@ -423,7 +429,22 @@ static int RunTypes(string[] args)
             // 比如 EfxClipData.ParsedClip 在 clipData 还没解析时直接 NullReferenceException。
             foreach (var prop in options.GetTypeInfo(instance.GetType()).Properties)
             {
-                if (prop.Get != null) fields.Add(prop.Name);
+                if (prop.Get == null) continue;
+                fields.Add(prop.Name);
+
+                // 枚举字段：记下枚举类型名，成员表单独去重存一份（见 payload.enums）。
+                // 这些字段在 JSON 里就是个裸数字，Blender 面板不知道 `2` 是 `XYZ` 还是别的，
+                // 有了这份元数据才能画成下拉。
+                var pt = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
+                if (!pt.IsEnum || bookkeepingEnums.Contains(pt.Name)) continue;
+                fieldEnums[prop.Name] = pt.Name;
+                if (!enumDefs.ContainsKey(pt.Name))
+                {
+                    enumDefs[pt.Name] = Enum.GetValues(pt).Cast<object>()
+                        .Select(v => new { value = Convert.ToInt64(v), name = Enum.GetName(pt, v) })
+                        .GroupBy(x => x.value).Select(g => g.First())   // [Flags] 别名去重
+                        .OrderBy(x => x.value).Cast<object>().ToList();
+                }
             }
         }
 
@@ -435,10 +456,19 @@ static int RunTypes(string[] args)
             readable = instance != null,
             error,
             fields,
+            fieldEnums,
         });
     }
 
-    var payload = new { game = version.ToString(), count = items.Count, types = items };
+    var payload = new
+    {
+        game = version.ToString(),
+        count = items.Count,
+        // 枚举成员表按枚举类型名去重存一份，字段那边只记类型名——1373 个枚举字段只涉及
+        // 二十来个枚举类型，逐字段展开会把清单撑大一个数量级。
+        enums = enumDefs.OrderBy(kv => kv.Key).ToDictionary(kv => kv.Key, kv => kv.Value),
+        types = items,
+    };
     File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
     var readable = items.Count(i => (bool)i.GetType().GetProperty("readable")!.GetValue(i)!);
     Console.WriteLine($"OK: {version} 共 {items.Count} 个类型（可读写 {readable} 个）-> {jsonOutPath}");
@@ -729,6 +759,55 @@ static int RunExprCheck(string[] args)
 // submodule，不在这层直接改提交，照抄原始逻辑只补一行 reader.Read() 再挂进
 // CreateBridgeJsonOptions()（System.Text.Json 按顺序找第一个匹配的 converter，插在列表最前面
 // 就能盖过 vendor 自己注册的那个）。
+// System.Text.Json 写 float 时用"最短可往返"表示，`1.0f` 写出来就是 `1`、`0.0f` 就是 `0`。
+// 这在 C# 侧无所谓（字段声明类型摆在那儿），但 Python 侧 `json.loads` 只能看值猜类型，
+// 拿到的是 `int`——Blender 面板于是给这些字段画成整数框，用户没法输入小数。
+// **不是只影响 0 值**：任何整数值的 float 都中招，比如 `LocalScale = {X:1, Y:1, Z:1}` 整个
+// 向量都变成整数框，而同一个 `LocalPosition` 里 `Y:-0.8` 却是正常的浮点框。
+//
+// 修法：给 float 挂一个转换器，有限值一律带小数点写出去。这样 Python 侧靠值就能分辨，
+// 不需要我们额外传一份"每个字段声明类型"的元数据下去（那要按路径递归匹配，麻烦得多）。
+//
+// NaN/±Infinity 仍按 `JsonNumberHandling.AllowNamedFloatingPointLiterals` 的老样子写成
+// **带引号的字符串**——自定义转换器会绕过那个开关，必须自己复现，否则 EFX 里那些
+// "无上限"语义的字段一写就崩（见 model.json_float_out 记录的历史事故）。
+//
+// EFX 结构里没有 double 字段（`grep 'public double' OtherFiles/EFX` 只有一个转换方法），
+// 所以只处理 float。
+sealed class FloatKeepsDecimalPointConverter : System.Text.Json.Serialization.JsonConverter<float>
+{
+    public override float Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var text = reader.GetString();
+            return text switch
+            {
+                "NaN" => float.NaN,
+                "Infinity" => float.PositiveInfinity,
+                "-Infinity" => float.NegativeInfinity,
+                _ => float.Parse(text!, System.Globalization.CultureInfo.InvariantCulture),
+            };
+        }
+        return reader.GetSingle();
+    }
+
+    public override void Write(Utf8JsonWriter writer, float value, JsonSerializerOptions options)
+    {
+        if (float.IsNaN(value)) { writer.WriteStringValue("NaN"); return; }
+        if (float.IsPositiveInfinity(value)) { writer.WriteStringValue("Infinity"); return; }
+        if (float.IsNegativeInfinity(value)) { writer.WriteStringValue("-Infinity"); return; }
+
+        // "R" = 最短可往返表示（.NET Core 3.0+ 已修好老版本那个 R 不可靠的问题）
+        var text = value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+        if (text.IndexOfAny(new[] { '.', 'e', 'E' }) < 0)
+        {
+            text += ".0";
+        }
+        writer.WriteRawValue(text);
+    }
+}
+
 sealed class FixedExpressionTreeJsonConverter : System.Text.Json.Serialization.JsonConverter<EFXExpressionTree>
 {
     public override EFXExpressionTree? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)

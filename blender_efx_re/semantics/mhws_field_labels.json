@@ -69,7 +69,141 @@
         "confidence": "likely",
         "evidence": "与姊妹项目 EFX-Editor（MHWI/MT Framework）的 UVSEQUENCE.loopingMode 位结构对照得出。那边的位划分经用户实机测试确认（EFX-Editor efx_format/schema/enums.py::BITS_LOOPING_MODE，以 BILLBOARD2D 当测试画布，2026-07-10）。本项目侧用 MHWs 全语料 66146 个 UVSequence 实例做统计验证：flipH/flipV/direction 三个 2 位子段无一出现值 3（MHWI 判定为非法组合）、byte2-3 全为 0（MHWI 的 loopingPad 恒 0）、byte0 的 P10/P90/众数 = 1/42/41，与 MHWI 的 1/42/41 一致。byte1 是两边唯一的分歧：MHWI 取值集 {0,1,2,3}，MHWs 取值集 {0,1,2,4,5,6}（从不出现 3 和 7），提示 MHWs 这里是 2 位朝向 + 1 位未知开关。",
         "tester": "corpus statistics (MHWs, 66146 instances) + EFX-Editor in-game verification (MHWI)",
-        "date": "2026-09-09"
+        "date": "2026-09-09",
+        "bits": [
+          {
+            "mask": 3,
+            "label_zh": "播放模式",
+            "label_en": "Playback Mode",
+            "items": [
+              [
+                0,
+                "只显示起始帧",
+                "Start Frame Only"
+              ],
+              [
+                1,
+                "循环",
+                "Loop"
+              ],
+              [
+                2,
+                "播放一次后消亡",
+                "Play Once Then Vanish"
+              ],
+              [
+                3,
+                "播放一次后定格",
+                "Play Once Then Hold"
+              ]
+            ]
+          },
+          {
+            "mask": 12,
+            "label_zh": "水平翻转",
+            "label_en": "Flip Horizontal",
+            "items": [
+              [
+                0,
+                "不翻转",
+                "No Flip"
+              ],
+              [
+                1,
+                "固定翻转",
+                "Flip"
+              ],
+              [
+                2,
+                "随机翻转",
+                "Random Flip"
+              ]
+            ]
+          },
+          {
+            "mask": 48,
+            "label_zh": "垂直翻转",
+            "label_en": "Flip Vertical",
+            "items": [
+              [
+                0,
+                "不翻转",
+                "No Flip"
+              ],
+              [
+                1,
+                "固定翻转",
+                "Flip"
+              ],
+              [
+                2,
+                "随机翻转",
+                "Random Flip"
+              ]
+            ]
+          },
+          {
+            "mask": 192,
+            "label_zh": "播放方向",
+            "label_en": "Direction",
+            "items": [
+              [
+                0,
+                "正向",
+                "Forward"
+              ],
+              [
+                1,
+                "倒放",
+                "Reverse"
+              ],
+              [
+                2,
+                "随机正倒",
+                "Random Direction"
+              ]
+            ]
+          },
+          {
+            "mask": 768,
+            "label_zh": "贴图朝向",
+            "label_en": "Orientation",
+            "items": [
+              [
+                0,
+                "正常",
+                "Normal"
+              ],
+              [
+                1,
+                "顺时针 90°",
+                "Rotate 90° CW"
+              ],
+              [
+                2,
+                "逆时针 90°",
+                "Rotate 90° CCW"
+              ]
+            ]
+          },
+          {
+            "mask": 1024,
+            "label_zh": "未知开关",
+            "label_en": "Unknown Flag",
+            "items": [
+              [
+                0,
+                "关",
+                "Off"
+              ],
+              [
+                1,
+                "开",
+                "On"
+              ]
+            ]
+          }
+        ]
       }
     }
   }

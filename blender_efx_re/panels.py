@@ -28,11 +28,13 @@ blender_efx_re/panels.py —— 面板层
 
 from __future__ import annotations
 
+import json
+
 import bpy
 from bpy.props import BoolProperty, EnumProperty, PointerProperty, StringProperty
 from bpy.types import Panel, UIList
 
-from . import attribute_types, bridge, i18n, io_tree, model, semantics, structure_ops
+from . import attribute_types, bitfield, bridge, i18n, io_tree, model, semantics, structure_ops
 from .i18n import T
 
 # 取活动对象一律用 `getattr(context, "object", None)` 而不是 `context.object`：脚本/后台
@@ -131,7 +133,7 @@ def _draw_scalar_prop(layout, node, text: str = "", prop_name: str | None = None
     layout.prop(node, attr, text=text)
 
 
-def draw_node(layout, node, attr_type: str | None = None, root_obj=None) -> None:
+def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_owner=None) -> None:
     """递归绘制一个 EFXValueNode：标量画一行 prop()，OBJECT/ARRAY 画一个可折叠 box 递归绘制
     children。ui_expand 只影响面板显示，不参与导出——见 model.py 里 EFXValueNode 的说明。
 
@@ -154,6 +156,22 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None) -> None
         row = layout.row(align=True)
         _draw_label(row, label_text, entry)
         row.prop_search(node, "string_value", root_obj, "efx_bones", text="", icon="BONE_DATA")
+        return
+
+    segs = bitfield.segments(entry)
+    if not segs and dtype in ("INT", "BIGINT") and attr_type:
+        # C# 侧声明成枚举的字段：合成一个"单段位域"规格，直接复用位域那套编辑器。
+        # 枚举本来就是位域的退化情形（一整个字段就是一段），没必要另写一条绘制/编辑路径。
+        members = attribute_types.enum_members(attr_type, node.key)
+        if members:
+            segs = [{"mask": 0xFFFFFFFF, "label_zh": label_text, "label_en": label_text,
+                     "items": [[v, n, n] for v, n in members]}]
+
+    if segs and dtype in ("INT", "BIGINT"):
+        # 位域：画一个显示解码摘要的按钮，点开弹窗逐段选（见 bitfield.py）。
+        # 不再画裸数字——`UVSequence.Flags` 的众数是 41，谁看得出那是"循环+水平随机翻+
+        # 垂直随机翻+正向"。
+        _draw_bitfield_row(layout, node, label_text, entry, segs, attr_owner)
         return
 
     if dtype == "OBJECT" and model.is_rgba_color_node(node):
@@ -207,13 +225,31 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None) -> None
         if node.ui_expand:
             box = layout.box()
             for child in node.children:
-                draw_node(box, child)
+                draw_node(box, child, attr_owner=attr_owner)
         return
 
     row = layout.row(align=True)
     _draw_label(row, label_text, entry)
     _draw_scalar_prop(row, node)
     _draw_hash_name(row, node)
+
+
+def _draw_bitfield_row(layout, node, label_text, entry, segs, attr_owner) -> None:
+    """位域字段：标签 + 一个显示解码摘要的按钮。点开是 bitfield 弹窗。"""
+    row = layout.row(align=True)
+    _draw_label(row, label_text, entry)
+    packed = bitfield.read_packed(node)
+    if packed is None or attr_owner is None:
+        # 拿不到值或不知道字段挂在哪个 attribute 上（比如 Root 的 FieldParameter 树），
+        # 退回普通数字框，总比画不出来强。
+        _draw_scalar_prop(row, node)
+        return
+    op = row.operator("efx_re.edit_bitfield",
+                      text=bitfield.summary(packed, segs), icon="OPTIONS", translate=False)
+    op.node_path = bitfield.node_path(attr_owner.efx_fields, node)
+    op.spec_json = json.dumps(segs, ensure_ascii=False)
+    op.current_value = packed
+    op.field_label = label_text
 
 
 def _hash_name(node) -> str | None:
@@ -880,7 +916,7 @@ def _draw_fields_content(layout, context, obj) -> None:
     box = layout.box()
     col = box.column(align=True)
     for node in obj.efx_fields:
-        draw_node(col, node, attr_type=obj.efx_attr_type, root_obj=root_obj)
+        draw_node(col, node, attr_type=obj.efx_attr_type, root_obj=root_obj, attr_owner=obj)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
