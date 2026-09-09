@@ -24,6 +24,7 @@ pak 里的路径必须带版本号后缀。
 
 from __future__ import annotations
 
+import os
 import re
 
 import bpy
@@ -98,7 +99,7 @@ def _ensure_version_suffix(filepath: str, data: dict) -> tuple[str, str | None, 
 
 
 class EFX_RE_OT_import(Operator, ImportHelper):
-    """通过 EfxBridge 读取一个 .efx 文件，建成 ~TYPE 对象树"""
+    """通过 EfxBridge 读取一个或多个 .efx 文件，建成 ~TYPE 对象树"""
 
     bl_idname = "efx_re.import"
     bl_label = "Import EFX"
@@ -107,24 +108,107 @@ class EFX_RE_OT_import(Operator, ImportHelper):
     filename_ext = ".efx"
     filter_glob: StringProperty(default="*.efx;*.efx.*", options={"HIDDEN"})
 
+    # `directory` + `files` 有两个用处：文件浏览器里能多选，以及**拖入导入**——
+    # Blender 拖文件进来时走 `wm.drop_import_file`，它就是往目标算子塞这两个属性
+    # （见 EFX_RE_FH_import）。SKIP_SAVE 保证上一次的选择不会残留到下一次调用。
+    directory: StringProperty(subtype="DIR_PATH", options={"HIDDEN", "SKIP_SAVE"})
+    files: bpy.props.CollectionProperty(
+        type=bpy.types.OperatorFileListElement, options={"HIDDEN", "SKIP_SAVE"},
+    )
+
+    def invoke(self, context, event):
+        """拖入时直接执行，不要弹文件浏览器。
+
+        Blender 拖文件进来时用 `INVOKE_DEFAULT` 调这个算子，而 `ImportHelper.invoke()` 干的事
+        是 `fileselect_add(self)`——**打开文件浏览器**，压根不执行导入。表现出来就是"拖进去
+        没反应，算子还返回 FINISHED"（实测踩过：FileHandler 注册正确、poll_drop 通过、扩展名
+        也匹配，就是什么都没发生）。
+
+        判据用 `self.directory`：只有拖入/多选这条路会把它填上，用户从菜单点"导入"时它是空的，
+        那时才该弹浏览器。
+        """
+        if self.directory:
+            return self.execute(context)
+        return super().invoke(context, event)
+
+    def _paths(self) -> list[str]:
+        """这次要导入哪些文件。拖入 / 多选走 `directory` + `files`，单文件走 `filepath`。"""
+        if self.files and self.directory:
+            names = [f.name for f in self.files if f.name]
+            if names:
+                return [os.path.join(self.directory, n) for n in names]
+        return [self.filepath] if self.filepath else []
+
     def execute(self, context):
-        try:
-            data = bridge.dump_efx(self.filepath)
-        except bridge.BridgeError as ex:
-            self.report({"ERROR"}, f"EfxBridge dump 失败，拒绝导入：\n{ex}")
+        paths = self._paths()
+        if not paths:
+            self.report({"ERROR"}, "没有选中任何文件")
             return {"CANCELLED"}
 
-        name = bpy.path.basename(self.filepath)
-        root_col = io_tree.build_root_from_efxfile(data, context.scene.collection, name)
-        # 记住带版本号后缀的原始文件名，给 Export 当默认文件名用（见模块头部说明）。
-        root_col.efx_source_filename = name
-        transform3d_view.sync_all_transform3d(root_col)
-        # 刚导入的这棵树就是用户接下来要动的那棵——直接设成"当前 EFX"，省得还要手动去选
-        # （对齐姊妹项目 EFX-Editor 导入后自动指向新根的行为）。见 io_tree.resolve_root()。
-        context.scene.efx_re_active_root = root_col
+        imported, failed = [], []
+        for path in paths:
+            try:
+                data = bridge.dump_efx(path)
+            except bridge.BridgeError as ex:
+                # 逐个文件独立处理：一个坏文件不该让同批拖进来的其它文件都白导
+                # （单文件时行为和以前一样——报错 + CANCELLED）。
+                failed.append((bpy.path.basename(path), str(ex).strip().split("\n")[0]))
+                continue
 
-        self.report({"INFO"}, f"已导入 '{root_col.name}'：{_summarize(data)}")
+            name = bpy.path.basename(path)
+            root_col = io_tree.build_root_from_efxfile(data, context.scene.collection, name)
+            # 记住带版本号后缀的原始文件名，给 Export 当默认文件名用（见模块头部说明）。
+            root_col.efx_source_filename = name
+            transform3d_view.sync_all_transform3d(root_col)
+            # 刚导入的这棵树就是用户接下来要动的那棵——直接设成"当前 EFX"，省得还要手动去选
+            # （对齐姊妹项目 EFX-Editor 导入后自动指向新根的行为）。见 io_tree.resolve_root()。
+            context.scene.efx_re_active_root = root_col
+            imported.append((root_col, data))
+
+        # 有文件成功时失败项报 WARNING 而不是 ERROR：`self.report({"ERROR"})` 会让
+        # `bpy.ops.efx_re.import(...)` 在 Python 侧直接抛 RuntimeError（Blender 把算子的
+        # ERROR 报告转成异常），部分成功却抛异常，脚本调用方没法处理。全军覆没时才是真错误。
+        level = {"ERROR"} if not imported else {"WARNING"}
+        for basename, first_line in failed:
+            self.report(level, f"EfxBridge dump 失败，拒绝导入 '{basename}'：{first_line}")
+        if not imported:
+            return {"CANCELLED"}
+
+        if len(imported) == 1:
+            root_col, data = imported[0]
+            self.report({"INFO"}, f"已导入 '{root_col.name}'：{_summarize(data)}")
+        else:
+            self.report({"INFO"}, f"已导入 {len(imported)} 个 EFX 文件（{len(failed)} 个失败）")
         return {"FINISHED"}
+
+
+class EFX_RE_FH_import(bpy.types.FileHandler):
+    """把 .efx 文件直接拖进 Blender 就导入（Blender 4.1+ 的 FileHandler API）。
+
+    ⚠ **`bl_file_extensions` 匹配的是最后一段扩展名，所以这里写的是版本号而不是 `.efx`。**
+    RE Engine 的文件名形如 `xxx.efx.5571972`，末段是格式版本号；写 `.efx` 一个也匹配不上。
+    这不是我们的怪癖——同一台机器上装的其它 RE Engine 插件全是这么干的，比如
+    `MESH_FH_drag_import` 列了 20 个 mesh 版本号、`MDF_FH_drag_import` 列了 12 个 mdf 版本号。
+    姊妹项目 EFX-Editor 写 `.efx` 是对的，因为 MHWI（MT Framework）的文件名就只有一段扩展名。
+
+    这里只列 MHWs 的 efx 版本 `5571972`（= vendor `EfxVersion.MHWilds`，实测 9221 个官方文件
+    无一例外）。将来 Capcom 改版本号，或者要支持别的 RE 游戏，在这儿加一段就行。
+    """
+
+    bl_idname = "EFX_RE_FH_import"
+    bl_label = "Import MHWs EFX"
+    bl_import_operator = "efx_re.import"
+    bl_file_extensions = ".5571972"
+
+    @classmethod
+    def poll_drop(cls, context):
+        """3D 视口和大纲视图里都能拖。
+
+        除了姊妹项目那边的 3D 视口，这里多放开了大纲视图——EFX_ROOT 现在就是一个集合
+        （见 io_tree 头部说明），大纲视图正是集合的主场，往那儿拖比往视口里拖更顺手。
+        """
+        area = getattr(context, "area", None)
+        return area is not None and area.type in {"VIEW_3D", "OUTLINER"}
 
 
 class EFX_RE_OT_export(Operator, ExportHelper):
@@ -222,7 +306,7 @@ class EFX_RE_OT_validate(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (EFX_RE_OT_import, EFX_RE_OT_export, EFX_RE_OT_validate)
+_CLASSES = (EFX_RE_OT_import, EFX_RE_FH_import, EFX_RE_OT_export, EFX_RE_OT_validate)
 
 
 def register():
