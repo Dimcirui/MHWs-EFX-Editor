@@ -35,6 +35,10 @@ from bpy.types import Panel, UIList
 from . import attribute_types, bridge, i18n, io_tree, model, semantics, structure_ops
 from .i18n import T
 
+# 取活动对象一律用 `getattr(context, "object", None)` 而不是 `context.object`：脚本/后台
+# 调用（比如通过 MCP 桥或 `--background`）拿到的 Context 上**没有** `object` 属性，直接取会
+# AttributeError 而不是拿到 None，算子的 poll 会当场炸掉而不是安静地返回 False。
+
 
 class EFX_RE_OT_field_info(bpy.types.Operator):
     """悬浮显示字段知识表里的说明文字的占位按钮——点击不做任何事，只借用 Blender operator
@@ -253,7 +257,9 @@ class EFX_RE_UL_groups(UIList):
     bl_idname = "EFX_RE_UL_groups"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        layout.prop(item, "name", text="", emboss=False, icon="BOOKMARK")
+        # 图标名是 BOOKMARKS（复数），没有单数的 BOOKMARK——写错了要到这个列表**真的有条目**
+        # 需要画的时候才会炸，见 tools/verify_ui.py 的说明。
+        layout.prop(item, "name", text="", emboss=False, icon="BOOKMARKS")
 
 
 class EFX_RE_OT_group_add(bpy.types.Operator):
@@ -263,11 +269,11 @@ class EFX_RE_OT_group_add(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
+        obj = getattr(context, "object", None)
         return obj is not None and obj.get("~TYPE") == model.TYPE_ENTRY
 
     def execute(self, context):
-        obj = context.object
+        obj = getattr(context, "object", None)
         item = obj.efx_groups.add()
         item.name = "Group"
         obj.efx_groups_active_index = len(obj.efx_groups) - 1
@@ -281,11 +287,11 @@ class EFX_RE_OT_group_remove(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
+        obj = getattr(context, "object", None)
         return obj is not None and obj.get("~TYPE") == model.TYPE_ENTRY and len(obj.efx_groups) > 0
 
     def execute(self, context):
-        obj = context.object
+        obj = getattr(context, "object", None)
         obj.efx_groups.remove(obj.efx_groups_active_index)
         obj.efx_groups_active_index = min(obj.efx_groups_active_index, len(obj.efx_groups) - 1)
         return {"FINISHED"}
@@ -398,7 +404,9 @@ class EFX_RE_OT_uvar_group_add(bpy.types.Operator):
     def execute(self, context):
         obj = _active_root(context)
         item = obj.efx_uvar_groups.add()
-        item.uvar_type = "0"
+        # 枚举只有 '1'（标记位）和 '2'（带路径的外部 .uvar 引用），没有 '0'——写 "0" 会
+        # TypeError。这里不显式赋值，直接沿用 PropertyGroup 声明的 default="2"
+        # （见 model.EFXUvarGroupItem），新建一条默认就是"要填路径"的那种，也是常见的那种。
         obj.efx_uvar_groups_active_index = len(obj.efx_uvar_groups) - 1
         return {"FINISHED"}
 
@@ -488,11 +496,11 @@ class EFX_RE_OT_clip_curve_add(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
+        obj = getattr(context, "object", None)
         return obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE and obj.efx_is_clip_attribute
 
     def execute(self, context):
-        obj = context.object
+        obj = getattr(context, "object", None)
         used = {c.bit_index for c in obj.efx_clip_curves}
         free = next((i for i in range(obj.efx_clip_bit_count) if i not in used), 0)
         curve = obj.efx_clip_curves.add()
@@ -508,14 +516,14 @@ class EFX_RE_OT_clip_curve_remove(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
+        obj = getattr(context, "object", None)
         return (
             obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE
             and len(obj.efx_clip_curves) > 0
         )
 
     def execute(self, context):
-        obj = context.object
+        obj = getattr(context, "object", None)
         obj.efx_clip_curves.remove(obj.efx_clip_curves_active_index)
         obj.efx_clip_curves_active_index = min(
             obj.efx_clip_curves_active_index, len(obj.efx_clip_curves) - 1
@@ -546,7 +554,7 @@ class EFX_RE_OT_clip_keyframe_add(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
+        obj = getattr(context, "object", None)
         return obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE and _active_clip_curve(obj) is not None
 
     def execute(self, context):
@@ -564,7 +572,7 @@ class EFX_RE_OT_clip_keyframe_remove(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
+        obj = getattr(context, "object", None)
         if obj is None or obj.get("~TYPE") != model.TYPE_ATTRIBUTE:
             return False
         curve = _active_clip_curve(obj)
@@ -595,14 +603,14 @@ class EFX_RE_OT_expression_curve_add(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
+        obj = getattr(context, "object", None)
         return (
             obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE
             and obj.efx_is_expression_attribute
         )
 
     def execute(self, context):
-        obj = context.object
+        obj = getattr(context, "object", None)
         used = {c.bit_index for c in obj.efx_expression_curves}
         free = next((i for i in range(obj.efx_expression_bit_count) if i not in used), 0)
         curve = obj.efx_expression_curves.add()
@@ -619,14 +627,14 @@ class EFX_RE_OT_expression_curve_remove(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
+        obj = getattr(context, "object", None)
         return (
             obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE
             and len(obj.efx_expression_curves) > 0
         )
 
     def execute(self, context):
-        obj = context.object
+        obj = getattr(context, "object", None)
         obj.efx_expression_curves.remove(obj.efx_expression_curves_active_index)
         obj.efx_expression_curves_active_index = min(
             obj.efx_expression_curves_active_index, len(obj.efx_expression_curves) - 1
@@ -651,7 +659,7 @@ class EFX_RE_OT_expression_formula_check(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
+        obj = getattr(context, "object", None)
         return obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE and _active_expression_curve(obj) is not None
 
     def execute(self, context):
@@ -933,7 +941,7 @@ class EFX_RE_PT_edit(Panel):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
+        obj = getattr(context, "object", None)
         return obj is not None and obj.get("~TYPE") in _EFX_TYPES
 
     def draw(self, context):
@@ -1010,7 +1018,7 @@ class EFX_RE_PT_add(Panel):
 
 def _poll_type(type_tag: str):
     def poll(cls, context):
-        obj = context.object
+        obj = getattr(context, "object", None)
         return obj is not None and obj.get("~TYPE") == type_tag
     return classmethod(poll)
 
@@ -1027,13 +1035,13 @@ def _poll_root(cls, context):
 
 @classmethod
 def _poll_clip(cls, context):
-    obj = context.object
+    obj = getattr(context, "object", None)
     return obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE and obj.efx_is_clip_attribute
 
 
 @classmethod
 def _poll_expression(cls, context):
-    obj = context.object
+    obj = getattr(context, "object", None)
     return (
         obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE
         and obj.efx_is_expression_attribute
