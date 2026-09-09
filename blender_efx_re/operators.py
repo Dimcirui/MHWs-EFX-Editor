@@ -115,15 +115,15 @@ class EFX_RE_OT_import(Operator, ImportHelper):
             return {"CANCELLED"}
 
         name = bpy.path.basename(self.filepath)
-        root_obj = io_tree.build_root_from_efxfile(data, context.scene.collection, name)
+        root_col = io_tree.build_root_from_efxfile(data, context.scene.collection, name)
         # 记住带版本号后缀的原始文件名，给 Export 当默认文件名用（见模块头部说明）。
-        root_obj.efx_source_filename = name
-        transform3d_view.sync_all_transform3d(root_obj)
+        root_col.efx_source_filename = name
+        transform3d_view.sync_all_transform3d(root_col)
         # 刚导入的这棵树就是用户接下来要动的那棵——直接设成"当前 EFX"，省得还要手动去选
         # （对齐姊妹项目 EFX-Editor 导入后自动指向新根的行为）。见 io_tree.resolve_root()。
-        context.scene.efx_re_active_root = root_obj
+        context.scene.efx_re_active_root = root_col
 
-        self.report({"INFO"}, f"已导入 '{root_obj.name}'：{_summarize(data)}")
+        self.report({"INFO"}, f"已导入 '{root_col.name}'：{_summarize(data)}")
         return {"FINISHED"}
 
 
@@ -149,26 +149,26 @@ class EFX_RE_OT_export(Operator, ExportHelper):
         # 默认文件名沿用导入时的原始文件名（连版本号后缀一起），让最常见的"导入→改→导出"
         # 流程不需要用户自己记得手打 `.5571972`。ExportHelper.invoke() 只在 filepath 为空时
         # 才按 blend 文件名 + filename_ext 兜底，所以先填上再交给它。
-        root_obj = io_tree.resolve_root(context)
-        if root_obj is not None and not self.filepath and root_obj.efx_source_filename:
-            self.filepath = root_obj.efx_source_filename
+        root_col = io_tree.resolve_root(context)
+        if root_col is not None and not self.filepath and root_col.efx_source_filename:
+            self.filepath = root_col.efx_source_filename
         return super().invoke(context, event)
 
     def execute(self, context):
-        root_obj = io_tree.resolve_root(context)
-        if root_obj is None:
+        root_col = io_tree.resolve_root(context)
+        if root_col is None:
             self.report({"ERROR"}, "没有可导出的 EFX 树——选中树里的任意对象，或在面板的「当前 EFX」里指定一个")
             return {"CANCELLED"}
 
         try:
-            io_tree.check_bone_references(root_obj)
-            io_tree.check_clip_bits(root_obj)
-            io_tree.check_expression_bits(root_obj)
+            io_tree.check_bone_references(root_col)
+            io_tree.check_clip_bits(root_col)
+            io_tree.check_expression_bits(root_col)
         except (io_tree.BoneReferenceError, io_tree.ClipBitError, io_tree.ExpressionBitError) as ex:
             self.report({"ERROR"}, str(ex))
             return {"CANCELLED"}
 
-        data = io_tree.export_root_to_efxfile(root_obj)
+        data = io_tree.export_root_to_efxfile(root_col)
         out_path, notice, fatal = _ensure_version_suffix(self.filepath, data)
         if fatal:
             # 补不出合法后缀：拒绝导出，别留一个注定读不回来的文件。
@@ -183,7 +183,7 @@ class EFX_RE_OT_export(Operator, ExportHelper):
 
         if notice is not None:
             self.report({"WARNING"}, notice)
-        self.report({"INFO"}, f"已从 '{root_obj.name}' 导出到 {out_path}")
+        self.report({"INFO"}, f"已从 '{root_col.name}' 导出到 {out_path}")
         return {"FINISHED"}
 
 
@@ -204,21 +204,21 @@ class EFX_RE_OT_validate(Operator):
         return io_tree.resolve_root(context) is not None
 
     def execute(self, context):
-        root_obj = io_tree.resolve_root(context)
-        if root_obj is None:
+        root_col = io_tree.resolve_root(context)
+        if root_col is None:
             self.report({"ERROR"}, i18n.T("validate.no_root"))
             return {"CANCELLED"}
 
-        issues = io_tree.collect_issues(root_obj)
+        issues = io_tree.collect_issues(root_col)
         if not issues:
-            self.report({"INFO"}, f"'{root_obj.name}'：{i18n.T('validate.ok')}")
+            self.report({"INFO"}, f"'{root_col.name}'：{i18n.T('validate.ok')}")
             return {"FINISHED"}
 
         # 全部问题都进 report，让用户在信息栏/Info 编辑器里能一次看完；同时打到控制台，
         # 条数多时状态栏那一行放不下。
         text = "\n".join(f"  {m}" for m in issues)
-        print(f"[MHWs EFX Editor] '{root_obj.name}' 校验发现 {len(issues)} 个问题：\n{text}")
-        self.report({"ERROR"}, f"'{root_obj.name}'：发现 {len(issues)} 个问题\n{text}")
+        print(f"[MHWs EFX Editor] '{root_col.name}' 校验发现 {len(issues)} 个问题：\n{text}")
+        self.report({"ERROR"}, f"'{root_col.name}'：发现 {len(issues)} 个问题\n{text}")
         return {"FINISHED"}
 
 

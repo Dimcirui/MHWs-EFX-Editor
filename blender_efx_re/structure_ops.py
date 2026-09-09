@@ -73,6 +73,23 @@ def _resolve_attribute_parent(context) -> Object | None:
     return None
 
 
+def _remove_collection_tree(col) -> None:
+    """递归删掉一个集合及其子集合里剩下的对象和集合本身。删嵌套 efxrData 根时用。"""
+    if col is None:
+        return
+    for child in list(col.children):
+        _remove_collection_tree(child)
+    for obj in list(col.objects):
+        try:
+            bpy.data.objects.remove(obj, do_unlink=True)
+        except Exception:
+            pass
+    try:
+        bpy.data.collections.remove(col)
+    except Exception:
+        pass
+
+
 def _activate(context, obj: Object) -> None:
     for other in context.selected_objects:
         other.select_set(False)
@@ -92,8 +109,8 @@ class EFX_RE_OT_entry_add(Operator):
         return io_tree.resolve_root(context) is not None
 
     def execute(self, context):
-        root_obj = io_tree.resolve_root(context)
-        if root_obj is None:
+        root_col = io_tree.resolve_root(context)
+        if root_col is None:
             self.report({"ERROR"}, "没有当前 EFX——先导入一个文件，或在「当前 EFX」里选一个")
             return {"CANCELLED"}
         try:
@@ -102,10 +119,10 @@ class EFX_RE_OT_entry_add(Operator):
             self.report({"ERROR"}, f"新建 Entry 失败：\n{ex}")
             return {"CANCELLED"}
 
-        entries_collection, _ = io_tree.root_collections(root_obj)
-        siblings = io_tree.typed_children(root_obj, model.TYPE_ENTRY)
+        entries_collection, _ = io_tree.root_collections(root_col)
+        siblings = io_tree.root_entries(root_col)
         data["name"] = f"Entry_{len(siblings)}"
-        new_obj = io_tree.build_entry_object(data, len(siblings), root_obj, entries_collection)
+        new_obj = io_tree.build_entry_object(data, len(siblings), entries_collection)
         _renumber(siblings + [new_obj])
         _activate(context, new_obj)
         self.report({"INFO"}, f"已新增 Entry '{new_obj.name}'")
@@ -124,8 +141,8 @@ class EFX_RE_OT_action_add(Operator):
         return io_tree.resolve_root(context) is not None
 
     def execute(self, context):
-        root_obj = io_tree.resolve_root(context)
-        if root_obj is None:
+        root_col = io_tree.resolve_root(context)
+        if root_col is None:
             self.report({"ERROR"}, "没有当前 EFX——先导入一个文件，或在「当前 EFX」里选一个")
             return {"CANCELLED"}
         try:
@@ -134,10 +151,10 @@ class EFX_RE_OT_action_add(Operator):
             self.report({"ERROR"}, f"新建 Action 失败：\n{ex}")
             return {"CANCELLED"}
 
-        _, actions_collection = io_tree.root_collections(root_obj)
-        siblings = io_tree.typed_children(root_obj, model.TYPE_ACTION)
+        _, actions_collection = io_tree.root_collections(root_col)
+        siblings = io_tree.root_actions(root_col)
         data["name"] = f"Action_{len(siblings)}"
-        new_obj = io_tree.build_action_object(data, len(siblings), root_obj, actions_collection)
+        new_obj = io_tree.build_action_object(data, len(siblings), actions_collection)
         _renumber(siblings + [new_obj])
         _activate(context, new_obj)
         self.report({"INFO"}, f"已新增 Action '{new_obj.name}'")
@@ -220,6 +237,7 @@ class EFX_RE_OT_delete(Operator):
             return {"CANCELLED"}
 
         parent_obj = obj.parent
+        root_col = io_tree.find_root(obj)
         name = obj.name
 
         # 收集整棵子树。Attribute 底下可能还挂着嵌套的 EFX_ROOT（PlayEmitter.efxrData），
@@ -232,17 +250,28 @@ class EFX_RE_OT_delete(Operator):
             stack.extend(cur.children)
 
         opaque_texts = [o.efx_opaque_text for o in doomed if getattr(o, "efx_opaque_text", "")]
+        # 被删掉的 attribute 如果带着嵌套的 efxrData 根集合，集合也要一起删——它不在
+        # children 里（Collection 挂不到 Object 下面），只靠 efx_nested_root 指针关联，
+        # 光删对象会留下一堆没人引用的空集合。
+        nested_roots = [o.efx_nested_root for o in doomed if getattr(o, "efx_nested_root", None)]
         for o in doomed:
             bpy.data.objects.remove(o, do_unlink=True)
+        for col in nested_roots:
+            _remove_collection_tree(col)
         # 顺手清掉只被这些对象引用的 opaque 文本块，不然场景里会攒一堆无主文本
         for text_name in opaque_texts:
             text = bpy.data.texts.get(text_name)
             if text is not None and text.users == 0:
                 bpy.data.texts.remove(text)
 
-        if parent_obj is not None:
+        # 重排兄弟：Attribute 靠父对象找兄弟；Entry/Action 没有父对象（EFX_ROOT 是集合），
+        # 靠所在的 *_Entries / *_Actions 集合找。
+        if tag == model.TYPE_ATTRIBUTE and parent_obj is not None:
             _renumber(io_tree.typed_children(parent_obj, tag))
             _activate(context, parent_obj)
+        elif root_col is not None:
+            _renumber(io_tree.root_entries(root_col) if tag == model.TYPE_ENTRY
+                      else io_tree.root_actions(root_col))
 
         self.report({"INFO"}, f"已删除 '{name}'（含 {len(doomed) - 1} 个子对象）")
         return {"FINISHED"}

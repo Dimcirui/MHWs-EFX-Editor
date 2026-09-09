@@ -98,12 +98,12 @@ class EFX_RE_OT_entry_paste(Operator):
             self.report({"ERROR"}, "剪贴板里没有可粘贴的 Entry（先在某个 Entry 上用 Copy Entry）")
             return {"CANCELLED"}
 
-        root_obj = io_tree.resolve_root(context)
-        entries_collection, _ = io_tree.root_collections(root_obj)
-        siblings = io_tree.typed_children(root_obj, model.TYPE_ENTRY)
+        root_col = io_tree.resolve_root(context)
+        entries_collection, _ = io_tree.root_collections(root_col)
+        siblings = io_tree.root_entries(root_col)
         new_index = _next_index(siblings)
 
-        new_obj = io_tree.build_entry_object(data, new_index, root_obj, entries_collection)
+        new_obj = io_tree.build_entry_object(data, new_index, entries_collection)
         self.report({"INFO"}, f"已粘贴为新 Entry '{new_obj.name}'")
         return {"FINISHED"}
 

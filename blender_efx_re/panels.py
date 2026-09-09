@@ -307,11 +307,10 @@ class EFX_RE_OT_bone_add(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
-        return obj is not None and obj.get("~TYPE") == model.TYPE_ROOT
+        return _active_root(context) is not None
 
     def execute(self, context):
-        obj = context.object
+        obj = _active_root(context)
         item = obj.efx_bones.add()
         item.name = "Bone"
         obj.efx_bones_active_index = len(obj.efx_bones) - 1
@@ -325,11 +324,11 @@ class EFX_RE_OT_bone_remove(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
-        return obj is not None and obj.get("~TYPE") == model.TYPE_ROOT and len(obj.efx_bones) > 0
+        root = _active_root(context)
+        return root is not None and len(root.efx_bones) > 0
 
     def execute(self, context):
-        obj = context.object
+        obj = _active_root(context)
         obj.efx_bones.remove(obj.efx_bones_active_index)
         obj.efx_bones_active_index = min(obj.efx_bones_active_index, len(obj.efx_bones) - 1)
         return {"FINISHED"}
@@ -349,11 +348,10 @@ class EFX_RE_OT_field_parameter_add(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
-        return obj is not None and obj.get("~TYPE") == model.TYPE_ROOT
+        return _active_root(context) is not None
 
     def execute(self, context):
-        obj = context.object
+        obj = _active_root(context)
         item = obj.efx_field_parameters.add()
         item.name = "FieldParameter"
         obj.efx_field_parameters_active_index = len(obj.efx_field_parameters) - 1
@@ -367,14 +365,11 @@ class EFX_RE_OT_field_parameter_remove(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
-        return (
-            obj is not None and obj.get("~TYPE") == model.TYPE_ROOT
-            and len(obj.efx_field_parameters) > 0
-        )
+        root = _active_root(context)
+        return root is not None and len(root.efx_field_parameters) > 0
 
     def execute(self, context):
-        obj = context.object
+        obj = _active_root(context)
         obj.efx_field_parameters.remove(obj.efx_field_parameters_active_index)
         obj.efx_field_parameters_active_index = min(
             obj.efx_field_parameters_active_index, len(obj.efx_field_parameters) - 1
@@ -398,11 +393,10 @@ class EFX_RE_OT_uvar_group_add(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
-        return obj is not None and obj.get("~TYPE") == model.TYPE_ROOT
+        return _active_root(context) is not None
 
     def execute(self, context):
-        obj = context.object
+        obj = _active_root(context)
         item = obj.efx_uvar_groups.add()
         item.uvar_type = "0"
         obj.efx_uvar_groups_active_index = len(obj.efx_uvar_groups) - 1
@@ -416,14 +410,11 @@ class EFX_RE_OT_uvar_group_remove(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
-        return (
-            obj is not None and obj.get("~TYPE") == model.TYPE_ROOT
-            and len(obj.efx_uvar_groups) > 0
-        )
+        root = _active_root(context)
+        return root is not None and len(root.efx_uvar_groups) > 0
 
     def execute(self, context):
-        obj = context.object
+        obj = _active_root(context)
         obj.efx_uvar_groups.remove(obj.efx_uvar_groups_active_index)
         obj.efx_uvar_groups_active_index = min(
             obj.efx_uvar_groups_active_index, len(obj.efx_uvar_groups) - 1
@@ -449,11 +440,10 @@ class EFX_RE_OT_expression_parameter_add(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
-        return obj is not None and obj.get("~TYPE") == model.TYPE_ROOT
+        return _active_root(context) is not None
 
     def execute(self, context):
-        obj = context.object
+        obj = _active_root(context)
         item = obj.efx_expression_parameters.add()
         item.name = "Parameter"
         obj.efx_expression_parameters_active_index = len(obj.efx_expression_parameters) - 1
@@ -467,14 +457,11 @@ class EFX_RE_OT_expression_parameter_remove(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.object
-        return (
-            obj is not None and obj.get("~TYPE") == model.TYPE_ROOT
-            and len(obj.efx_expression_parameters) > 0
-        )
+        root = _active_root(context)
+        return root is not None and len(root.efx_expression_parameters) > 0
 
     def execute(self, context):
-        obj = context.object
+        obj = _active_root(context)
         obj.efx_expression_parameters.remove(obj.efx_expression_parameters_active_index)
         obj.efx_expression_parameters_active_index = min(
             obj.efx_expression_parameters_active_index, len(obj.efx_expression_parameters) - 1
@@ -689,6 +676,12 @@ class EFX_RE_OT_expression_formula_check(bpy.types.Operator):
 # Inspector 就是这么用的），而且省得每个函数各写一遍 None 判断。
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _active_root(context):
+    """这些根级列表算子操作的目标 EFX_ROOT 集合。EFX_ROOT 是集合不是对象，所以不能像
+    Entry/Attribute 那样直接用 context.object。"""
+    return io_tree.resolve_root(context)
+
+
 def _draw_uilist_row(layout, list_cls, obj, coll_name, index_name, add_op, remove_op, rows=3):
     """"列表 + 右侧 ADD/REMOVE 竖排按钮"这个组合在本文件里出现七八次，抽出来。
     增删按钮的可用性完全交给算子自己的 poll()（姊妹项目的"poll 自动灰"习惯），这里不重复判断。"""
@@ -887,7 +880,9 @@ def _draw_fields_content(layout, context, obj) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _CATEGORY = "Wilds EFX"
-_EFX_TYPES = (model.TYPE_ROOT, model.TYPE_ENTRY, model.TYPE_ACTION, model.TYPE_ATTRIBUTE)
+# 能被 Edit 面板操作的对象类型。**不含 EFX_ROOT**——它是集合不是对象（见 io_tree 头部说明），
+# 整个文件的删除走 Outliner 的 Delete Hierarchy。
+_EFX_TYPES = (model.TYPE_ENTRY, model.TYPE_ACTION, model.TYPE_ATTRIBUTE)
 
 
 class EFX_RE_PT_main(Panel):
@@ -952,10 +947,9 @@ class EFX_RE_PT_edit(Panel):
 
         layout.separator()
         layout.operator("efx_re.delete", text=T("edit.delete"), icon="TRASH", translate=False)
-        if context.object is not None and context.object.get("~TYPE") == model.TYPE_ROOT:
-            sub = layout.row()
-            sub.enabled = False
-            sub.label(text=T("edit.delete_root_hint"), translate=False)
+        sub = layout.row()
+        sub.enabled = False
+        sub.label(text=T("edit.delete_root_hint"), translate=False)
 
 
 class EFX_RE_PT_add(Panel):
@@ -1022,6 +1016,16 @@ def _poll_type(type_tag: str):
 
 
 @classmethod
+def _poll_root(cls, context):
+    """EFX File 面板什么时候显示：能解析出一个 EFX_ROOT 集合就显示。
+
+    比其它面板宽松——它们要求"活动对象正好是那个类型"，这里只要求"当前在某个 efx 里"
+    （活动对象在树里 / 活动集合是根 / 或者「当前 EFX」选择器指着一个），因为文件级数据
+    在编任何一个 entry 的时候都可能要看一眼（比如往骨骼表里补个名字）。"""
+    return io_tree.resolve_root(context) is not None
+
+
+@classmethod
 def _poll_clip(cls, context):
     obj = context.object
     return obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE and obj.efx_is_clip_attribute
@@ -1039,21 +1043,26 @@ def _poll_expression(cls, context):
 # 数据面板清单。每一项生成两个 Panel 类：N 面板一份 + 属性编辑器 Object Data 标签一份，
 # 两份 draw() 调的是同一个 content 函数。
 #
-# (key, bl_label, content 函数, poll, 父面板 key 或 None, bl_order, 默认折叠)
+# (key, bl_label, content 函数, poll, 父面板 key 或 None, bl_order, 默认折叠, target)
+#
+# target 决定 draw 时把什么喂给 content 函数、以及属性编辑器镜像挂在哪个标签页：
+#   "object"     -> context.object，属性编辑器 Object Data 标签（bl_context="data"）
+#   "collection" -> 当前 EFX_ROOT 集合，属性编辑器 Collection 标签（bl_context="collection"）
+# EFX_ROOT 是集合不是对象，所以它这一行是 "collection"。
 _DATA_PANELS = (
-    ("root",       "EFX File",   _draw_root_content,       _poll_type(model.TYPE_ROOT),      None,        -3, False),
-    ("entry",      "Entry",      _draw_entry_content,      _poll_type(model.TYPE_ENTRY),     None,        -3, False),
-    ("action",     "Action",     _draw_action_content,     _poll_type(model.TYPE_ACTION),    None,        -3, False),
-    ("attribute",  "Attribute",  _draw_attribute_content,  _poll_type(model.TYPE_ATTRIBUTE), None,        -3, False),
+    ("root",       "EFX File",   _draw_root_content,       _poll_root,                       None,        -3, False, "collection"),
+    ("entry",      "Entry",      _draw_entry_content,      _poll_type(model.TYPE_ENTRY),     None,        -3, False, "object"),
+    ("action",     "Action",     _draw_action_content,     _poll_type(model.TYPE_ACTION),    None,        -3, False, "object"),
+    ("attribute",  "Attribute",  _draw_attribute_content,  _poll_type(model.TYPE_ATTRIBUTE), None,        -3, False, "object"),
     # Clip / Expression 默认折叠：只有一部分 attribute 类型有，而且属于"要动动画曲线时才展开"
     # 的深水区；字段树是选中一个 attribute 后最常看的东西，默认展开。
-    ("clip",       "Clip",       _draw_clip_content,       _poll_clip,                       "attribute",  0, True),
-    ("expression", "Expression", _draw_expression_content, _poll_expression,                 "attribute",  0, True),
-    ("fields",     "Fields",     _draw_fields_content,     _poll_type(model.TYPE_ATTRIBUTE), "attribute",  0, False),
+    ("clip",       "Clip",       _draw_clip_content,       _poll_clip,                       "attribute",  0, True,  "object"),
+    ("expression", "Expression", _draw_expression_content, _poll_expression,                 "attribute",  0, True,  "object"),
+    ("fields",     "Fields",     _draw_fields_content,     _poll_type(model.TYPE_ATTRIBUTE), "attribute",  0, False, "object"),
 )
 
 
-def _make_panel(key: str, label: str, content_fn, poll, parent_key, order, closed, space: str):
+def _make_panel(key: str, label: str, content_fn, poll, parent_key, order, closed, target: str, space: str):
     """按 space（"VIEW_3D" / "PROPERTIES"）造一个数据面板类。
 
     用工厂而不是手写两遍：这两份除了 bl_space_type/bl_region_type/bl_category/bl_context 之外
@@ -1071,10 +1080,11 @@ def _make_panel(key: str, label: str, content_fn, poll, parent_key, order, close
         suffix = "_props"
         # 属性编辑器里我们的面板和 Blender 自己的挤在一起，标题得自带 "EFX" 才认得出是谁的；
         # 本身已经以 EFX 开头的（"EFX File"）不再重复加前缀。
+        # 根面板挂 Collection 标签（EFX_ROOT 是集合），其余挂 Empty 的 Object Data 标签。
         extra = {
             "bl_space_type": "PROPERTIES",
             "bl_region_type": "WINDOW",
-            "bl_context": "data",
+            "bl_context": "collection" if target == "collection" else "data",
             "bl_label": label if label.startswith("EFX") else f"EFX {label}",
         }
 
@@ -1084,7 +1094,11 @@ def _make_panel(key: str, label: str, content_fn, poll, parent_key, order, close
         "bl_idname": idname,
         "bl_order": order,
         "poll": poll,
-        "draw": lambda self, context: content_fn(self.layout, context, context.object),
+        "draw": (
+            (lambda self, context: content_fn(self.layout, context, io_tree.resolve_root(context)))
+            if target == "collection"
+            else (lambda self, context: content_fn(self.layout, context, context.object))
+        ),
         **extra,
     }
     if parent_key is not None:
@@ -1095,9 +1109,9 @@ def _make_panel(key: str, label: str, content_fn, poll, parent_key, order, close
 
 
 _GENERATED_PANELS = tuple(
-    _make_panel(key, label, fn, poll, parent, order, closed, space)
+    _make_panel(key, label, fn, poll, parent, order, closed, target, space)
     for space in ("VIEW_3D", "PROPERTIES")
-    for key, label, fn, poll, parent, order, closed in _DATA_PANELS
+    for key, label, fn, poll, parent, order, closed, target in _DATA_PANELS
 )
 
 
@@ -1147,9 +1161,9 @@ def _on_category_change(self, context) -> None:
         self.efx_re_attr_type = first
 
 
-def _active_root_poll(self, obj):
-    """"当前 EFX"选择器的候选：只列 EFX_ROOT 对象。"""
-    return obj.get("~TYPE") == model.TYPE_ROOT
+def _active_root_poll(self, col):
+    """"当前 EFX"选择器的候选：只列带 EFX_ROOT 标记的集合。"""
+    return col.get("~TYPE") == model.TYPE_ROOT
 
 
 def register():
@@ -1180,8 +1194,9 @@ def register():
         description="要新增的 attribute 类型（只列 vendor 有读写实现类的那些）",
         items=attribute_types.enum_items,
     )
+    # EFX_ROOT 是集合，所以这里指向 Collection 而不是 Object。
     bpy.types.Scene.efx_re_active_root = PointerProperty(
-        type=bpy.types.Object,
+        type=bpy.types.Collection,
         name="Active EFX",
         description="当前操作的目标 EFX 文件树。活动对象已经在某棵 EFX 树里时优先用那棵，"
                     "这里只在活动对象不属于任何 EFX 树时兜底",
