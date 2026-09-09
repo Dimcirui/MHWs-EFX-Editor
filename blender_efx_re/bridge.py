@@ -14,6 +14,13 @@ JsonPolymorphismOptions），本文件上一版记录的"Expression 数据 load 
 NotSupportedException"缺口已不存在，见 docs/TOPLEVEL_STRUCTURE.md。dump/load 现在还会
 调用 vendor 的 `EfxFile.ParseExpressions()`/`FlattenExpressionTrees()`，把公式在人类可读
 文本和二进制后缀栈之间转换，见 tools/EfxBridge/Program.cs。
+
+2026-09-09 vendor 升级（`9d9b39e`）：公式文本语法多了两样东西——MHWilds 专属函数
+（`Unary11`/`Unary12`/`Func18`~`Func21`）和 multi root value 分隔符 `|`（形如 `a | b`，
+一条曲线带两个根值）。前者在此之前会被当成 1 参函数少读参数、后者的第二个根值会被直接
+丢弃，都是静默出错，这是升级的主要动机。`Func18`/`Func19`/`Func20` 目前**写不回去**
+（上游解析器 bug，见 KNOWN_UPSTREAM_ISSUES.md #6），会在 check_expression()/load_efx()
+上抛出来，不会静默写坏文件。
 """
 
 from __future__ import annotations
