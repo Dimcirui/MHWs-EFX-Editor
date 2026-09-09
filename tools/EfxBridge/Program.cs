@@ -81,6 +81,10 @@ if (args.Length >= 1 && args[0] == "exprcheck")
 {
     return RunExprCheck(args);
 }
+if (args.Length >= 1 && args[0] == "types")
+{
+    return RunTypes(args);
+}
 
 if (args.Length < 2 || args[0] != "roundtrip")
 {
@@ -89,6 +93,7 @@ if (args.Length < 2 || args[0] != "roundtrip")
     Console.WriteLine("  dotnet <dll> dump <efx 文件路径> <json 输出路径>");
     Console.WriteLine("  dotnet <dll> load <json 文件路径> <efx 输出路径>");
     Console.WriteLine("  dotnet <dll> exprcheck <公式文本>");
+    Console.WriteLine("  dotnet <dll> types <json 输出路径> [游戏版本，默认 MHWilds]");
     return 1;
 }
 
@@ -356,6 +361,77 @@ static void CompileExpressions(EfxFile file)
             CompileExpressions(a.efxrData);
         }
     }
+}
+
+// types 子命令：把某个游戏版本下**全部** attribute 类型的清单吐成 JSON，每项包含
+//   itemTypeId —— 文件里那个整数（决定 entry 内的排序，见 EfxFile.cs 的 typeId 升序断言）
+//   name       —— EfxAttributeType 枚举名（= 010 模板 ItemType 里的 MHWS_* 名字）
+//   type       —— 完整 C# 类名，和 dump 出来的 JSON 里那个 "$type" 一模一样
+//   fields     —— dump/load 走的那些 JSON 键名（照 CreateBridgeJsonOptions 的解析器算，
+//                 所以和真实 dump 出来的键完全一致，不是从源码猜的）
+//   readable   —— false 表示 vendor 只登记了 id→枚举名、没有读写实现类（KNOWN_UPSTREAM_ISSUES
+//                 #4/#5 那几个就是这种），这类既解析不了也新建不了
+//
+// 两个用处：给字段知识表当"JSON 键名的权威来源"（对齐 010 模板的字段名时要用），
+// 以及将来 C 层"新增 Attribute"的类型选择器直接读这份清单。
+static int RunTypes(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.WriteLine("用法: dotnet <dll> types <json 输出路径> [游戏版本，默认 MHWilds]");
+        return 1;
+    }
+    var jsonOutPath = args[1];
+    var version = EfxVersion.MHWilds;
+    if (args.Length >= 3 && !Enum.TryParse(args[2], true, out version))
+    {
+        Console.WriteLine($"[ERROR] 未知的 EfxVersion: {args[2]}");
+        return 1;
+    }
+
+    var options = CreateBridgeJsonOptions();
+    var items = new List<object>();
+    foreach (var (typeId, attrType) in EfxAttributeTypeRemapper.GetAllTypes(version).OrderBy(kv => kv.Key))
+    {
+        EFXAttribute? instance = null;
+        string? error = null;
+        try
+        {
+            instance = EfxAttributeTypeRemapper.Create(attrType, version);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+
+        var fields = new List<string>();
+        if (instance != null)
+        {
+            // 从序列化器自己的 JsonTypeInfo 拿属性名，**不实际序列化**：键名一样是权威的
+            // （dump 走的就是这份元数据），但不会去调 getter——空实例上有些计算属性会炸，
+            // 比如 EfxClipData.ParsedClip 在 clipData 还没解析时直接 NullReferenceException。
+            foreach (var prop in options.GetTypeInfo(instance.GetType()).Properties)
+            {
+                if (prop.Get != null) fields.Add(prop.Name);
+            }
+        }
+
+        items.Add(new
+        {
+            itemTypeId = typeId,
+            name = attrType.ToString(),
+            type = instance?.GetType().FullName,
+            readable = instance != null,
+            error,
+            fields,
+        });
+    }
+
+    var payload = new { game = version.ToString(), count = items.Count, types = items };
+    File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+    var readable = items.Count(i => (bool)i.GetType().GetProperty("readable")!.GetValue(i)!);
+    Console.WriteLine($"OK: {version} 共 {items.Count} 个类型（可读写 {readable} 个）-> {jsonOutPath}");
+    return 0;
 }
 
 static int RunExprCheck(string[] args)

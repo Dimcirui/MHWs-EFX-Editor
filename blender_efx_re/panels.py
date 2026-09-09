@@ -733,11 +733,23 @@ def _draw_entry_content(layout, context, obj) -> None:
     )
 
 
+def _attr_type_label(attr_type: str) -> str:
+    """attribute 类型显示成什么。中文界面下，知识表里有中文名就画成 `发射器形状 (EmitterShape3D)`
+    ——括号里的英文短名不能省，它是这个类型在 RE-Engine-Lib / 010 模板 / 社区讨论里的检索词。
+    英文界面或查不到中文名时就只有短名本身。"""
+    short = io_tree.short_attr_name(attr_type)
+    if i18n.get_lang() != "ZH":
+        return short
+    entry = semantics.get_type_entry(attr_type)
+    label = (entry or {}).get("label_zh")
+    return f"{label} ({short})" if label else short
+
+
 def _draw_attribute_content(layout, context, obj) -> None:
     """EFX_ATTRIBUTE 的元信息（只读）。Clip/Expression/字段各自是独立子面板。"""
     box = layout.box()
     box.label(
-        text=f"{T('attribute.type')}: {io_tree.short_attr_name(obj.efx_attr_type)}",
+        text=f"{T('attribute.type')}: {_attr_type_label(obj.efx_attr_type)}",
         translate=False,
     )
     row = box.row(align=True)
