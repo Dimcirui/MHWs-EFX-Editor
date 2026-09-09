@@ -1,19 +1,42 @@
-"""blender_efx_re/panels.py —— ~TYPE 对象面板：Entry 的 Groups 标签、Attribute 的字段树。"""
+"""
+blender_efx_re/panels.py —— 面板层
+
+面板划分对齐姊妹项目 EFX-Editor（见其 CLAUDE.md §4「UI / 命名约定」）：
+
+1. **工具功能 vs 属性数据**：导入/导出/校验/复制粘贴这类"对对象做操作"的东西放 N 面板；
+   "对象自身解析出来的数据"（Root 的骨骼表/参数表、Entry 的 Subselect 组、Attribute 的
+   字段/Clip/Expression）既放 N 面板也镜像进属性编辑器的 Object Data 标签。两处**共用同一个
+   `_draw_*_content()` 函数**，绝不让绘制逻辑分叉——分叉之后两边迟早不一致。
+2. **一个关注点一个 Panel**，靠 `poll()` 按 `~TYPE` 显隐，而不是在一个巨型面板里
+   `if type_tag == ...` 分支平铺（本文件上一版就是那样，选中一个 attribute 时元信息、Clip
+   曲线、Expression 公式、字段树一路铺到底，没法单独折叠、也不记状态）。
+3. **`bl_order` 用负数**：Blender 里没显式设 `bl_order` 的面板默认值就是 0，用正数反而会被排到
+   那些"默认顺序"面板后面（姊妹项目踩过这个坑，直接抄结论）。
+
+与姊妹项目刻意不同的两点：
+
+- **N 面板标签页叫 `Wilds EFX`，不跟它统一成 `EFX`**：两个插件可能装在同一个 Blender 里，
+  `bl_category` 撞名会把两套面板混进同一个标签页。
+- **属性编辑器只镜像 `bl_context="data"`，不做 `"object"` 保底**：姊妹项目两个都注册，是因为
+  当时不确定 Empty 的 Data 标签在各版本上渲不渲染。本项目的 `~TYPE` 对象全部由
+  `io_tree._new_empty()` 创建，必然是 Empty，而 Empty 的 Data 标签（"空物体"设置页）在
+  blender_manifest.toml 声明的 4.3+ 上是有效的；两个都注册的话同一份字段列表会在两个标签页里
+  各画一遍，纯噪音。真遇到渲染不出来的版本再加保底。
+
+字段级的文案（标签/tooltip）来自 semantics/ 知识表，不走 i18n.py 的 `T()`——见 `_field_label()`。
+"""
 
 from __future__ import annotations
 
 import bpy
-from bpy.props import BoolProperty, StringProperty
+from bpy.props import BoolProperty, PointerProperty, StringProperty
 from bpy.types import Panel, UIList
 
-from . import bridge, io_tree, model, semantics
-
-# 知识表只在"attribute $type + 顶层内容字段 key"这一级生效（见 semantics.py 说明），confidence
-# 不是 "confirmed" 时在标签旁加一个问号图标，提醒这是未经游戏内实测验证的猜测，不是权威结论。
-_CONFIDENCE_ICON = {"guess": "QUESTION", "likely": "QUESTION"}
+from . import bridge, i18n, io_tree, model, semantics
+from .i18n import T
 
 
-class EFX_OT_field_info(bpy.types.Operator):
+class EFX_RE_OT_field_info(bpy.types.Operator):
     """悬浮显示字段知识表里的说明文字的占位按钮——点击不做任何事，只借用 Blender operator
     tooltip 支持动态文本（`description()` classmethod）这一机制来显示 tooltip，
     因为 `UILayout.label()` 本身不支持 tooltip。"""
@@ -32,6 +55,35 @@ class EFX_OT_field_info(bpy.types.Operator):
         return {"CANCELLED"}
 
 
+def _field_label(entry: dict | None, key: str) -> str:
+    """一个字段该显示的名字。
+
+    知识表目前只有中文标注（`label_zh`/`tooltip_zh`），英文那一侧**故意退回原始 JSON 键名**
+    （`RelationPos` 这种）——键名本来就是英文，而且是这个字段在 RE-Engine-Lib / 010 模板 /
+    社区讨论里的权威名字，比现编一个英文意译更有用。表里以后要是补了 `label_en`，这里自动优先用。
+    """
+    if entry is None:
+        return key
+    if i18n.get_lang() == "EN":
+        return entry.get("label_en") or key
+    return entry.get("label_zh") or key
+
+
+def _field_tooltip(entry: dict | None) -> str:
+    """一个字段的 tooltip。英文侧没有 `tooltip_en` 时退回中文原文，而不是留空——整张表现在
+    都是中文，英文模式下全部丢掉说明是更大的损失。
+
+    只取 `label_*`/`tooltip_*`。表里的 `confidence`/`evidence`/`tester`/`date` **不进界面**：
+    这几项是给我们自己排查用的元数据，使用者需要知道的是"这个字段干什么"，不是"这条结论谁验的、
+    验没验过"（同姊妹项目 CLAUDE.md §4.1）。
+    """
+    if entry is None:
+        return ""
+    if i18n.get_lang() == "EN":
+        return entry.get("tooltip_en") or entry.get("tooltip_zh") or ""
+    return entry.get("tooltip_zh") or ""
+
+
 def _draw_label(layout, text: str, entry: dict | None) -> None:
     """画一个字段的标签：查到知识表条目就用 operator 按钮承载 tooltip，查不到就是普通 label。
 
@@ -41,12 +93,12 @@ def _draw_label(layout, text: str, entry: dict | None) -> None:
     颜色管理术语就撞上了），界面语言选中文时会被静默换成"饱和度"，看起来像是我们知识表标注的
     结果，实际上跟内容语义无关——在 Blender 5.1 中文界面下实测复现过。
     """
-    if entry is None:
+    tooltip = _field_tooltip(entry)
+    if not tooltip:
         layout.label(text=text, translate=False)
         return
-    icon = _CONFIDENCE_ICON.get(entry.get("confidence"), "NONE")
-    op = layout.operator("efx_re.field_info", text=text, translate=False, emboss=False, icon=icon)
-    op.tooltip_text = entry.get("tooltip_zh") or ""
+    op = layout.operator("efx_re.field_info", text=text, translate=False, emboss=False)
+    op.tooltip_text = tooltip
 
 
 # data_type -> 对应存储标量值的 Object 属性名（NULL 没有对应 slot，单独处理）。
@@ -79,14 +131,14 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None) -> None
     """递归绘制一个 EFXValueNode：标量画一行 prop()，OBJECT/ARRAY 画一个可折叠 box 递归绘制
     children。ui_expand 只影响面板显示，不参与导出——见 model.py 里 EFXValueNode 的说明。
 
-    attr_type 只在最外层调用（EFX_PT_object.draw()）传入，用来查知识表；递归到子字段时传
+    attr_type 只在最外层调用（`_draw_fields_content()`）传入，用来查知识表；递归到子字段时传
     None——Vector 类型的 x/y/z 这类子字段名字本身已经够自解释，知识表不索引这一层。
     root_obj 同理只在最外层传（该 attribute 所属的 EFX_ROOT），供 ParentBone 字段画
     prop_search 时定位 efx_bones 列表；递归到子字段时不需要，因为骨骼引用字段结构上必然只出现
     在 attribute 的顶层内容字段，不会嵌套在子对象里（见 model.is_bone_reference_field()）。
     """
     entry = semantics.get_field_entry(attr_type, node.key) if attr_type else None
-    label_text = (entry.get("label_zh") if entry else None) or node.key
+    label_text = _field_label(entry, node.key)
 
     dtype = node.data_type
     if root_obj is not None and model.is_bone_reference_field(node, attr_type):
@@ -147,7 +199,7 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None) -> None
         header = layout.row(align=True)
         icon = "TRIA_DOWN" if node.ui_expand else "TRIA_RIGHT"
         header.prop(node, "ui_expand", icon=icon, icon_only=True, emboss=False)
-        _draw_label(header, f"{label_text}  ({len(node.children)} items)", entry)
+        _draw_label(header, f"{label_text}  ({len(node.children)} {T('common.items_suffix')})", entry)
         if node.ui_expand:
             box = layout.box()
             for child in node.children:
@@ -159,53 +211,70 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None) -> None
     _draw_scalar_prop(row, node)
 
 
-class EFX_UL_groups(UIList):
-    bl_idname = "EFX_UL_groups"
+# ─────────────────────────────────────────────────────────────────────────────
+# UIList + 列表条目增删算子
+# ─────────────────────────────────────────────────────────────────────────────
+
+class EFX_RE_UL_groups(UIList):
+    bl_idname = "EFX_RE_UL_groups"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         layout.prop(item, "name", text="", emboss=False, icon="BOOKMARK")
 
 
-class EFX_OT_group_add(bpy.types.Operator):
+class EFX_RE_OT_group_add(bpy.types.Operator):
     bl_idname = "efx_re.group_add"
     bl_label = "Add Group"
     bl_options = {"REGISTER", "UNDO"}
 
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return obj is not None and obj.get("~TYPE") == model.TYPE_ENTRY
+
     def execute(self, context):
         obj = context.object
-        tag = obj.efx_groups.add()
-        tag.name = "Group"
+        item = obj.efx_groups.add()
+        item.name = "Group"
         obj.efx_groups_active_index = len(obj.efx_groups) - 1
         return {"FINISHED"}
 
 
-class EFX_OT_group_remove(bpy.types.Operator):
+class EFX_RE_OT_group_remove(bpy.types.Operator):
     bl_idname = "efx_re.group_remove"
     bl_label = "Remove Group"
     bl_options = {"REGISTER", "UNDO"}
 
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return obj is not None and obj.get("~TYPE") == model.TYPE_ENTRY and len(obj.efx_groups) > 0
+
     def execute(self, context):
         obj = context.object
-        index = obj.efx_groups_active_index
-        if 0 <= index < len(obj.efx_groups):
-            obj.efx_groups.remove(index)
-            obj.efx_groups_active_index = min(index, len(obj.efx_groups) - 1)
+        obj.efx_groups.remove(obj.efx_groups_active_index)
+        obj.efx_groups_active_index = min(obj.efx_groups_active_index, len(obj.efx_groups) - 1)
         return {"FINISHED"}
 
 
-class EFX_UL_bones(UIList):
-    bl_idname = "EFX_UL_bones"
+class EFX_RE_UL_bones(UIList):
+    bl_idname = "EFX_RE_UL_bones"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         row = layout.row(align=True)
+        row.label(text=str(index), translate=False)
         row.prop(item, "name", text="", emboss=False, icon="BONE_DATA")
-        row.prop(item, "value", text="")
 
 
-class EFX_OT_bone_add(bpy.types.Operator):
+class EFX_RE_OT_bone_add(bpy.types.Operator):
     bl_idname = "efx_re.bone_add"
     bl_label = "Add Bone"
     bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return obj is not None and obj.get("~TYPE") == model.TYPE_ROOT
 
     def execute(self, context):
         obj = context.object
@@ -215,192 +284,231 @@ class EFX_OT_bone_add(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class EFX_OT_bone_remove(bpy.types.Operator):
+class EFX_RE_OT_bone_remove(bpy.types.Operator):
     bl_idname = "efx_re.bone_remove"
     bl_label = "Remove Bone"
     bl_options = {"REGISTER", "UNDO"}
 
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return obj is not None and obj.get("~TYPE") == model.TYPE_ROOT and len(obj.efx_bones) > 0
+
     def execute(self, context):
         obj = context.object
-        index = obj.efx_bones_active_index
-        if 0 <= index < len(obj.efx_bones):
-            obj.efx_bones.remove(index)
-            obj.efx_bones_active_index = min(index, len(obj.efx_bones) - 1)
+        obj.efx_bones.remove(obj.efx_bones_active_index)
+        obj.efx_bones_active_index = min(obj.efx_bones_active_index, len(obj.efx_bones) - 1)
         return {"FINISHED"}
 
 
-class EFX_UL_field_parameters(UIList):
-    bl_idname = "EFX_UL_field_parameters"
+class EFX_RE_UL_field_parameters(UIList):
+    bl_idname = "EFX_RE_UL_field_parameters"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        layout.prop(item, "name", text="", emboss=False, icon="PROPERTIES")
+        layout.prop(item, "name", text="", emboss=False, icon="FORCE_FORCE")
 
 
-class EFX_OT_field_parameter_add(bpy.types.Operator):
+class EFX_RE_OT_field_parameter_add(bpy.types.Operator):
     bl_idname = "efx_re.field_parameter_add"
     bl_label = "Add Field Parameter"
     bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return obj is not None and obj.get("~TYPE") == model.TYPE_ROOT
 
     def execute(self, context):
         obj = context.object
         item = obj.efx_field_parameters.add()
         item.name = "FieldParameter"
-        model.populate_dict_as_children(item.fields, model.FIELD_PARAMETER_CONTENT_DEFAULTS)
         obj.efx_field_parameters_active_index = len(obj.efx_field_parameters) - 1
         return {"FINISHED"}
 
 
-class EFX_OT_field_parameter_remove(bpy.types.Operator):
+class EFX_RE_OT_field_parameter_remove(bpy.types.Operator):
     bl_idname = "efx_re.field_parameter_remove"
     bl_label = "Remove Field Parameter"
     bl_options = {"REGISTER", "UNDO"}
 
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return (
+            obj is not None and obj.get("~TYPE") == model.TYPE_ROOT
+            and len(obj.efx_field_parameters) > 0
+        )
+
     def execute(self, context):
         obj = context.object
-        index = obj.efx_field_parameters_active_index
-        if 0 <= index < len(obj.efx_field_parameters):
-            obj.efx_field_parameters.remove(index)
-            obj.efx_field_parameters_active_index = min(index, len(obj.efx_field_parameters) - 1)
+        obj.efx_field_parameters.remove(obj.efx_field_parameters_active_index)
+        obj.efx_field_parameters_active_index = min(
+            obj.efx_field_parameters_active_index, len(obj.efx_field_parameters) - 1
+        )
         return {"FINISHED"}
 
 
-class EFX_UL_uvar_groups(UIList):
-    bl_idname = "EFX_UL_uvar_groups"
+class EFX_RE_UL_uvar_groups(UIList):
+    bl_idname = "EFX_RE_UL_uvar_groups"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         row = layout.row(align=True)
-        row.prop(item, "uvar_type", text="")
-        if item.uvar_type == "2":
-            row.label(text=item.group or item.path, icon="FILE_FOLDER", translate=False)
-        else:
-            row.label(text="(marker only)")
+        row.label(text=f"#{index}", translate=False)
+        row.label(text=item.path or "(no path)", translate=False)
 
 
-class EFX_OT_uvar_group_add(bpy.types.Operator):
+class EFX_RE_OT_uvar_group_add(bpy.types.Operator):
     bl_idname = "efx_re.uvar_group_add"
     bl_label = "Add Uvar Group"
     bl_options = {"REGISTER", "UNDO"}
 
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return obj is not None and obj.get("~TYPE") == model.TYPE_ROOT
+
     def execute(self, context):
         obj = context.object
-        if len(obj.efx_uvar_groups) >= 2:
-            self.report(
-                {"ERROR"},
-                "UvarGroups 最多 2 项——vendor 写出逻辑只处理前 2 项，多出的会被静默忽略，"
-                "见 docs/TOPLEVEL_STRUCTURE.md",
-            )
-            return {"CANCELLED"}
         item = obj.efx_uvar_groups.add()
+        item.uvar_type = "0"
         obj.efx_uvar_groups_active_index = len(obj.efx_uvar_groups) - 1
         return {"FINISHED"}
 
 
-class EFX_OT_uvar_group_remove(bpy.types.Operator):
+class EFX_RE_OT_uvar_group_remove(bpy.types.Operator):
     bl_idname = "efx_re.uvar_group_remove"
     bl_label = "Remove Uvar Group"
     bl_options = {"REGISTER", "UNDO"}
 
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return (
+            obj is not None and obj.get("~TYPE") == model.TYPE_ROOT
+            and len(obj.efx_uvar_groups) > 0
+        )
+
     def execute(self, context):
         obj = context.object
-        index = obj.efx_uvar_groups_active_index
-        if 0 <= index < len(obj.efx_uvar_groups):
-            obj.efx_uvar_groups.remove(index)
-            obj.efx_uvar_groups_active_index = min(index, len(obj.efx_uvar_groups) - 1)
+        obj.efx_uvar_groups.remove(obj.efx_uvar_groups_active_index)
+        obj.efx_uvar_groups_active_index = min(
+            obj.efx_uvar_groups_active_index, len(obj.efx_uvar_groups) - 1
+        )
         return {"FINISHED"}
 
 
-class EFX_UL_expression_parameters(UIList):
-    bl_idname = "EFX_UL_expression_parameters"
+class EFX_RE_UL_expression_parameters(UIList):
+    bl_idname = "EFX_RE_UL_expression_parameters"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         row = layout.row(align=True)
         row.prop(item, "name", text="", emboss=False, icon="DRIVER")
-        row.prop(item, "param_type", text="")
+        sub = row.row()
+        sub.alignment = "RIGHT"
+        sub.label(text=item.param_type, translate=False)
 
 
-class EFX_OT_expression_parameter_add(bpy.types.Operator):
+class EFX_RE_OT_expression_parameter_add(bpy.types.Operator):
     bl_idname = "efx_re.expression_parameter_add"
     bl_label = "Add Expression Parameter"
     bl_options = {"REGISTER", "UNDO"}
 
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return obj is not None and obj.get("~TYPE") == model.TYPE_ROOT
+
     def execute(self, context):
         obj = context.object
         item = obj.efx_expression_parameters.add()
-        item.name = "Param"
+        item.name = "Parameter"
         obj.efx_expression_parameters_active_index = len(obj.efx_expression_parameters) - 1
         return {"FINISHED"}
 
 
-class EFX_OT_expression_parameter_remove(bpy.types.Operator):
+class EFX_RE_OT_expression_parameter_remove(bpy.types.Operator):
     bl_idname = "efx_re.expression_parameter_remove"
     bl_label = "Remove Expression Parameter"
     bl_options = {"REGISTER", "UNDO"}
 
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return (
+            obj is not None and obj.get("~TYPE") == model.TYPE_ROOT
+            and len(obj.efx_expression_parameters) > 0
+        )
+
     def execute(self, context):
         obj = context.object
-        index = obj.efx_expression_parameters_active_index
-        if 0 <= index < len(obj.efx_expression_parameters):
-            obj.efx_expression_parameters.remove(index)
-            obj.efx_expression_parameters_active_index = min(
-                index, len(obj.efx_expression_parameters) - 1
-            )
+        obj.efx_expression_parameters.remove(obj.efx_expression_parameters_active_index)
+        obj.efx_expression_parameters_active_index = min(
+            obj.efx_expression_parameters_active_index, len(obj.efx_expression_parameters) - 1
+        )
         return {"FINISHED"}
 
 
-class EFX_UL_clip_curves(UIList):
-    bl_idname = "EFX_UL_clip_curves"
+class EFX_RE_UL_clip_curves(UIList):
+    bl_idname = "EFX_RE_UL_clip_curves"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         row = layout.row(align=True)
-        label = item.bit_name or f"Bit {item.bit_index}"
-        row.label(text=label, icon="DECORATE_KEYFRAME", translate=False)
-        row.label(text=f"{len(item.keyframes)} kf", translate=False)
-        row.prop(item, "value_type", text="")
+        row.label(text=f"bit {item.bit_index}", translate=False)
+        row.label(text=item.bit_name or "-", translate=False)
+        sub = row.row()
+        sub.alignment = "RIGHT"
+        sub.label(text=f"{len(item.keyframes)} kf", translate=False)
 
 
-class EFX_OT_clip_curve_add(bpy.types.Operator):
+class EFX_RE_OT_clip_curve_add(bpy.types.Operator):
     bl_idname = "efx_re.clip_curve_add"
     bl_label = "Add Clip Curve"
     bl_options = {"REGISTER", "UNDO"}
 
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE and obj.efx_is_clip_attribute
+
     def execute(self, context):
         obj = context.object
-        used = {curve.bit_index for curve in obj.efx_clip_curves}
-        bit_index = next((i for i in range(obj.efx_clip_bit_count) if i not in used), None)
-        if bit_index is None:
-            self.report(
-                {"ERROR"},
-                f"所有 {obj.efx_clip_bit_count} 个 bit 都已经有曲线了，不能再添加",
-            )
-            return {"CANCELLED"}
+        used = {c.bit_index for c in obj.efx_clip_curves}
+        free = next((i for i in range(obj.efx_clip_bit_count) if i not in used), 0)
         curve = obj.efx_clip_curves.add()
-        curve.bit_index = bit_index
+        curve.bit_index = free
         obj.efx_clip_curves_active_index = len(obj.efx_clip_curves) - 1
         return {"FINISHED"}
 
 
-class EFX_OT_clip_curve_remove(bpy.types.Operator):
+class EFX_RE_OT_clip_curve_remove(bpy.types.Operator):
     bl_idname = "efx_re.clip_curve_remove"
     bl_label = "Remove Clip Curve"
     bl_options = {"REGISTER", "UNDO"}
 
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return (
+            obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE
+            and len(obj.efx_clip_curves) > 0
+        )
+
     def execute(self, context):
         obj = context.object
-        index = obj.efx_clip_curves_active_index
-        if 0 <= index < len(obj.efx_clip_curves):
-            obj.efx_clip_curves.remove(index)
-            obj.efx_clip_curves_active_index = min(index, len(obj.efx_clip_curves) - 1)
+        obj.efx_clip_curves.remove(obj.efx_clip_curves_active_index)
+        obj.efx_clip_curves_active_index = min(
+            obj.efx_clip_curves_active_index, len(obj.efx_clip_curves) - 1
+        )
         return {"FINISHED"}
 
 
-class EFX_UL_clip_keyframes(UIList):
-    bl_idname = "EFX_UL_clip_keyframes"
+class EFX_RE_UL_clip_keyframes(UIList):
+    bl_idname = "EFX_RE_UL_clip_keyframes"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         row = layout.row(align=True)
-        row.label(text=f"t={item.frame_time:g}", translate=False)
-        row.label(text=f"v={item.value:g}", translate=False)
-        row.prop(item, "interp_type", text="")
+        row.label(text=f"f{item.frame_time:g}", translate=False)
+        row.label(text=f"{item.value:g}", translate=False)
 
 
 def _active_clip_curve(obj):
@@ -410,79 +518,98 @@ def _active_clip_curve(obj):
     return None
 
 
-class EFX_OT_clip_keyframe_add(bpy.types.Operator):
+class EFX_RE_OT_clip_keyframe_add(bpy.types.Operator):
     bl_idname = "efx_re.clip_keyframe_add"
     bl_label = "Add Keyframe"
     bl_options = {"REGISTER", "UNDO"}
 
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE and _active_clip_curve(obj) is not None
+
     def execute(self, context):
         curve = _active_clip_curve(context.object)
-        if curve is None:
-            self.report({"ERROR"}, "先选中一条曲线，再添加关键帧")
-            return {"CANCELLED"}
-        curve.keyframes.add()
+        kf = curve.keyframes.add()
+        kf.frame_time = max((k.frame_time for k in curve.keyframes), default=0.0) + 1.0
         curve.keyframes_active_index = len(curve.keyframes) - 1
         return {"FINISHED"}
 
 
-class EFX_OT_clip_keyframe_remove(bpy.types.Operator):
+class EFX_RE_OT_clip_keyframe_remove(bpy.types.Operator):
     bl_idname = "efx_re.clip_keyframe_remove"
     bl_label = "Remove Keyframe"
     bl_options = {"REGISTER", "UNDO"}
 
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        if obj is None or obj.get("~TYPE") != model.TYPE_ATTRIBUTE:
+            return False
+        curve = _active_clip_curve(obj)
+        return curve is not None and len(curve.keyframes) > 0
+
     def execute(self, context):
         curve = _active_clip_curve(context.object)
-        if curve is None:
-            return {"CANCELLED"}
-        index = curve.keyframes_active_index
-        if 0 <= index < len(curve.keyframes):
-            curve.keyframes.remove(index)
-            curve.keyframes_active_index = min(index, len(curve.keyframes) - 1)
+        curve.keyframes.remove(curve.keyframes_active_index)
+        curve.keyframes_active_index = min(curve.keyframes_active_index, len(curve.keyframes) - 1)
         return {"FINISHED"}
 
 
-class EFX_UL_expression_curves(UIList):
-    bl_idname = "EFX_UL_expression_curves"
+class EFX_RE_UL_expression_curves(UIList):
+    bl_idname = "EFX_RE_UL_expression_curves"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         row = layout.row(align=True)
-        label = item.bit_name or f"Bit {item.bit_index}"
-        row.label(text=label, icon="DRIVER", translate=False)
-        row.label(text=item.formula, translate=False)
+        row.label(text=f"bit {item.bit_index}", translate=False)
+        row.label(text=item.bit_name or item.formula or "-", translate=False)
+        if item.formula_error:
+            row.label(text="", icon="ERROR")
 
 
-class EFX_OT_expression_curve_add(bpy.types.Operator):
+class EFX_RE_OT_expression_curve_add(bpy.types.Operator):
     bl_idname = "efx_re.expression_curve_add"
     bl_label = "Add Expression"
     bl_options = {"REGISTER", "UNDO"}
 
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return (
+            obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE
+            and obj.efx_is_expression_attribute
+        )
+
     def execute(self, context):
         obj = context.object
-        used = {curve.bit_index for curve in obj.efx_expression_curves}
-        bit_index = next((i for i in range(obj.efx_expression_bit_count) if i not in used), None)
-        if bit_index is None:
-            self.report(
-                {"ERROR"},
-                f"所有 {obj.efx_expression_bit_count} 个 bit 都已经有公式了，不能再添加",
-            )
-            return {"CANCELLED"}
+        used = {c.bit_index for c in obj.efx_expression_curves}
+        free = next((i for i in range(obj.efx_expression_bit_count) if i not in used), 0)
         curve = obj.efx_expression_curves.add()
-        curve.bit_index = bit_index
+        curve.bit_index = free
+        curve.formula = "0"
         obj.efx_expression_curves_active_index = len(obj.efx_expression_curves) - 1
         return {"FINISHED"}
 
 
-class EFX_OT_expression_curve_remove(bpy.types.Operator):
+class EFX_RE_OT_expression_curve_remove(bpy.types.Operator):
     bl_idname = "efx_re.expression_curve_remove"
     bl_label = "Remove Expression"
     bl_options = {"REGISTER", "UNDO"}
 
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return (
+            obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE
+            and len(obj.efx_expression_curves) > 0
+        )
+
     def execute(self, context):
         obj = context.object
-        index = obj.efx_expression_curves_active_index
-        if 0 <= index < len(obj.efx_expression_curves):
-            obj.efx_expression_curves.remove(index)
-            obj.efx_expression_curves_active_index = min(index, len(obj.efx_expression_curves) - 1)
+        obj.efx_expression_curves.remove(obj.efx_expression_curves_active_index)
+        obj.efx_expression_curves_active_index = min(
+            obj.efx_expression_curves_active_index, len(obj.efx_expression_curves) - 1
+        )
         return {"FINISHED"}
 
 
@@ -493,279 +620,406 @@ def _active_expression_curve(obj):
     return None
 
 
-class EFX_OT_expression_formula_check(bpy.types.Operator):
-    """调用 EfxBridge 的 exprcheck 子命令校验当前活动公式的语法（`EfxExpressionStringParser`
-    的语法），不需要跑一次完整导出——见 bridge.check_expression() 的说明。真正的导出仍然靠
-    check_expression_bits()（bit_index 校验）+ load_efx() 失败兜底，这里只是提前反馈。"""
+class EFX_RE_OT_expression_formula_check(bpy.types.Operator):
+    """把当前公式送给 EfxBridge 的 exprcheck 校验一遍语法，把结果写回 formula_error——
+    让用户不用跑一次完整导出就知道公式写错没有。"""
 
     bl_idname = "efx_re.expression_formula_check"
     bl_label = "Validate Formula"
-    bl_options = {"REGISTER"}
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE and _active_expression_curve(obj) is not None
 
     def execute(self, context):
         curve = _active_expression_curve(context.object)
-        if curve is None:
-            return {"CANCELLED"}
         try:
             error = bridge.check_expression(curve.formula)
         except bridge.BridgeError as ex:
             error = str(ex)
         curve.formula_error = error or ""
         if error:
-            self.report({"ERROR"}, error)
+            self.report({"WARNING"}, "公式有问题，详见面板")
         else:
-            self.report({"INFO"}, "公式合法")
+            self.report({"INFO"}, "公式语法正确")
         return {"FINISHED"}
 
 
-class EFX_PT_main(Panel):
-    bl_idname = "EFX_PT_main"
+# ─────────────────────────────────────────────────────────────────────────────
+# 内容绘制函数
+#
+# 每个都接收显式的 obj，**不从 context.active_object 现取**——N 面板和属性编辑器镜像都画
+# 活动对象，但显式传参让这些函数将来也能被"逐个画出整棵树"这类场景复用（姊妹项目的 Entry
+# Inspector 就是这么用的），而且省得每个函数各写一遍 None 判断。
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _draw_uilist_row(layout, list_cls, obj, coll_name, index_name, add_op, remove_op, rows=3):
+    """"列表 + 右侧 ADD/REMOVE 竖排按钮"这个组合在本文件里出现七八次，抽出来。
+    增删按钮的可用性完全交给算子自己的 poll()（姊妹项目的"poll 自动灰"习惯），这里不重复判断。"""
+    row = layout.row()
+    row.template_list(list_cls, "", obj, coll_name, obj, index_name, rows=rows)
+    col = row.column(align=True)
+    col.operator(add_op, icon="ADD", text="")
+    col.operator(remove_op, icon="REMOVE", text="")
+
+
+def _draw_root_content(layout, context, obj) -> None:
+    """EFX_ROOT 的文件级数据：骨骼表 / 场参数 / Uvar 组 / Expression 参数。"""
+    layout.label(text=T("root.bones"), translate=False)
+    _draw_uilist_row(
+        layout, "EFX_RE_UL_bones", obj, "efx_bones", "efx_bones_active_index",
+        "efx_re.bone_add", "efx_re.bone_remove",
+    )
+
+    layout.label(text=T("root.field_parameters"), translate=False)
+    _draw_uilist_row(
+        layout, "EFX_RE_UL_field_parameters", obj, "efx_field_parameters",
+        "efx_field_parameters_active_index",
+        "efx_re.field_parameter_add", "efx_re.field_parameter_remove",
+    )
+    active_index = obj.efx_field_parameters_active_index
+    if 0 <= active_index < len(obj.efx_field_parameters):
+        box = layout.box()
+        for node in obj.efx_field_parameters[active_index].fields:
+            draw_node(box, node)
+
+    layout.label(text=T("root.uvar_groups"), translate=False)
+    _draw_uilist_row(
+        layout, "EFX_RE_UL_uvar_groups", obj, "efx_uvar_groups", "efx_uvar_groups_active_index",
+        "efx_re.uvar_group_add", "efx_re.uvar_group_remove", rows=2,
+    )
+    uvar_index = obj.efx_uvar_groups_active_index
+    if 0 <= uvar_index < len(obj.efx_uvar_groups):
+        uvar_item = obj.efx_uvar_groups[uvar_index]
+        box = layout.box()
+        box.prop(uvar_item, "uvar_type")
+        if uvar_item.uvar_type == "2":
+            box.prop(uvar_item, "path")
+            box.prop(uvar_item, "group")
+
+    layout.label(text=T("root.expression_parameters"), translate=False)
+    _draw_uilist_row(
+        layout, "EFX_RE_UL_expression_parameters", obj, "efx_expression_parameters",
+        "efx_expression_parameters_active_index",
+        "efx_re.expression_parameter_add", "efx_re.expression_parameter_remove",
+    )
+    expr_index = obj.efx_expression_parameters_active_index
+    if 0 <= expr_index < len(obj.efx_expression_parameters):
+        expr_item = obj.efx_expression_parameters[expr_index]
+        box = layout.box()
+        box.prop(expr_item, "name")
+        box.prop(expr_item, "param_type")
+        if expr_item.param_type == "Color":
+            box.prop(expr_item, "color_value", text="Color")
+        elif expr_item.param_type == "Range":
+            box.prop(expr_item, "value1")
+            box.prop(expr_item, "value2")
+            box.prop(expr_item, "value3")
+        elif expr_item.param_type == "Float2":
+            box.prop(expr_item, "value1")
+            box.prop(expr_item, "value2")
+        else:
+            box.prop(expr_item, "value1")
+
+
+def _draw_entry_content(layout, context, obj) -> None:
+    """EFX_ENTRY 的数据：目前只有 Subselect 组标签。"""
+    layout.label(text=T("entry.subselect_groups"), translate=False)
+    _draw_uilist_row(
+        layout, "EFX_RE_UL_groups", obj, "efx_groups", "efx_groups_active_index",
+        "efx_re.group_add", "efx_re.group_remove",
+    )
+
+
+def _draw_attribute_content(layout, context, obj) -> None:
+    """EFX_ATTRIBUTE 的元信息（只读）。Clip/Expression/字段各自是独立子面板。"""
+    box = layout.box()
+    box.label(
+        text=f"{T('attribute.type')}: {io_tree.short_attr_name(obj.efx_attr_type)}",
+        translate=False,
+    )
+    row = box.row(align=True)
+    row.label(text=f"UniqueID {obj.efx_unique_id}", translate=False)
+    row.label(text=f"Version {obj.efx_version}", translate=False)
+    row = box.row(align=True)
+    row.label(text=f"type id {obj.efx_type_id}", translate=False)
+    row.label(text=f"IsTypeAttribute {obj.efx_is_type_attribute}", translate=False)
+
+
+def _draw_clip_content(layout, context, obj) -> None:
+    """EFX_ATTRIBUTE 的 Clip 动画曲线（IClipAttribute 才有）。"""
+    layout.label(
+        text=f"{T('attribute.bit_count')}: {obj.efx_clip_bit_count}", translate=False,
+    )
+    layout.prop(obj, "efx_clip_loop_type", text=T("attribute.loop_type"))
+    _draw_uilist_row(
+        layout, "EFX_RE_UL_clip_curves", obj, "efx_clip_curves", "efx_clip_curves_active_index",
+        "efx_re.clip_curve_add", "efx_re.clip_curve_remove",
+    )
+
+    curve = _active_clip_curve(obj)
+    if curve is None:
+        return
+    box = layout.box()
+    box.prop(curve, "bit_index")
+    box.label(text=T("attribute.keyframes"), translate=False)
+    _draw_uilist_row(
+        box, "EFX_RE_UL_clip_keyframes", curve, "keyframes", "keyframes_active_index",
+        "efx_re.clip_keyframe_add", "efx_re.clip_keyframe_remove",
+    )
+
+    kf_index = curve.keyframes_active_index
+    if not (0 <= kf_index < len(curve.keyframes)):
+        return
+    kf = curve.keyframes[kf_index]
+    kf_box = box.box()
+    kf_box.prop(kf, "frame_time")
+    kf_box.prop(kf, "interp_type")
+    kf_box.prop(kf, "value")
+    if kf.interp_type == "5":  # Bezier
+        row = kf_box.row(align=True)
+        row.prop(kf, "tangent_out_x")
+        row.prop(kf, "tangent_out_y")
+        row = kf_box.row(align=True)
+        row.prop(kf, "tangent_in_x")
+        row.prop(kf, "tangent_in_y")
+
+
+def _draw_expression_content(layout, context, obj) -> None:
+    """EFX_ATTRIBUTE 的 Expression 公式（IExpressionAttribute 才有）。"""
+    layout.label(
+        text=f"{T('attribute.bit_count')}: {obj.efx_expression_bit_count}", translate=False,
+    )
+    _draw_uilist_row(
+        layout, "EFX_RE_UL_expression_curves", obj, "efx_expression_curves",
+        "efx_expression_curves_active_index",
+        "efx_re.expression_curve_add", "efx_re.expression_curve_remove",
+    )
+
+    curve = _active_expression_curve(obj)
+    if curve is None:
+        return
+    box = layout.box()
+    box.prop(curve, "bit_index")
+    row = box.row(align=True)
+    row.prop(curve, "formula", text="")
+    row.operator("efx_re.expression_formula_check", icon="CHECKMARK", text="")
+    if curve.formula_error:
+        box.label(text=curve.formula_error, icon="ERROR", translate=False)
+
+
+def _draw_fields_content(layout, context, obj) -> None:
+    """EFX_ATTRIBUTE 的内容字段树。包在 box + column(align=True) 里（姊妹项目的字段区风格），
+    比上一版直接往面板根上平铺更容易看出"这一坨是一个整体"。"""
+    if len(obj.efx_fields) == 0:
+        layout.label(text=T("attribute.no_fields"), icon="INFO", translate=False)
+        return
+    root_obj = io_tree.find_root(obj)
+    box = layout.box()
+    col = box.column(align=True)
+    for node in obj.efx_fields:
+        draw_node(col, node, attr_type=obj.efx_attr_type, root_obj=root_obj)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 面板
+# ─────────────────────────────────────────────────────────────────────────────
+
+_CATEGORY = "Wilds EFX"
+_EFX_TYPES = (model.TYPE_ROOT, model.TYPE_ENTRY, model.TYPE_ACTION, model.TYPE_ATTRIBUTE)
+
+
+class EFX_RE_PT_main(Panel):
+    """工具面板：语言、导入导出、当前 EFX、刷新摆位、校验。"""
+
+    bl_idname = "EFX_RE_PT_main"
     bl_label = "MHWs EFX"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Wilds EFX"
+    bl_category = _CATEGORY
+    bl_order = -4  # 固定顺序：MHWs EFX > 各 ~TYPE 数据面板 > Edit
 
     def draw(self, context):
         layout = self.layout
-        layout.operator("efx_re.import", icon="IMPORT")
-        layout.operator("efx_re.export", icon="EXPORT")
-        layout.operator("efx_re.sync_transform3d_to_view", icon="FILE_REFRESH")
-        layout.prop(context.scene, "efx_re_angle_degrees")
+
+        i18n.draw_language_toggle(layout)
+        layout.separator(factor=0.5)
+
+        row = layout.row(align=True)
+        row.operator("efx_re.import", text=T("main.import"), icon="IMPORT", translate=False)
+        row.operator("efx_re.export", text=T("main.export"), icon="EXPORT", translate=False)
+
+        layout.prop(context.scene, "efx_re_active_root", text=T("main.active_efx"))
+
+        row = layout.row(align=True)
+        row.operator(
+            "efx_re.sync_transform3d_to_view", text=T("main.sync_transform"),
+            icon="ORIENTATION_GLOBAL", translate=False,
+        )
+        row.operator("efx_re.validate", text=T("main.validate"), icon="CHECKMARK", translate=False)
+
+        layout.prop(context.scene, "efx_re_angle_degrees", text=T("main.angle_degrees"))
 
 
-class EFX_PT_object(Panel):
-    bl_idname = "EFX_PT_object"
-    bl_label = "EFX Object"
+class EFX_RE_PT_edit(Panel):
+    """工具面板：复制/粘贴。按活动对象的 ~TYPE 给出对应按钮，可用性交给算子 poll 自动灰。
+
+    放 N 面板而不是属性编辑器，是因为这些是"对对象做的操作"而不是"对象自身的数据"
+    （姊妹项目 CLAUDE.md §4 的分工判据）。"""
+
+    bl_idname = "EFX_RE_PT_edit"
+    bl_label = "Edit"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Wilds EFX"
+    bl_category = _CATEGORY
+    bl_order = -1
+    bl_options = {"DEFAULT_CLOSED"}
 
     @classmethod
     def poll(cls, context):
         obj = context.object
-        return obj is not None and obj.get("~TYPE") in (
-            model.TYPE_ROOT, model.TYPE_ENTRY, model.TYPE_ACTION, model.TYPE_ATTRIBUTE,
-        )
+        return obj is not None and obj.get("~TYPE") in _EFX_TYPES
 
     def draw(self, context):
-        obj = context.object
         layout = self.layout
-        type_tag = obj.get("~TYPE")
-        layout.label(text=f"{type_tag}: {obj.name}", translate=False)
+        row = layout.row(align=True)
+        row.operator("efx_re.entry_copy", text=T("edit.copy_entry"), icon="COPYDOWN", translate=False)
+        row.operator("efx_re.entry_paste", text=T("edit.paste_entry"), icon="PASTEDOWN", translate=False)
+        row = layout.row(align=True)
+        row.operator("efx_re.attribute_copy", text=T("edit.copy_attribute"), icon="COPYDOWN", translate=False)
+        row.operator("efx_re.attribute_paste", text=T("edit.paste_attribute"), icon="PASTEDOWN", translate=False)
 
-        if type_tag == model.TYPE_ROOT:
-            layout.operator("efx_re.entry_paste", icon="PASTEDOWN")
 
-            layout.label(text="Bones:")
-            row = layout.row()
-            row.template_list(
-                "EFX_UL_bones", "", obj, "efx_bones", obj, "efx_bones_active_index", rows=3,
-            )
-            col = row.column(align=True)
-            col.operator("efx_re.bone_add", icon="ADD", text="")
-            col.operator("efx_re.bone_remove", icon="REMOVE", text="")
+def _poll_type(type_tag: str):
+    def poll(cls, context):
+        obj = context.object
+        return obj is not None and obj.get("~TYPE") == type_tag
+    return classmethod(poll)
 
-            layout.label(text="Field Parameters:")
-            row = layout.row()
-            row.template_list(
-                "EFX_UL_field_parameters", "", obj, "efx_field_parameters",
-                obj, "efx_field_parameters_active_index", rows=3,
-            )
-            col = row.column(align=True)
-            col.operator("efx_re.field_parameter_add", icon="ADD", text="")
-            col.operator("efx_re.field_parameter_remove", icon="REMOVE", text="")
 
-            active_index = obj.efx_field_parameters_active_index
-            if 0 <= active_index < len(obj.efx_field_parameters):
-                box = layout.box()
-                for node in obj.efx_field_parameters[active_index].fields:
-                    draw_node(box, node)
+@classmethod
+def _poll_clip(cls, context):
+    obj = context.object
+    return obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE and obj.efx_is_clip_attribute
 
-            layout.label(text="Uvar Groups:")
-            row = layout.row()
-            row.template_list(
-                "EFX_UL_uvar_groups", "", obj, "efx_uvar_groups",
-                obj, "efx_uvar_groups_active_index", rows=2,
-            )
-            col = row.column(align=True)
-            col.operator("efx_re.uvar_group_add", icon="ADD", text="")
-            col.operator("efx_re.uvar_group_remove", icon="REMOVE", text="")
 
-            uvar_index = obj.efx_uvar_groups_active_index
-            if 0 <= uvar_index < len(obj.efx_uvar_groups):
-                uvar_item = obj.efx_uvar_groups[uvar_index]
-                box = layout.box()
-                box.prop(uvar_item, "uvar_type")
-                if uvar_item.uvar_type == "2":
-                    box.prop(uvar_item, "path")
-                    box.prop(uvar_item, "group")
+@classmethod
+def _poll_expression(cls, context):
+    obj = context.object
+    return (
+        obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE
+        and obj.efx_is_expression_attribute
+    )
 
-            layout.label(text="Expression Parameters:")
-            row = layout.row()
-            row.template_list(
-                "EFX_UL_expression_parameters", "", obj, "efx_expression_parameters",
-                obj, "efx_expression_parameters_active_index", rows=3,
-            )
-            col = row.column(align=True)
-            col.operator("efx_re.expression_parameter_add", icon="ADD", text="")
-            col.operator("efx_re.expression_parameter_remove", icon="REMOVE", text="")
 
-            expr_index = obj.efx_expression_parameters_active_index
-            if 0 <= expr_index < len(obj.efx_expression_parameters):
-                expr_item = obj.efx_expression_parameters[expr_index]
-                box = layout.box()
-                box.prop(expr_item, "name")
-                box.prop(expr_item, "param_type")
-                if expr_item.param_type == "Color":
-                    box.prop(expr_item, "color_value", text="Color")
-                elif expr_item.param_type == "Range":
-                    box.prop(expr_item, "value1")
-                    box.prop(expr_item, "value2")
-                    box.prop(expr_item, "value3")
-                elif expr_item.param_type == "Float2":
-                    box.prop(expr_item, "value1")
-                    box.prop(expr_item, "value2")
-                else:
-                    box.prop(expr_item, "value1")
+# 数据面板清单。每一项生成两个 Panel 类：N 面板一份 + 属性编辑器 Object Data 标签一份，
+# 两份 draw() 调的是同一个 content 函数。
+#
+# (key, bl_label, content 函数, poll, 父面板 key 或 None, bl_order, 默认折叠)
+_DATA_PANELS = (
+    ("root",       "EFX File",   _draw_root_content,       _poll_type(model.TYPE_ROOT),      None,        -3, False),
+    ("entry",      "Entry",      _draw_entry_content,      _poll_type(model.TYPE_ENTRY),     None,        -3, False),
+    ("attribute",  "Attribute",  _draw_attribute_content,  _poll_type(model.TYPE_ATTRIBUTE), None,        -3, False),
+    # Clip / Expression 默认折叠：只有一部分 attribute 类型有，而且属于"要动动画曲线时才展开"
+    # 的深水区；字段树是选中一个 attribute 后最常看的东西，默认展开。
+    ("clip",       "Clip",       _draw_clip_content,       _poll_clip,                       "attribute",  0, True),
+    ("expression", "Expression", _draw_expression_content, _poll_expression,                 "attribute",  0, True),
+    ("fields",     "Fields",     _draw_fields_content,     _poll_type(model.TYPE_ATTRIBUTE), "attribute",  0, False),
+)
 
-        elif type_tag == model.TYPE_ENTRY:
-            row = layout.row(align=True)
-            row.operator("efx_re.entry_copy", icon="COPYDOWN")
-            row.operator("efx_re.entry_paste", icon="PASTEDOWN")
 
-            layout.label(text="Subselect Groups:")
-            row = layout.row()
-            row.template_list(
-                "EFX_UL_groups", "", obj, "efx_groups", obj, "efx_groups_active_index", rows=3,
-            )
-            col = row.column(align=True)
-            col.operator("efx_re.group_add", icon="ADD", text="")
-            col.operator("efx_re.group_remove", icon="REMOVE", text="")
+def _make_panel(key: str, label: str, content_fn, poll, parent_key, order, closed, space: str):
+    """按 space（"VIEW_3D" / "PROPERTIES"）造一个数据面板类。
 
-        elif type_tag == model.TYPE_ACTION:
-            layout.operator("efx_re.attribute_paste", icon="PASTEDOWN")
+    用工厂而不是手写两遍：这两份除了 bl_space_type/bl_region_type/bl_category/bl_context 之外
+    完全一样，手写的话每加一个面板就要复制粘贴一次，迟早漏改一边。
+    """
+    if space == "VIEW_3D":
+        suffix = ""
+        extra = {
+            "bl_space_type": "VIEW_3D",
+            "bl_region_type": "UI",
+            "bl_category": _CATEGORY,
+            "bl_label": label,
+        }
+    else:
+        suffix = "_props"
+        # 属性编辑器里我们的面板和 Blender 自己的挤在一起，标题得自带 "EFX" 才认得出是谁的；
+        # 本身已经以 EFX 开头的（"EFX File"）不再重复加前缀。
+        extra = {
+            "bl_space_type": "PROPERTIES",
+            "bl_region_type": "WINDOW",
+            "bl_context": "data",
+            "bl_label": label if label.startswith("EFX") else f"EFX {label}",
+        }
 
-        elif type_tag == model.TYPE_ATTRIBUTE:
-            row = layout.row(align=True)
-            row.operator("efx_re.attribute_copy", icon="COPYDOWN")
-            row.operator("efx_re.attribute_paste", icon="PASTEDOWN")
+    idname = f"EFX_RE_PT_{key}{suffix}"
+    namespace = {
+        "__doc__": f"{label}（{'N 面板' if space == 'VIEW_3D' else '属性编辑器 Object Data'}）",
+        "bl_idname": idname,
+        "bl_order": order,
+        "poll": poll,
+        "draw": lambda self, context: content_fn(self.layout, context, context.object),
+        **extra,
+    }
+    if parent_key is not None:
+        namespace["bl_parent_id"] = f"EFX_RE_PT_{parent_key}{suffix}"
+    if closed:
+        namespace["bl_options"] = {"DEFAULT_CLOSED"}
+    return type(idname, (Panel,), namespace)
 
-            box = layout.box()
-            box.label(text=f"Type: {obj.efx_attr_type}", translate=False)
-            row = box.row(align=True)
-            row.label(text=f"UniqueID {obj.efx_unique_id}")
-            row.label(text=f"Version {obj.efx_version}")
-            row = box.row(align=True)
-            row.label(text=f"type id {obj.efx_type_id}")
-            row.label(text=f"IsTypeAttribute {obj.efx_is_type_attribute}")
 
-            if obj.efx_is_clip_attribute:
-                clip_box = layout.box()
-                clip_box.label(text=f"Clip (bit count: {obj.efx_clip_bit_count}):")
-                clip_box.prop(obj, "efx_clip_loop_type")
-
-                row = clip_box.row()
-                row.template_list(
-                    "EFX_UL_clip_curves", "", obj, "efx_clip_curves",
-                    obj, "efx_clip_curves_active_index", rows=3,
-                )
-                col = row.column(align=True)
-                col.operator("efx_re.clip_curve_add", icon="ADD", text="")
-                col.operator("efx_re.clip_curve_remove", icon="REMOVE", text="")
-
-                curve = _active_clip_curve(obj)
-                if curve is not None:
-                    sub_box = clip_box.box()
-                    sub_box.prop(curve, "bit_index")
-
-                    row = sub_box.row()
-                    row.template_list(
-                        "EFX_UL_clip_keyframes", "", curve, "keyframes",
-                        curve, "keyframes_active_index", rows=3,
-                    )
-                    col = row.column(align=True)
-                    col.operator("efx_re.clip_keyframe_add", icon="ADD", text="")
-                    col.operator("efx_re.clip_keyframe_remove", icon="REMOVE", text="")
-
-                    kf_index = curve.keyframes_active_index
-                    if 0 <= kf_index < len(curve.keyframes):
-                        kf = curve.keyframes[kf_index]
-                        kf_box = sub_box.box()
-                        kf_box.prop(kf, "frame_time")
-                        kf_box.prop(kf, "interp_type")
-                        kf_box.prop(kf, "value")
-                        if kf.interp_type == "5":  # Bezier
-                            row = kf_box.row(align=True)
-                            row.prop(kf, "tangent_out_x")
-                            row.prop(kf, "tangent_out_y")
-                            row = kf_box.row(align=True)
-                            row.prop(kf, "tangent_in_x")
-                            row.prop(kf, "tangent_in_y")
-
-            if obj.efx_is_expression_attribute:
-                expr_box = layout.box()
-                expr_box.label(text=f"Expression (bit count: {obj.efx_expression_bit_count}):")
-
-                row = expr_box.row()
-                row.template_list(
-                    "EFX_UL_expression_curves", "", obj, "efx_expression_curves",
-                    obj, "efx_expression_curves_active_index", rows=3,
-                )
-                col = row.column(align=True)
-                col.operator("efx_re.expression_curve_add", icon="ADD", text="")
-                col.operator("efx_re.expression_curve_remove", icon="REMOVE", text="")
-
-                curve = _active_expression_curve(obj)
-                if curve is not None:
-                    sub_box = expr_box.box()
-                    sub_box.prop(curve, "bit_index")
-                    row = sub_box.row(align=True)
-                    row.prop(curve, "formula", text="")
-                    row.operator("efx_re.expression_formula_check", icon="CHECKMARK", text="")
-                    if curve.formula_error:
-                        sub_box.label(text=curve.formula_error, icon="ERROR")
-
-            layout.label(text="Fields:")
-            root_obj = io_tree.find_root(obj)
-            for node in obj.efx_fields:
-                draw_node(layout, node, attr_type=obj.efx_attr_type, root_obj=root_obj)
+_GENERATED_PANELS = tuple(
+    _make_panel(key, label, fn, poll, parent, order, closed, space)
+    for space in ("VIEW_3D", "PROPERTIES")
+    for key, label, fn, poll, parent, order, closed in _DATA_PANELS
+)
 
 
 _CLASSES = (
-    EFX_UL_groups,
-    EFX_UL_bones,
-    EFX_UL_field_parameters,
-    EFX_UL_uvar_groups,
-    EFX_UL_expression_parameters,
-    EFX_UL_clip_curves,
-    EFX_UL_clip_keyframes,
-    EFX_UL_expression_curves,
-    EFX_OT_field_info,
-    EFX_OT_group_add,
-    EFX_OT_group_remove,
-    EFX_OT_bone_add,
-    EFX_OT_bone_remove,
-    EFX_OT_field_parameter_add,
-    EFX_OT_field_parameter_remove,
-    EFX_OT_uvar_group_add,
-    EFX_OT_uvar_group_remove,
-    EFX_OT_expression_parameter_add,
-    EFX_OT_expression_parameter_remove,
-    EFX_OT_clip_curve_add,
-    EFX_OT_clip_curve_remove,
-    EFX_OT_clip_keyframe_add,
-    EFX_OT_clip_keyframe_remove,
-    EFX_OT_expression_curve_add,
-    EFX_OT_expression_curve_remove,
-    EFX_OT_expression_formula_check,
-    EFX_PT_main,
-    EFX_PT_object,
+    EFX_RE_UL_groups,
+    EFX_RE_UL_bones,
+    EFX_RE_UL_field_parameters,
+    EFX_RE_UL_uvar_groups,
+    EFX_RE_UL_expression_parameters,
+    EFX_RE_UL_clip_curves,
+    EFX_RE_UL_clip_keyframes,
+    EFX_RE_UL_expression_curves,
+    EFX_RE_OT_field_info,
+    EFX_RE_OT_group_add,
+    EFX_RE_OT_group_remove,
+    EFX_RE_OT_bone_add,
+    EFX_RE_OT_bone_remove,
+    EFX_RE_OT_field_parameter_add,
+    EFX_RE_OT_field_parameter_remove,
+    EFX_RE_OT_uvar_group_add,
+    EFX_RE_OT_uvar_group_remove,
+    EFX_RE_OT_expression_parameter_add,
+    EFX_RE_OT_expression_parameter_remove,
+    EFX_RE_OT_clip_curve_add,
+    EFX_RE_OT_clip_curve_remove,
+    EFX_RE_OT_clip_keyframe_add,
+    EFX_RE_OT_clip_keyframe_remove,
+    EFX_RE_OT_expression_curve_add,
+    EFX_RE_OT_expression_curve_remove,
+    EFX_RE_OT_expression_formula_check,
+    EFX_RE_PT_main,
+    *_GENERATED_PANELS,
+    EFX_RE_PT_edit,
 )
+
+
+def _active_root_poll(self, obj):
+    """"当前 EFX"选择器的候选：只列 EFX_ROOT 对象。"""
+    return obj.get("~TYPE") == model.TYPE_ROOT
 
 
 def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
+
     # 纯 UI 开关：弧度制角度字段（知识表 unit == "angle_radians"）在面板里按度显示/编辑，
     # 不改变 efx_fields 里存储的弧度原值。默认关——对齐姊妹项目 EFX-Editor
     # Scene.efx_blender_coords 同类开关的默认状态（默认显示原始存储值，不做单位转换）。
@@ -775,12 +1029,22 @@ def register():
                     "按度显示/编辑，不影响实际存储的弧度值",
         default=False,
     )
+    # "当前 EFX"：活动对象不属于任何 EFX 树时，导出/粘贴退到这里指定的根，见
+    # io_tree.resolve_root()。导入时自动指向刚建好的那棵树。
+    bpy.types.Scene.efx_re_active_root = PointerProperty(
+        type=bpy.types.Object,
+        name="Active EFX",
+        description="当前操作的目标 EFX 文件树。活动对象已经在某棵 EFX 树里时优先用那棵，"
+                    "这里只在活动对象不属于任何 EFX 树时兜底",
+        poll=_active_root_poll,
+    )
 
 
 def unregister():
-    try:
-        del bpy.types.Scene.efx_re_angle_degrees
-    except AttributeError:
-        pass
+    for prop in ("efx_re_angle_degrees", "efx_re_active_root"):
+        try:
+            delattr(bpy.types.Scene, prop)
+        except AttributeError:
+            pass
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)

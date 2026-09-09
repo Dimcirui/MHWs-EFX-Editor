@@ -57,7 +57,7 @@ def _read_clipboard(marker: str) -> dict | None:
     return payload.get("data")
 
 
-class EFX_OT_entry_copy(Operator):
+class EFX_RE_OT_entry_copy(Operator):
     """把当前选中 Entry（连同其全部 Attributes）复制到系统剪贴板"""
 
     bl_idname = "efx_re.entry_copy"
@@ -76,8 +76,10 @@ class EFX_OT_entry_copy(Operator):
         return {"FINISHED"}
 
 
-class EFX_OT_entry_paste(Operator):
-    """把剪贴板里的 Entry 粘贴为当前选中对象所在 EFX_ROOT 树的新 Entry（追加到末尾）"""
+class EFX_RE_OT_entry_paste(Operator):
+    """把剪贴板里的 Entry 粘贴为当前 EFX_ROOT 树的新 Entry（追加到末尾）。目标树按
+    io_tree.resolve_root() 解析：活动对象所在的树优先，没有就用面板上的「当前 EFX」选择器——
+    刚导入完还没点任何对象时也能直接粘。"""
 
     bl_idname = "efx_re.entry_paste"
     bl_label = "Paste Entry"
@@ -86,7 +88,7 @@ class EFX_OT_entry_paste(Operator):
     @classmethod
     def poll(cls, context):
         return (
-            io_tree.find_root(context.object) is not None
+            io_tree.resolve_root(context) is not None
             and _read_clipboard(_CLIP_MARKER_ENTRY) is not None
         )
 
@@ -96,7 +98,7 @@ class EFX_OT_entry_paste(Operator):
             self.report({"ERROR"}, "剪贴板里没有可粘贴的 Entry（先在某个 Entry 上用 Copy Entry）")
             return {"CANCELLED"}
 
-        root_obj = io_tree.find_root(context.object)
+        root_obj = io_tree.resolve_root(context)
         entries_collection, _ = io_tree.root_collections(root_obj)
         siblings = io_tree.typed_children(root_obj, model.TYPE_ENTRY)
         new_index = _next_index(siblings)
@@ -106,7 +108,7 @@ class EFX_OT_entry_paste(Operator):
         return {"FINISHED"}
 
 
-class EFX_OT_attribute_copy(Operator):
+class EFX_RE_OT_attribute_copy(Operator):
     """把当前选中 Attribute（含其可能嵌套的 efxrData 子树）复制到系统剪贴板"""
 
     bl_idname = "efx_re.attribute_copy"
@@ -138,7 +140,7 @@ def _attribute_paste_target(obj):
     return None
 
 
-class EFX_OT_attribute_paste(Operator):
+class EFX_RE_OT_attribute_paste(Operator):
     """把剪贴板里的 Attribute 粘贴为当前选中 Entry/Action（或当前选中 Attribute 的兄弟）
     的新 attribute（追加到末尾）"""
 
@@ -169,7 +171,7 @@ class EFX_OT_attribute_paste(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (EFX_OT_entry_copy, EFX_OT_entry_paste, EFX_OT_attribute_copy, EFX_OT_attribute_paste)
+_CLASSES = (EFX_RE_OT_entry_copy, EFX_RE_OT_entry_paste, EFX_RE_OT_attribute_copy, EFX_RE_OT_attribute_paste)
 
 
 def register():

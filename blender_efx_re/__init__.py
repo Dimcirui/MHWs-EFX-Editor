@@ -7,6 +7,7 @@ bridge.py 只做 subprocess + JSON 的薄封装。见仓库根 __init__.py 顶�
 """
 
 from . import bridge
+from . import i18n
 from . import semantics
 from . import model
 from . import coords
@@ -17,13 +18,14 @@ from . import copy_paste
 from . import panels
 
 __all__ = [
-    "bridge", "semantics", "model", "coords", "io_tree", "transform3d_view",
+    "bridge", "i18n", "semantics", "model", "coords", "io_tree", "transform3d_view",
     "operators", "copy_paste", "panels",
 ]
 
 
 def register():
     semantics.reload_tables()
+    i18n.register()
     model.register()
     transform3d_view.register()
     operators.register()
@@ -37,3 +39,4 @@ def unregister():
     operators.unregister()
     transform3d_view.unregister()
     model.unregister()
+    i18n.unregister()

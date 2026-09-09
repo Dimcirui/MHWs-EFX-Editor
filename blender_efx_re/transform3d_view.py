@@ -71,7 +71,7 @@ def sync_all_transform3d(root_obj: Object) -> int:
     return count
 
 
-class EFX_OT_sync_transform3d(Operator):
+class EFX_RE_OT_sync_transform3d(Operator):
     """按选中对象所属 EFX_ROOT 下所有 Transform3D attribute 的当前字段值，重新计算并摆放
     对应 Entry/Action 的位置/旋转/缩放（仅视口可视化，不写入导出数据）"""
 
@@ -91,7 +91,7 @@ class EFX_OT_sync_transform3d(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (EFX_OT_sync_transform3d,)
+_CLASSES = (EFX_RE_OT_sync_transform3d,)
 
 
 def register():

@@ -20,7 +20,7 @@ Version/actionUnkn0 等），一律原样存进 model.save_opaque()/load_opaque(
 
 Attribute 对象名带 `[父对象名]` 前缀（如 `[Emitter] Life`）：同一个 Entry/Action 下常有多个
 同类型 attribute（不同 Entry 也大量共享同一批常见 attribute 类型，比如几乎每个 Entry 都有
-ParentOptions），如果只用 `_short_attr_name()` 裸类型名当对象名，Blender 全局对象名唯一性会
+ParentOptions），如果只用 `short_attr_name()` 裸类型名当对象名，Blender 全局对象名唯一性会
 把它们批量改成 `.001`/`.002`，Outliner 里分不清谁是谁。带上父对象名前缀后碰撞概率大幅降低
 （虽然理论上同一父对象下两个"同类型+同名"attribute 仍可能撞，这种情况交给 Blender 的
 `.001` 后备机制兜底，纯展示，不影响导出——导出靠 parent 链和 efx_index，不靠对象名）。
@@ -43,7 +43,7 @@ def _new_empty(name: str, collection: Collection) -> Object:
     return obj
 
 
-def _short_attr_name(attr_type: str) -> str:
+def short_attr_name(attr_type: str) -> str:
     """`ReeLib.Efx.Structs.Main.EFXAttributeUnitCulling` -> `UnitCulling`（纯展示用，不影响导出）。"""
     short = attr_type.rsplit(".", 1)[-1]
     if short.startswith("EFXAttribute"):
@@ -137,7 +137,7 @@ def _populate_expression_attribute(obj: Object, attr_dict: dict) -> None:
 
 def build_attribute_object(attr_dict: dict, index: int, parent_obj: Object, collection: Collection) -> Object:
     attr_type = attr_dict.get("$type", "")
-    obj = _new_empty(f"[{parent_obj.name}] {_short_attr_name(attr_type)}", collection)
+    obj = _new_empty(f"[{parent_obj.name}] {short_attr_name(attr_type)}", collection)
     obj.parent = parent_obj
     obj["~TYPE"] = model.TYPE_ATTRIBUTE
     obj.efx_index = index
@@ -337,6 +337,26 @@ def find_root(obj: Object | None) -> Object | None:
     return None
 
 
+def resolve_root(context) -> Object | None:
+    """当前操作该落在哪个 EFX_ROOT 上：先看活动对象所在的树，没有再退到场景级的"当前 EFX"
+    选择器（`Scene.efx_re_active_root`，见 panels.py register()）。
+
+    对齐姊妹项目 EFX-Editor 主面板顶部的 Active EFX 选择器：那边所有"往某个 efx 里加东西"
+    的算子都以它为目标，用户不必先在 Outliner 里点中树里的某个对象。这里保留"活动对象优先"
+    是因为本项目的导出/粘贴一直是这么用的，同时开着两棵树时按选中的那棵走更符合直觉；
+    选择器只是在活动对象根本不属于任何 EFX 树时兜底（比如刚点了别的物体、或者什么都没选）。
+
+    选择器指向的对象可能已经被删掉或者被改成别的东西了（PointerProperty 只保证指向仍存在的
+    对象，不保证它还是 EFX_ROOT），所以这里再验一次 ~TYPE。"""
+    root = find_root(getattr(context, "object", None))
+    if root is not None:
+        return root
+    active = getattr(context.scene, "efx_re_active_root", None)
+    if active is not None and active.get("~TYPE") == model.TYPE_ROOT:
+        return active
+    return None
+
+
 def root_collections(root_obj: Object) -> tuple[Collection, Collection]:
     """返回一个 EFX_ROOT 对象的 (entries_collection, actions_collection)。按
     build_root_from_efxfile() 里固定的链接顺序取（先 link entries_collection 再 link
@@ -489,7 +509,7 @@ def export_root_to_efxfile(root_obj: Object) -> dict:
     ]
     # UvarGroups 最多 2 项，超出的会在 vendor 写出逻辑里被静默忽略（只处理下标 0/1，见
     # docs/TOPLEVEL_STRUCTURE.md "UvarGroups 结构调研"）——UI 侧的 Add 按钮已经拦住了超过
-    # 2 项的情况（EFX_OT_uvar_group_add），这里不需要重复校验。
+    # 2 项的情况（EFX_RE_OT_uvar_group_add），这里不需要重复校验。
     efxfile_dict["UvarGroups"] = [
         {"uvarType": int(item.uvar_type), "path": item.path, "group": item.group}
         for item in root_obj.efx_uvar_groups
@@ -658,3 +678,22 @@ def check_expression_bits(root_obj: Object) -> None:
             "以下 Expression attribute 的公式 bit_index 有问题（越界或重复），会导致导出出错或"
             "静默丢数据，请先修正：\n" + "\n".join(f"  {m}" for m in issues)
         )
+
+
+def collect_issues(root_obj: Object) -> list[str]:
+    """把导出前那三项校验各跑一遍，收集**全部**问题，返回人类可读的一行一条；空列表 = 没问题。
+
+    和上面三个 check_*() 的分工：那三个是导出路径上的关卡，发现问题直接抛异常拦下导出（架构
+    决策 9，不静默降级）；这个是给面板 Validate 按钮用的，用户主动点一下想知道"现在这棵树能
+    不能导出"，所以要一次把所有问题都列出来，不能第一条就中断。判据完全复用，不另写一套——
+    两边结论不一致的话，Validate 说"没问题"、导出却失败，比没有 Validate 更糟。
+    """
+    known_names = {item.name for item in root_obj.efx_bones}
+    issues: list[str] = []
+    for entry_obj in typed_children(root_obj, model.TYPE_ENTRY):
+        issues.extend(f"ParentBone 不在骨骼表里 — {m}" for m in _missing_bone_refs(entry_obj, known_names))
+    for action_obj in typed_children(root_obj, model.TYPE_ACTION):
+        issues.extend(f"ParentBone 不在骨骼表里 — {m}" for m in _missing_bone_refs(action_obj, known_names))
+    issues.extend(f"Clip bit — {m}" for m in _walk_clip_issues(root_obj))
+    issues.extend(f"Expression bit — {m}" for m in _walk_expression_issues(root_obj))
+    return issues
