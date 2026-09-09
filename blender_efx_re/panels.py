@@ -209,6 +209,40 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None) -> None
     row = layout.row(align=True)
     _draw_label(row, label_text, entry)
     _draw_scalar_prop(row, node)
+    _draw_hash_name(row, node)
+
+
+def _hash_name(node) -> str | None:
+    """整数节点的值如果是某个已知名字的 MurMur3(UTF-8) 哈希，返回那个名字。
+
+    RE Engine 用这种哈希代替字符串存材质属性名 / 贴图槽名 / Expression 参数名，落到 JSON 里
+    就是一串裸数字（`3292093210`），面板上光看数字完全没法和 mdf 编辑器里的东西对上。
+    """
+    if node.data_type == "BIGINT":
+        raw = node.uint_str
+    elif node.data_type == "INT":
+        raw = node.int_value
+    else:
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if value < 0:
+        value += 1 << 32  # 万一哪天有 uint32 被当成有符号读进来，按无符号还原
+    return semantics.lookup_name_hash(value)
+
+
+def _draw_hash_name(row, node) -> None:
+    """能解出名字就在数值右边补一段灰字。灰字（enabled=False）而不是可编辑控件：这是从数值
+    反查出来的展示信息，不是另一个可编辑字段，改名字得改数值本身。"""
+    name = _hash_name(node)
+    if not name:
+        return
+    sub = row.row()
+    sub.alignment = "RIGHT"
+    sub.enabled = False
+    sub.label(text=name, translate=False)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

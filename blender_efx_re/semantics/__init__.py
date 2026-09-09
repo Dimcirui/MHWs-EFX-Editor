@@ -39,6 +39,7 @@ from typing import Optional
 import bpy
 
 _MINED_JSON = Path(__file__).resolve().parent / "mhws_field_labels_mined.json"
+_HASHES_JSON = Path(__file__).resolve().parent / "mhws_name_hashes.json"
 _FACTORY_JSON = Path(__file__).resolve().parent / "mhws_field_labels.json"
 
 
@@ -86,11 +87,35 @@ def _merged_table() -> dict:
     return _cache
 
 
+_hash_cache: Optional[dict] = None
+
+
+def _hash_table() -> dict:
+    """MurMur3(UTF-8) 名字哈希 -> 原名。由 tools/mine_btx_hashes.py 生成，每条都复算验证过。"""
+    global _hash_cache
+    if _hash_cache is None:
+        data = _load_table(_HASHES_JSON)
+        _hash_cache = data.get("hashes") or {}
+    return _hash_cache
+
+
+def lookup_name_hash(value: int) -> Optional[str]:
+    """一个 uint32 如果是某个已知名字的 MurMur3(UTF-8) 哈希，返回那个名字，否则 None。
+
+    RE Engine 到处用这种哈希代替字符串存名字（材质属性名、贴图槽名、Expression 参数名），
+    落到 JSON 里全是裸数字。表里每一条都是复算验证过的**事实**（名字算出来就等于这个数），
+    不是推测，所以不需要限定"只在某某字段上查"——能命中就说明确实是那个名字，误命中要求
+    32 位碰撞（约 1500/2^32）。
+    """
+    return _hash_table().get(str(value))
+
+
 def reload_tables() -> None:
     """清空缓存，下次查询时重新读盘。插件 register() 时调用一次，供未来"Reload semantics"
     operator 复用。"""
-    global _cache
+    global _cache, _hash_cache
     _cache = None
+    _hash_cache = None
 
 
 def get_field_entry(attr_type: str, field_key: str) -> Optional[dict]:
