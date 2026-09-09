@@ -89,6 +89,10 @@ if (args.Length >= 1 && args[0] == "new")
 {
     return RunNew(args);
 }
+if (args.Length >= 1 && args[0] == "fieldstats")
+{
+    return RunFieldStats(args);
+}
 
 if (args.Length < 2 || args[0] != "roundtrip")
 {
@@ -100,6 +104,7 @@ if (args.Length < 2 || args[0] != "roundtrip")
     Console.WriteLine("  dotnet <dll> types <json 输出路径> [游戏版本，默认 MHWilds]");
     Console.WriteLine("  dotnet <dll> new attribute <类型名> <json 输出路径> [游戏版本，默认 MHWilds]");
     Console.WriteLine("  dotnet <dll> new entry|action <json 输出路径> [游戏版本，默认 MHWilds]");
+    Console.WriteLine("  dotnet <dll> fieldstats <语料目录> <attribute 类型名> <json 输出路径> [每字段保留的不同取值数，默认 40]");
     return 1;
 }
 
@@ -450,6 +455,134 @@ static int RunTypes(string[] args)
 //   new attribute <类型名> <json 输出> [版本]   类型名 = EfxAttributeType 枚举名，见 types 子命令
 //   new entry <json 输出> [版本]
 //   new action <json 输出> [版本]
+// fieldstats 子命令：在整个语料上普查某个 attribute 类型每个字段的取值分布。
+//
+// 一个进程扫完全部文件（9221 个约一分钟），比 Python 侧对每个文件起一次 `dump` 快两个数量级。
+// 用途：
+//   - 逆向字段语义时看"这个字段实际只出现过哪几个值"（比如判断一个 uint 是枚举还是位域）
+//   - 将来给"新建 attribute"挑合理默认值（取语料众数，而不是 C# 的零值）
+//
+//   fieldstats <语料目录> <类型名> <json 输出>
+//
+// 类型名 = EfxAttributeType 枚举名，见 types 子命令。输出里每个字段一个取值直方图（按出现
+// 次数降序，最多留 MaxDistinct 项，超出的合并成 "__other__"）。解析失败的文件直接跳过并计数
+// ——语料里本来就有 14% 读不了（见 KNOWN_UPSTREAM_ISSUES）。
+static int RunFieldStats(string[] args)
+{
+    if (args.Length < 4)
+    {
+        Console.WriteLine("用法: dotnet <dll> fieldstats <语料目录> <attribute 类型名> <json 输出路径> [每字段保留的不同取值数，默认 40]");
+        return 1;
+    }
+    var dir = args[1];
+    var typeName = args[2];
+    var jsonOutPath = args[3];
+    // 直方图每个字段最多保留多少个不同取值（按出现次数降序）。默认 40 够看清主流分布；
+    // 判断"某个字段是不是位域、有没有非法组合"这种要看全集的场景传大一点。
+    var maxDistinct = args.Length >= 5 && int.TryParse(args[4], out var md) ? md : 40;
+
+    if (!Directory.Exists(dir))
+    {
+        Console.WriteLine($"目录不存在: {dir}");
+        return 1;
+    }
+    if (!Enum.TryParse<EfxAttributeType>(typeName, true, out var wanted))
+    {
+        Console.WriteLine($"[ERROR] 未知的 attribute 类型名: {typeName}");
+        return 1;
+    }
+
+    var options = CreateBridgeJsonOptions();
+    var files = Directory.EnumerateFiles(dir, "*.efx.*", SearchOption.AllDirectories).ToList();
+    var histograms = new Dictionary<string, Dictionary<string, int>>();
+    int scanned = 0, failed = 0, instances = 0;
+
+    void Tally(System.Text.Json.Nodes.JsonNode? node, string path)
+    {
+        switch (node)
+        {
+            case System.Text.Json.Nodes.JsonObject obj:
+                foreach (var (key, child) in obj)
+                {
+                    if (key == "$type") continue;
+                    Tally(child, path.Length == 0 ? key : path + "." + key);
+                }
+                break;
+            case System.Text.Json.Nodes.JsonArray arr:
+                // 数组不按下标展开（长度不定会把直方图撑爆），只记长度
+                Bump(path + "[].length", arr.Count.ToString());
+                break;
+            case null:
+                Bump(path, "null");
+                break;
+            default:
+                Bump(path, node.ToJsonString());
+                break;
+        }
+    }
+
+    void Bump(string path, string value)
+    {
+        if (!histograms.TryGetValue(path, out var hist))
+            histograms[path] = hist = new Dictionary<string, int>();
+        hist[value] = hist.GetValueOrDefault(value) + 1;
+    }
+
+    void Visit(EFXEntryBase container)
+    {
+        foreach (var attr in container.Attributes)
+        {
+            if (attr.type == wanted)
+            {
+                instances++;
+                var json = JsonSerializer.Serialize(attr, typeof(EFXAttribute), options);
+                Tally(System.Text.Json.Nodes.JsonNode.Parse(json), "");
+            }
+            if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
+            {
+                foreach (var e in pe.efxrData.Entries) Visit(e);
+                foreach (var a in pe.efxrData.Actions) Visit(a);
+            }
+        }
+    }
+
+    foreach (var path in files)
+    {
+        try
+        {
+            var efx = new EfxFile(new FileHandler(path));
+            efx.Read();
+            scanned++;
+            foreach (var e in efx.Entries) Visit(e);
+            foreach (var a in efx.Actions) Visit(a);
+        }
+        catch (Exception)
+        {
+            failed++;  // 语料里本来就有一批读不了的，见 KNOWN_UPSTREAM_ISSUES
+        }
+    }
+
+    var payload = new
+    {
+        type = wanted.ToString(),
+        filesTotal = files.Count,
+        filesScanned = scanned,
+        filesFailed = failed,
+        instances,
+        fields = histograms.ToDictionary(
+            kv => kv.Key,
+            kv => new
+            {
+                distinct = kv.Value.Count,
+                top = kv.Value.OrderByDescending(x => x.Value).Take(maxDistinct)
+                        .ToDictionary(x => x.Key, x => x.Value),
+            }),
+    };
+    File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine($"OK: {wanted} 共 {instances} 个实例（扫描 {scanned} 个文件，失败 {failed}）-> {jsonOutPath}");
+    return 0;
+}
+
 static int RunNew(string[] args)
 {
     if (args.Length < 3)
