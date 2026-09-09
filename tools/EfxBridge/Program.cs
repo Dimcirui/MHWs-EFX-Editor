@@ -343,7 +343,17 @@ static void CompileExpressions(EfxFile file)
     {
         foreach (var a in action.Attributes.OfType<EFXAttributePlayEmitter>())
         {
-            if (a.efxrData != null) CompileExpressions(a.efxrData);
+            if (a.efxrData == null) continue;
+            // 必须先补上 parentFile 再递归：具名 Expression 参数表（ExpressionParameters）只存在
+            // 于最外层文件里，内嵌的 efxrData 自己那张表是空的，`EfxFile.FindParameterByHash()`
+            // 靠 `(parentFile ?? this).ExpressionParameters` 往上找（EfxFile.cs:1432）。二进制
+            // 读取路径会在 DoRead()/ReadActions() 里做这件事（`a.efxrData.parentFile = this`，
+            // EfxFile.cs:1190/1255），但 parentFile 是 [JsonIgnore]，走 JSON 反序列化进来时是
+            // null——不补的话内嵌子树里每个 hash 都查不到，下面的 source 校正一个都不触发，
+            // 公式里的具名参数引用全部退化成 source=External 写出去（bit 位翻掉、dump 回来
+            // 只剩 `ext:<hash>`，具名信息丢失）。照抄读取路径的做法，指向直接父文件。
+            a.efxrData.parentFile = file;
+            CompileExpressions(a.efxrData);
         }
     }
 }

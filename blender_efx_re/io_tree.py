@@ -173,14 +173,14 @@ def build_attribute_object(attr_dict: dict, index: int, parent_obj: Object, coll
         # _populate_expression_attribute()），不进通用树——IMaterialExpressionAttribute
         # 暴露的是不同的键名 MaterialExpressions，不受影响，仍然原样进通用树。
         #
-        # 和 Clip 反过来：Clip 是"Clip/ClipBits 只读别名，clipData/clipBits 才是真字段"，
-        # Expression 是"Expression/ExpressionBits 是真字段（`EFXAttributeXxxExpression` 类的
-        # 属性，Expression 甚至带 setter），expressions/expressionBits 才是小写的实际
-        # 后备字段"——两者在 JSON 里内容完全相同（已用真实样本核对：
-        # attr["Expression"] == attr["expressions"]、attr["ExpressionBits"] ==
-        # attr["expressionBits"]），只是 System.Text.Json 把公开字段和公开属性都当成独立成员
-        # 各序列化一份。四个键都要从通用树里剔除，否则 Fields 列表里会重复显示一遍
-        # 一模一样的内容。
+        # 和 Clip 同一个模式：小写的 expressions/expressionBits 才是真字段，大写的
+        # Expression/ExpressionBits 是类上的属性别名（`Expression` 带 setter，
+        # `ExpressionBits` 是 `=> expressionBits` 的只读属性）。两者在 JSON 里内容完全相同
+        # （已用真实样本核对：attr["Expression"] == attr["expressions"]、
+        # attr["ExpressionBits"] == attr["expressionBits"]），只是 System.Text.Json 把公开
+        # 字段和公开属性都当成独立成员各序列化一份。四个键都要从通用树里剔除，否则 Fields
+        # 列表里会重复显示一遍一模一样的内容；导出时只写小写的那两个，见
+        # export_attribute_object()。
         content.pop("Expression", None)
         content.pop("ExpressionBits", None)
         content.pop("expressions", None)
@@ -455,8 +455,16 @@ def export_attribute_object(obj: Object) -> dict:
 
     if obj.efx_is_expression_attribute:
         expression_dict, expression_bits = _export_expression_attribute(obj)
-        attr_dict["Expression"] = expression_dict
-        attr_dict["ExpressionBits"] = expression_bits
+        # 必须写小写的后备字段名，不能写 Expression/ExpressionBits：`ExpressionBits` 在每个
+        # IExpressionAttribute 实现类上都是 `=> expressionBits` 这种无 setter 的只读属性，
+        # System.Text.Json 反序列化时直接跳过（PreferredPropertyObjectCreationHandling
+        # =Populate 只在 EfxJsonTypeResolver 里给 EFXAttribute 基类和 EfxFile/EFXEntry/
+        # EFXAction 挂了，具体 attribute 子类的 JsonTypeInfo 走不到那个分支），置位信息会被
+        # 静默丢掉、按 BitSet 默认值（全 0）写出。`Expression` 恰好带 setter
+        # （`{ get => expressions; set => expressions = value; }`）所以能进去，但同一处用两套
+        # 命名只会让下一个人再踩一次——两个都统一写小写，和 clipData/clipBits 那条路对齐。
+        attr_dict["expressions"] = expression_dict
+        attr_dict["expressionBits"] = expression_bits
 
     nested_root = next(
         (child for child in obj.children if child.get("~TYPE") == model.TYPE_ROOT), None

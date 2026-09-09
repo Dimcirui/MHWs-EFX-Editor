@@ -805,6 +805,14 @@ def register():
     Object.efx_groups = CollectionProperty(type=EFXGroupTag)
     Object.efx_groups_active_index = IntProperty()
 
+    # EFX_ROOT 专属：import 时的原始文件名（含 `.efx.5571972` 版本号后缀）。RE Engine 的
+    # 格式版本号只存在于文件名里，不在文件内容里，导出时必须带上，否则谁都读不回来——见
+    # operators.py 模块头部说明。这里记住它，好让 Export 的默认文件名直接沿用。
+    Object.efx_source_filename = StringProperty(
+        name="Source Filename",
+        description="导入时的原始文件名（含版本号后缀），导出时作为默认文件名",
+    )
+
     # EFX_ROOT 专属：文件级命名骨骼表（对应 EfxFile.Bones）。任何 attribute 的 ParentBone
     # 字段都靠名字引用这里的条目（见 is_bone_reference_field()/panels.py 的 prop_search），
     # 不是裸下标——真正的裸下标表 BoneRelations 完全由 C# 后端导出时重算，见
@@ -892,6 +900,7 @@ def unregister():
     del Object.efx_field_parameters
     del Object.efx_bones_active_index
     del Object.efx_bones
+    del Object.efx_source_filename
     del Object.efx_groups_active_index
     del Object.efx_groups
     del Object.efx_index
