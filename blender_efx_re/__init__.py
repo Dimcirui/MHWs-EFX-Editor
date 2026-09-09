@@ -7,33 +7,44 @@ bridge.py 只做 subprocess + JSON 的薄封装。见仓库根 __init__.py 顶�
 """
 
 from . import bridge
+from . import i18n
 from . import semantics
 from . import model
 from . import coords
 from . import io_tree
+from . import attribute_types
+from . import bitfield
 from . import transform3d_view
 from . import operators
 from . import copy_paste
+from . import structure_ops
 from . import panels
 
 __all__ = [
-    "bridge", "semantics", "model", "coords", "io_tree", "transform3d_view",
-    "operators", "copy_paste", "panels",
+    "bridge", "i18n", "semantics", "model", "coords", "io_tree", "transform3d_view",
+    "attribute_types", "bitfield", "operators", "copy_paste", "structure_ops", "panels",
 ]
 
 
 def register():
     semantics.reload_tables()
+    attribute_types.reload_catalogue()
+    i18n.register()
     model.register()
+    bitfield.register()
     transform3d_view.register()
     operators.register()
     copy_paste.register()
+    structure_ops.register()
     panels.register()
 
 
 def unregister():
     panels.unregister()
+    structure_ops.unregister()
     copy_paste.unregister()
     operators.unregister()
     transform3d_view.unregister()
+    bitfield.unregister()
     model.unregister()
+    i18n.unregister()

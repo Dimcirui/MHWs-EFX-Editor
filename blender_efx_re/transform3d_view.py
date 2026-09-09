@@ -55,23 +55,38 @@ def apply_transform3d(attr_obj: Object) -> bool:
     return True
 
 
-_WALK_TYPES = (model.TYPE_ROOT, model.TYPE_ENTRY, model.TYPE_ACTION, model.TYPE_ATTRIBUTE)
+_WALK_TYPES = (model.TYPE_ENTRY, model.TYPE_ACTION, model.TYPE_ATTRIBUTE)
 
 
-def sync_all_transform3d(root_obj: Object) -> int:
-    """递归遍历 `root_obj` 下所有 `EFX_ATTRIBUTE`（含嵌套 `PlayEmitter.efxrData` 子树里的，
-    走法同 `io_tree._walk_clip_issues()`），命中 Transform3D 形状的都应用到其父对象。
-    返回成功应用的数量。"""
+def sync_all_transform3d(root_col) -> int:
+    """递归遍历一个 EFX_ROOT **集合**下所有 `EFX_ATTRIBUTE`（含嵌套 `PlayEmitter.efxrData`
+    子树里的），命中 Transform3D 形状的都应用到其父对象。返回成功应用的数量。
+
+    EFX_ROOT 是集合、Entry/Action 没有父对象（见 io_tree 头部说明），所以入口从集合的
+    Entries/Actions 列表起步，之后才是沿 parent 链递归。"""
+    from . import io_tree
     count = 0
-    for child in root_obj.children:
-        if child.get("~TYPE") == model.TYPE_ATTRIBUTE and apply_transform3d(child):
-            count += 1
-        if child.get("~TYPE") in _WALK_TYPES:
-            count += sync_all_transform3d(child)
+    for obj in io_tree.root_entries(root_col) + io_tree.root_actions(root_col):
+        count += _sync_subtree(obj)
     return count
 
 
-class EFX_OT_sync_transform3d(Operator):
+def _sync_subtree(obj: Object) -> int:
+    count = 0
+    if obj.get("~TYPE") == model.TYPE_ATTRIBUTE:
+        if apply_transform3d(obj):
+            count += 1
+        # 嵌套的 efxrData 是集合，不在 children 里，走 attribute 上的指针
+        nested = obj.efx_nested_root
+        if nested is not None and nested.get("~TYPE") == model.TYPE_ROOT:
+            count += sync_all_transform3d(nested)
+    for child in obj.children:
+        if child.get("~TYPE") in _WALK_TYPES:
+            count += _sync_subtree(child)
+    return count
+
+
+class EFX_RE_OT_sync_transform3d(Operator):
     """按选中对象所属 EFX_ROOT 下所有 Transform3D attribute 的当前字段值，重新计算并摆放
     对应 Entry/Action 的位置/旋转/缩放（仅视口可视化，不写入导出数据）"""
 
@@ -91,7 +106,7 @@ class EFX_OT_sync_transform3d(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (EFX_OT_sync_transform3d,)
+_CLASSES = (EFX_RE_OT_sync_transform3d,)
 
 
 def register():

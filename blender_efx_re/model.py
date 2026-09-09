@@ -33,9 +33,10 @@ from bpy.props import (
     FloatProperty,
     FloatVectorProperty,
     IntProperty,
+    PointerProperty,
     StringProperty,
 )
-from bpy.types import Object, PropertyGroup
+from bpy.types import Collection, Object, PropertyGroup
 
 # ---------------------------------------------------------------------------
 # ~TYPE 常量
@@ -73,8 +74,8 @@ ATTRIBUTE_CLIP_VIEW_KEYS = frozenset({"Clip", "ClipBits", "MaterialClip"})
 # 标识（推测是权威制作工具的创建序号，语义未知），按数组位置强行重算反而会在完全没有编辑的
 # 往返里就篡改这个字段。按决策 9"不确定就别自作主张改写"的精神，改为和其余未知字段一样原样
 # 透传，不在导出时重算。删除 Entry 后 index 是否需要重新分配，等确认其真实语义后再决定。
-ENTRY_STRUCTURAL_KEYS = frozenset({"Attributes", "Groups"})
-ACTION_STRUCTURAL_KEYS = frozenset({"Attributes"})
+ENTRY_STRUCTURAL_KEYS = frozenset({"Attributes", "Groups", "name"})
+ACTION_STRUCTURAL_KEYS = frozenset({"Attributes", "name"})
 
 # EfxFile 顶层字典里，Entries/Actions 单独按子对象处理，EffectGroups 整体不透传
 # （导出时固定输出空数组，靠 C# 后端 UpdateEffectGroups() 从各 Entry 的 Groups 反向重建，
@@ -755,8 +756,11 @@ class EFXExpressionCurveItem(PropertyGroup):
 # 不透明剩余字段 —— 存成 bpy.data.texts 文本块，import/export 两边共用
 # ---------------------------------------------------------------------------
 
-def save_opaque(obj: Object, mapping: dict) -> None:
-    """把一个 dict 原样存成一个文本块，obj.efx_opaque_text 记录文本块名字。"""
+def save_opaque(obj, mapping: dict) -> None:
+    """把一个 dict 原样存成一个文本块，obj.efx_opaque_text 记录文本块名字。
+
+    `obj` 可以是 Object 也可以是 Collection（EFX_ROOT 是集合）——只用到 `.name` 和
+    `.efx_opaque_text`，两边都有。"""
     text_name = f"{obj.name}.opaque.json"
     text = bpy.data.texts.get(text_name) or bpy.data.texts.new(text_name)
     text.clear()
@@ -764,7 +768,7 @@ def save_opaque(obj: Object, mapping: dict) -> None:
     obj.efx_opaque_text = text.name
 
 
-def load_opaque(obj: Object) -> dict:
+def load_opaque(obj) -> dict:
     """save_opaque 的反函数。obj.efx_opaque_text 为空则视为没有剩余字段。"""
     if not obj.efx_opaque_text:
         return {}
@@ -784,6 +788,22 @@ _CLASSES = (
 )
 
 
+def _sync_object_name(self, context) -> None:
+    """改了 efx_name 就顺手把 Blender 对象也改名，不然 Outliner 里还是旧名字。
+
+    对象名撞名时 Blender 会自己加 `.001`，那只影响显示、不影响导出（导出走 efx_name 和
+    parent 链，不看对象名）。子 attribute 的对象名带着父级名前缀（`[Entry] Life`），这里
+    **不**跟着重命名——那只是导入时生成的一次性显示名，跟着改反而会让正在看的列表跳来跳去。
+    """
+    if not self.efx_name:
+        return
+    try:
+        if self.name != self.efx_name:
+            self.name = self.efx_name
+    except Exception:  # 对象正被删除等边缘情况，改名失败不该拖垮属性赋值
+        pass
+
+
 def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
@@ -794,38 +814,87 @@ def register():
         name="Opaque JSON",
         description="未建字段级 UI 的剩余键值，原样存成文本块，导出时原样塞回去",
     )
+    # EFX_ROOT 是集合，它的剩余字段也要有地方放——save_opaque()/load_opaque() 只用到
+    # `.name` 和 `.efx_opaque_text`，Object 和 Collection 都满足，同一套函数通用。
+    Collection.efx_opaque_text = StringProperty(
+        name="Opaque JSON",
+        description="未建字段级 UI 的剩余键值，原样存成文本块，导出时原样塞回去",
+    )
+
+    # EFX_ATTRIBUTE 专属：PlayEmitter 内嵌的那个完整 EfxFile 对应的根集合。
+    #
+    # 这是"根改成集合"之后唯一需要新加的机制：MHWs 的 PlayEmitter **内嵌一整个 EfxFile**
+    # （组合，不是引用），以前靠 `nested_root_obj.parent = attribute_obj` 表达归属，但
+    # Collection 根本没有 parent 属性、挂不到 Object 下面。所以反过来，让 attribute 拿一个
+    # 指针指向它的嵌套根集合。姊妹项目 EFX-Editor 没这个问题——MHWI 的对应物 EFX_EXTERN 是
+    # 对外部文件的*引用*，不是嵌进来的完整文件。
+    Object.efx_nested_root = PointerProperty(
+        type=Collection,
+        name="Nested EFX",
+        description="PlayEmitter 内嵌的 efxrData 对应的根集合",
+    )
 
     # EFX_ENTRY/EFX_ACTION/EFX_ATTRIBUTE 通用：记录 import 时在所属列表（Entries/Actions/
     # Attributes）里的原始下标，导出时按这个值排序还原顺序——不依赖 Blender children/collection
     # 的迭代顺序（未必稳定），沿用 EFX-Editor build_local_index_map 的做法。当前阶段没有做
     # 拖拽重排 UI，这个下标只反映 import 时的原始顺序。
+    # EFX_ENTRY / EFX_ACTION 的游戏侧名字。**不复用 Blender 的对象名**：Blender 对象名全局
+    # 唯一，撞名会被自动加 `.001` 后缀，而 EFX 里两个 entry 完全可以同名——拿对象名当数据会
+    # 静默改掉用户的名字。这里单独存一份，对象名只作显示用。
+    #
+    # 改名是安全的：写出时 C# 侧会按 name 重算 nameHash（EfxFile.cs `EFXEntry.DoWrite` /
+    # `EFXAction.DoWrite`），文件头的字符串表也按 Entries/Actions 的 name 整体重建
+    # （`Strings.EfxNames = Entries.Select(e => e.name ...)`），不存在改了名字对不上哈希的问题。
+    Object.efx_name = StringProperty(
+        name="EFX Name",
+        description="这个 Entry/Action 在 EFX 文件里的名字",
+        update=_sync_object_name,
+    )
+
     Object.efx_index = IntProperty(name="Original Index")
 
     # EFX_ENTRY 专属：Subselect 标签（对应 EFXEntry.Groups）。
     Object.efx_groups = CollectionProperty(type=EFXGroupTag)
     Object.efx_groups_active_index = IntProperty()
 
+    # EFX_ROOT 专属：import 时的原始文件名（含 `.efx.5571972` 版本号后缀）。RE Engine 的
+    # 格式版本号只存在于文件名里，不在文件内容里，导出时必须带上，否则谁都读不回来——见
+    # operators.py 模块头部说明。这里记住它，好让 Export 的默认文件名直接沿用。
+    # 挂在 Collection 上：EFX_ROOT 是集合。Object 上那份留着，给以后可能需要的场景
+    # （目前只有根用得上）。
+    Collection.efx_source_filename = StringProperty(
+        name="Source Filename",
+        description="导入时的原始文件名（含版本号后缀），导出时作为默认文件名",
+    )
+    Object.efx_source_filename = StringProperty(
+        name="Source Filename",
+        description="导入时的原始文件名（含版本号后缀），导出时作为默认文件名",
+    )
+
+    # 以下四组挂在 **Collection** 上而不是 Object：EFX_ROOT 就是那个紫色集合本身
+    # （见 io_tree.build_root_from_efxfile），没有根 Empty。
+    #
     # EFX_ROOT 专属：文件级命名骨骼表（对应 EfxFile.Bones）。任何 attribute 的 ParentBone
     # 字段都靠名字引用这里的条目（见 is_bone_reference_field()/panels.py 的 prop_search），
     # 不是裸下标——真正的裸下标表 BoneRelations 完全由 C# 后端导出时重算，见
     # ROOT_STRUCTURAL_KEYS 的说明。
-    Object.efx_bones = CollectionProperty(type=EFXBoneItem)
-    Object.efx_bones_active_index = IntProperty()
+    Collection.efx_bones = CollectionProperty(type=EFXBoneItem)
+    Collection.efx_bones_active_index = IntProperty()
 
     # EFX_ROOT 专属：文件级具名参数表（对应 EfxFile.FieldParameterValues），见
     # EFXFieldParameterItem 的说明。
-    Object.efx_field_parameters = CollectionProperty(type=EFXFieldParameterItem)
-    Object.efx_field_parameters_active_index = IntProperty()
+    Collection.efx_field_parameters = CollectionProperty(type=EFXFieldParameterItem)
+    Collection.efx_field_parameters_active_index = IntProperty()
 
     # EFX_ROOT 专属：外部 .uvar 引用表（对应 EfxFile.UvarGroups），最多 2 项，见
     # EFXUvarGroupItem 的说明。
-    Object.efx_uvar_groups = CollectionProperty(type=EFXUvarGroupItem)
-    Object.efx_uvar_groups_active_index = IntProperty()
+    Collection.efx_uvar_groups = CollectionProperty(type=EFXUvarGroupItem)
+    Collection.efx_uvar_groups_active_index = IntProperty()
 
     # EFX_ROOT 专属：公式引擎具名参数表（对应 EfxFile.ExpressionParameters），见
     # EFXExpressionParamItem 的说明。
-    Object.efx_expression_parameters = CollectionProperty(type=EFXExpressionParamItem)
-    Object.efx_expression_parameters_active_index = IntProperty()
+    Collection.efx_expression_parameters = CollectionProperty(type=EFXExpressionParamItem)
+    Collection.efx_expression_parameters_active_index = IntProperty()
 
     # EFX_ATTRIBUTE 专属：bookkeeping 标量 + 内容字段树。
     Object.efx_attr_type = StringProperty(
@@ -884,17 +953,22 @@ def unregister():
     del Object.efx_version
     del Object.efx_unique_id
     del Object.efx_attr_type
-    del Object.efx_expression_parameters_active_index
-    del Object.efx_expression_parameters
-    del Object.efx_uvar_groups_active_index
-    del Object.efx_uvar_groups
-    del Object.efx_field_parameters_active_index
-    del Object.efx_field_parameters
-    del Object.efx_bones_active_index
-    del Object.efx_bones
+    del Collection.efx_expression_parameters_active_index
+    del Collection.efx_expression_parameters
+    del Collection.efx_uvar_groups_active_index
+    del Collection.efx_uvar_groups
+    del Collection.efx_field_parameters_active_index
+    del Collection.efx_field_parameters
+    del Collection.efx_bones_active_index
+    del Collection.efx_bones
+    del Object.efx_source_filename
+    del Collection.efx_source_filename
     del Object.efx_groups_active_index
     del Object.efx_groups
     del Object.efx_index
+    del Object.efx_name
+    del Object.efx_nested_root
+    del Collection.efx_opaque_text
     del Object.efx_opaque_text
 
     for cls in reversed(_CLASSES):

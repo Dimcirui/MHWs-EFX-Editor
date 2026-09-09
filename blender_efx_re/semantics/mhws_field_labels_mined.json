@@ -1,0 +1,1473 @@
+{
+ "game": "MHWS",
+ "_generated_by": "tools/mine_btx_semantics.py",
+ "_source": "MHWs-EFX-Template / RE_EFX_STRUCTS.btx",
+ "_note": "机器生成，整份可重跑覆盖。手写标注请写进 mhws_field_labels.json（优先级更高）。",
+ "types": {
+  "ReeLib.Efx.Structs.Basic.EFXAttributeAlphaCorrection": {
+   "label_zh": "透明度校正",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Basic.EFXAttributeLife": {
+   "label_zh": "生命属性",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Basic.EFXAttributeLifeExpression": {
+   "label_zh": "生命属性拓展",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Basic.EFXAttributeParentOptions": {
+   "label_zh": "运动跟踪属性",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Basic.EFXAttributeShaderSettings": {
+   "label_zh": "特效着色器设置",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Basic.EFXAttributeSpawn": {
+   "label_zh": "粒子生成属性",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Basic.EFXAttributeSpawnExpression": {
+   "label_zh": "粒子生成拓展属性",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Basic.EFXAttributeUVScroll": {
+   "label_zh": "序列帧uv流动",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Basic.EFXAttributeUVSequence": {
+   "label_zh": "序列帧贴图调用属性",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Basic.EFXAttributeUVSequenceModifier": {
+   "label_zh": "序列帧贴图调用属性编辑",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeBillboard2D": {
+   "label_zh": "2D广告牌特效",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeBillboard3D": {
+   "label_zh": "广告牌类特效（特效始终朝向摄像头）",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeBillboard3DExpression": {
+   "label_zh": "广告牌类特效拓展",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeGpuPolygon": {
+   "label_zh": "TypeGpuPolygon",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeGpuRibbonLength": {
+   "label_zh": "GpuRibbonLength",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeMeshV2": {
+   "label_zh": "网格类特效",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeNoDraw": {
+   "label_zh": "空类，一般在有特效行为的特效块里或者pt运动引导块里",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypePolygon": {
+   "label_zh": "多边形",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypePolygonTrail": {
+   "label_zh": "多边形轨迹",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonFollow": {
+   "label_zh": "TypeRibbonFollow",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonLength": {
+   "label_zh": "RibbonLength",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonParticle": {
+   "label_zh": "RibbonParticle",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Misc.EFXAttributeAttractor": {
+   "label_zh": "引力?",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Misc.EFXAttributeDistortion": {
+   "label_zh": "畸变属性",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Misc.EFXAttributeDistortionExpression": {
+   "label_zh": "畸变属性拓展",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Misc.EFXAttributeEffectOptimizeShader": {
+   "label_zh": "特效着色器属性",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Misc.EFXAttributeEmitMask": {
+   "label_zh": "发射遮罩",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Misc.EFXAttributeFlowMap": {
+   "label_zh": "纹理贴图属性",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Misc.EFXAttributeNoise": {
+   "label_zh": "粒子运动扰动",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Misc.EFXAttributeNoiseExpression": {
+   "label_zh": "粒子运动扰动表达",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Misc.EFXAttributeRgbCommon": {
+   "label_zh": "序列帧RGB通道控制（使用时底色变为序列帧蓝通）",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Misc.EFXAttributeRgbCommonExpression": {
+   "label_zh": "颜色普通属性拓展",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Misc.EFXAttributeRgbWater": {
+   "label_zh": "颜色水流属性",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Misc.EFXAttributeTerrainSnap": {
+   "label_zh": "地形捕捉（特效z轴顺着地形）",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Pt.EFXAttributePtBehavior": {
+   "label_zh": "特效行为",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Pt.EFXAttributePtColliderAction": {
+   "label_zh": "粒子碰撞触发action",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Pt.EFXAttributePtLife": {
+   "label_zh": "按粒子生命周期绑定action",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Pt.EFXAttributePtSort": {
+   "label_zh": "按轨迹绑定action?",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeEmitterShape2D": {
+   "label_zh": "2d粒子发射器形状",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeEmitterShape3D": {
+   "label_zh": "发射器形状",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeFadeByAngle": {
+   "label_zh": "角度渐隐",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeFadeByDepth": {
+   "label_zh": "深度渐隐",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeRotateAnim": {
+   "label_zh": "特效旋转属性",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeScaleAnim": {
+   "label_zh": "特效缩放属性",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeTransform2D": {
+   "label_zh": "2d特效基础变化",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeTransform3D": {
+   "label_zh": "变化基础属性",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeTransform3DExpression": {
+   "label_zh": "变化基础属性表达",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeTransform3DModifier": {
+   "label_zh": "变化基础属性编辑",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeVelocity2D": {
+   "label_zh": "粒子2D运动速度",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeVelocity3D": {
+   "label_zh": "粒子运动速度",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeVelocity3DExpression": {
+   "label_zh": "粒子运动速度拓展",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Vortexel.EFXAttributePtVortexelWind": {
+   "label_zh": "跟随涡旋风力属性",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  },
+  "ReeLib.Efx.Structs.Vortexel.EFXAttributeVortexelWindEmitter": {
+   "label_zh": "涡旋风力发射器",
+   "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+  }
+ },
+ "global_fields": {},
+ "fields": {
+  "ReeLib.Efx.Structs.Basic.EFXAttributeAlphaCorrection": {
+   "CurveConst": {
+    "tooltip_zh": "整体系数？",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "HighPass": {
+    "tooltip_zh": "数值越高，闪烁幅度越强?",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "LowPass": {
+    "tooltip_zh": "数值越高，闪烁越平滑?",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Basic.EFXAttributeLife": {
+   "AppearFrame": {
+    "tooltip_zh": "渐入帧数",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "KeepFrame": {
+    "tooltip_zh": "持续帧数",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "KeepHoldFrame": {
+    "tooltip_zh": "保持帧数？",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "VanishFrame": {
+    "tooltip_zh": "消亡帧数",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Basic.EFXAttributeParentOptions": {
+   "ConstFrame": {
+    "tooltip_zh": "取消跟踪帧数\n取消跟踪帧数随机值",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "ConstInheritRate": {
+    "tooltip_zh": "粒子跟踪比例？",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "ParticleUseLocal": {
+    "tooltip_zh": "粒子跟踪开关",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "RelationPos": {
+    "tooltip_zh": "0生成于地图中心1跟随物体2不跟随3忽略变化",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "RelationRot": {
+    "tooltip_zh": "旋转0完全跟踪地图中心1跟踪物体2不跟随3忽略变化",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "RelationScl": {
+    "tooltip_zh": "缩放0完全跟踪地图中心1跟踪物体2不跟随3忽略变化",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Basic.EFXAttributeRenderTarget": {
+   "rtexPath": {
+    "tooltip_zh": "实测取值：122",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Basic.EFXAttributeShaderSettings": {
+   "sb_unkn10": {
+    "tooltip_zh": "Required Version: MHRSB (.2818730) or above\n实测取值：255",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "sb_unkn11": {
+    "tooltip_zh": "Required Version: MHRSB (.2818730) or above\n实测取值：255",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "sb_unkn12": {
+    "tooltip_zh": "Required Version: MHRSB (.2818730) or above\n实测取值：255",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "sb_unkn2": {
+    "tooltip_zh": "Required Version: MHRSB (.2818730) or above",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "sb_unkn3": {
+    "tooltip_zh": "Required Version: MHRSB (.2818730) or above\n实测取值：5.0 / 10.0 / 20.0 / 30.0 / 100.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "sb_unkn4": {
+    "tooltip_zh": "Required Version: MHRSB (.2818730) or above\n实测取值：1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "sb_unkn5": {
+    "tooltip_zh": "Required Version: MHRSB (.2818730) or above\n实测取值：0 / 1022739087 / 1025758986 / 1039516303 / 1055622431 / 1056964608 / 1060991140 / 1065353216",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "sb_unkn9": {
+    "tooltip_zh": "Required Version: MHRSB (.2818730) or above\n实测取值：255",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn10": {
+    "tooltip_zh": "实测取值：1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn11": {
+    "tooltip_zh": "实测取值：1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn12": {
+    "tooltip_zh": "实测取值：1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn13": {
+    "tooltip_zh": "实测取值：100.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn19": {
+    "tooltip_zh": "实测取值：0.20000000298023224",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2": {
+    "tooltip_zh": "实测取值：0 / 1 / 2 / 3 / 4",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn24": {
+    "tooltip_zh": "实测取值：0.0 / 1.401298464324817e-45",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn8": {
+    "tooltip_zh": "实测取值：0.15000000596046448",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn9": {
+    "tooltip_zh": "实测取值：0.15000000596046448",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Basic.EFXAttributeSpawn": {
+   "EmitterDelayFrame": {
+    "tooltip_zh": "粒子生成延迟",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "InitializeFull": {
+    "tooltip_zh": "?",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "Interpolate": {
+    "tooltip_zh": "空值",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "IntervalFrame": {
+    "tooltip_zh": "粒子生成间隔",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "LoopNum": {
+    "tooltip_zh": "粒子生成总数0即不生效",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "MaxParticles": {
+    "tooltip_zh": "同时存在最大粒子数量",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "OriginalMaxParticles": {
+    "tooltip_zh": "一般数值和同时存在最大粒子数量一样？",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "ParticleInterval": {
+    "tooltip_zh": "粒子间隔？",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "RevivalInterval": {
+    "tooltip_zh": "粒子复生间隔?",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "RevivalNum": {
+    "tooltip_zh": "粒子复生次数?",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "RingBufferMode": {
+    "tooltip_zh": "环形缓冲模式?",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "SpawnChanceFrame": {
+    "tooltip_zh": "?",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "SpawnFrame": {
+    "tooltip_zh": "粒子生成总帧数",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "SpawnNum": {
+    "tooltip_zh": "单次生成粒子数量",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "TrySpawnAllParticles": {
+    "tooltip_zh": "尝试生成所有粒子?",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "UseRevival": {
+    "tooltip_zh": "粒子复生?",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "UseSpawnFrame": {
+    "tooltip_zh": "粒子生成总帧数开关0关闭1开启",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Basic.EFXAttributeTextureUnit": {
+   "uvs0Path": {
+    "tooltip_zh": "实测取值：32",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "uvs1Path": {
+    "tooltip_zh": "实测取值：32",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "uvs2Path": {
+    "tooltip_zh": "实测取值：32",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Basic.EFXAttributeUVSequence": {
+   "PlaySpeed": {
+    "tooltip_zh": "序列帧播放速度",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "UVSPath": {
+    "tooltip_zh": "序列帧文件路径",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeBillboard2D": {
+   "Rotation": {
+    "tooltip_zh": "粒子旋转\n实测取值：0.0 / 0.5235987901687622 / 3.1415927410125732",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeBillboard3D": {
+   "Rotation": {
+    "tooltip_zh": "生成时位置旋转",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "SizeX": {
+    "tooltip_zh": "生成时大小x轴",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "SizeY": {
+    "tooltip_zh": "生成时大小y轴",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeGpuBillboard": {
+   "unkn3": {
+    "tooltip_zh": "实测取值：0 / 1",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeGpuLightning3D": {
+   "unkn1": {
+    "tooltip_zh": "实测取值：371712",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_1": {
+    "tooltip_zh": "实测取值：80.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_10": {
+    "tooltip_zh": "实测取值：1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_12": {
+    "tooltip_zh": "实测取值：1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_13": {
+    "tooltip_zh": "实测取值：1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_4": {
+    "tooltip_zh": "实测取值：1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_5": {
+    "tooltip_zh": "实测取值：64",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_6": {
+    "tooltip_zh": "实测取值：4",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_8": {
+    "tooltip_zh": "实测取值：1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeGpuPolygon": {
+   "RotationX": {
+    "tooltip_zh": "实测取值：0 / 1070141403",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "RotationY": {
+    "tooltip_zh": "实测取值：0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "RotationZ": {
+    "tooltip_zh": "实测取值：0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeGpuRibbonLength": {
+   "DirectionX": {
+    "tooltip_zh": "粒子偏移方向？",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "Intensity": {
+    "tooltip_zh": "亮度",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "ParticleNum": {
+    "tooltip_zh": "粒子数量上限",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeLightning3D": {
+   "unkn2_1": {
+    "tooltip_zh": "实测取值：0.0 / 1.0 / 10.0 / 20.0 / 30.0 / 50.0 / 80.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_2": {
+    "tooltip_zh": "实测取值：0.0 / 15.0 / 20.0 / 30.0 / 50.0 / 150.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_20": {
+    "tooltip_zh": "实测取值：0.0 / 0.09999990463256836 / 0.10000000149011612 / 0.19999980926513672 / 0.20000000298023224 / 0.30000001192092896 / 0.4000000059604645 / 0.5 …（共 9 种）",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_21": {
+    "tooltip_zh": "实测取值：0.0 / 0.09999999403953552 / 0.10000000894069672 / 0.10000002384185791 / 0.10000038146972656 / 0.19999998807907104 / 0.5 / 1.0 …（共 9 种）",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_23": {
+    "tooltip_zh": "实测取值：0.0 / 0.020000003278255463 / 0.05000000447034836 / 0.10000000894069672 / 0.19999998807907104 / 0.20000000298023224 / 0.5",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_25": {
+    "tooltip_zh": "实测取值：0.0 / 0.020000003278255463 / 0.029999997466802597 / 0.05000000447034836 / 0.10000000894069672 / 0.19999998807907104 / 0.20000000298023224",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_26": {
+    "tooltip_zh": "实测取值：0.0 / 0.10000000149011612 / 0.20000000298023224 / 0.30000001192092896 / 0.5 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_27": {
+    "tooltip_zh": "实测取值：0.0 / 0.05000000447034836 / 0.09999999403953552 / 0.10000000149011612 / 0.10000000894069672 / 0.19999998807907104 / 0.20000000298023224 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_28": {
+    "tooltip_zh": "实测取值：0.0 / 0.5",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_29": {
+    "tooltip_zh": "实测取值：0.0 / 0.20000000298023224 / 0.25 / 0.5",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_3": {
+    "tooltip_zh": "实测取值：0.0 / 0.800000011920929 / 0.9800000190734863 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_30": {
+    "tooltip_zh": "实测取值：-120.0 / -100.0 / 0.0 / 50.0 / 100.0 / 120.0 / 180.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_31": {
+    "tooltip_zh": "实测取值：0.0 / 30.0 / 180.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_33": {
+    "tooltip_zh": "实测取值：0.0 / 0.019999999552965164 / 0.02500000037252903 / 0.05000000074505806 / 0.10000000149011612 / 0.15000000596046448 / 0.20000000298023224 / 0.30000001192092896 …（共 9 种）",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_35": {
+    "tooltip_zh": "实测取值：0.0 / 0.09999999403953552 / 0.10000002384185791 / 0.20000004768371582 / 0.20000076293945312 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_39": {
+    "tooltip_zh": "实测取值：0.0 / 0.10000002384185791 / 0.20000004768371582 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_4": {
+    "tooltip_zh": "实测取值：1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_46": {
+    "tooltip_zh": "实测取值：0.0 / 0.004999999888241291 / 0.009999999776482582 / 0.05000000074505806 / 0.10000000149011612 / 0.30000001192092896 / 0.5 / 5.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_47": {
+    "tooltip_zh": "实测取值：0.0 / 0.8999999761581421 / 0.949999988079071 / 0.9599999785423279 / 0.9700000286102295 / 0.9800000190734863 / 0.9900000095367432 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_48": {
+    "tooltip_zh": "实测取值：0 / 1008981760",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_49": {
+    "tooltip_zh": "实测取值：0 / 2 / 5",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_50": {
+    "tooltip_zh": "实测取值：-80.0 / -5.0 / 0.0 / 10.0 / 20.0 / 90.0 / 120.0 / 220.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_51": {
+    "tooltip_zh": "实测取值：0.0 / 5.0 / 10.0 / 15.0 / 20.0 / 30.0 / 40.0 / 90.0 …（共 10 种）",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_52": {
+    "tooltip_zh": "实测取值：0.0 / 30.0 / 45.0 / 93.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_53": {
+    "tooltip_zh": "实测取值：0.0 / 10.0 / 30.0 / 150.0 / 180.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_54": {
+    "tooltip_zh": "实测取值：-93.0 / -45.0 / 0.0 / 50.0 / 90.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_55": {
+    "tooltip_zh": "实测取值：0.0 / 5.0 / 10.0 / 15.0 / 20.0 / 30.0 / 40.0 / 90.0 …（共 10 种）",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_58": {
+    "tooltip_zh": "实测取值：1.0 / 1.100000023841858 / 1.5 / 2.0 / 2.5 / 3.0 / 4.0 / 5.0 …（共 10 种）",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_65": {
+    "tooltip_zh": "实测取值：0 / 1 / 2",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_66": {
+    "tooltip_zh": "实测取值：0 / 1 / 3 / 5 / 6 / 8 / 12 / 15",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_68": {
+    "tooltip_zh": "实测取值：0.0 / 1.5707963705062866",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_69": {
+    "tooltip_zh": "实测取值：0.0 / 0.01745329424738884 / 0.6981317400932312",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_7": {
+    "tooltip_zh": "实测取值：0.0 / 1.0 / 2.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_70": {
+    "tooltip_zh": "实测取值：0 / 1070141403",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_71": {
+    "tooltip_zh": "实测取值：2.802596928649634e-45",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_72": {
+    "tooltip_zh": "实测取值：0.800000011920929 / 0.949999988079071 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_8": {
+    "tooltip_zh": "实测取值：0.0 / 1.0 / 60.0 / 180.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unknBitFlag": {
+    "tooltip_zh": "The values change between base game and sunbreak, even on files that have no changes. Game will crash when value is set wrong.",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeMeshV2": {
+   "MeshPath": {
+    "tooltip_zh": "网格路径",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "RotationX": {
+    "tooltip_zh": "粒子基础位移",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "ScaleX": {
+    "tooltip_zh": "粒子基础缩放",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "texCount": {
+    "tooltip_zh": "材质属性修改贴图数量",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypePolygon": {
+   "RotationX": {
+    "tooltip_zh": "粒子旋转",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypePolygonTrail": {
+   "Intensity": {
+    "tooltip_zh": "亮度",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "IntervalFrame": {
+    "tooltip_zh": "拉长间隔帧数",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "Length": {
+    "tooltip_zh": "轨迹图案大小",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonChain": {
+   "sb_unkn1": {
+    "tooltip_zh": "Required Version: MHRSB (.2818730) or above",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "sb_unkn2": {
+    "tooltip_zh": "Required Version: MHRSB (.2818730) or above",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn1": {
+    "tooltip_zh": "实测取值：0 / 16 / 32 / 48 / 128 / 144 / 160",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_14": {
+    "tooltip_zh": "实测取值：0.0 / 5.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_16": {
+    "tooltip_zh": "实测取值：0.0 / 0.050000011920928955",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_17": {
+    "tooltip_zh": "实测取值：0.0 / 0.07000000029802322 / 0.10000000149011612 / 0.20000000298023224 / 0.25 / 0.30000001192092896 / 0.5 / 0.6000000238418579 …（共 10 种）",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_18": {
+    "tooltip_zh": "实测取值：0 / 1008981768 / 1036831948 / 1041865114",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_20": {
+    "tooltip_zh": "实测取值：0.5",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_21": {
+    "tooltip_zh": "实测取值：0.0 / 0.5 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_22": {
+    "tooltip_zh": "实测取值：-0.8830221891403198 / -0.7986355423927307 / -0.7602254748344421 / -0.7071067690849304 / 0.0 / 0.6427876353263855 / 0.7602254748344421 / 0.7986355423927307 …（共 9 种）",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_23": {
+    "tooltip_zh": "实测取值：-0.11743783950805664 / -0.10579991340637207 / 0.0 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_24": {
+    "tooltip_zh": "实测取值：-1.0 / -0.7660444378852844 / -0.637904942035675 / -0.38683927059173584 / -0.3420201241970062 / 0.0 / 0.38683927059173584 / 0.7071067690849304 …（共 9 种）",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_25": {
+    "tooltip_zh": "实测取值：-0.13790494203567505 / 0.0 / 0.12813955545425415 / 0.1736481785774231 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_26": {
+    "tooltip_zh": "实测取值：0 / 1050971578 / 1055656558 / 3203140206 / 3212709422 / 3212836864",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_27": {
+    "tooltip_zh": "实测取值：0.0 / 0.007596135139465332 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_28": {
+    "tooltip_zh": "实测取值：0 / 1062229259 / 3209712907",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_30": {
+    "tooltip_zh": "实测取值：-1.0 / -0.5 / 0.0 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_32": {
+    "tooltip_zh": "实测取值：0 / 1050126151 / 3212836864",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_34": {
+    "tooltip_zh": "实测取值：0.5 / 1.0 / 2.0 / 3.0 / 5.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_39": {
+    "tooltip_zh": "实测取值：0.10999999940395355 / 0.3700000047683716 / 0.5",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_4": {
+    "tooltip_zh": "实测取值：0.0 / 0.02500000037252903 / 0.05000000074505806 / 0.10000000149011612 / 0.20000000298023224 / 0.5 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_40": {
+    "tooltip_zh": "实测取值：1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_41": {
+    "tooltip_zh": "实测取值：0.20000000298023224 / 0.5 / 1.0 / 6.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_42": {
+    "tooltip_zh": "实测取值：0.0 / 0.5 / 0.699999988079071 / 0.75 / 0.800000011920929 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_43": {
+    "tooltip_zh": "实测取值：0.0 / 0.10000000149011612 / 0.20000000298023224 / 0.30000001192092896 / 0.5 / 1.0 / 2.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_44": {
+    "tooltip_zh": "实测取值：0.3100000023841858 / 0.5 / 0.5299999713897705",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_45": {
+    "tooltip_zh": "实测取值：0.8899999856948853 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_46": {
+    "tooltip_zh": "实测取值：1.0 / 5.0 / 7.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_47": {
+    "tooltip_zh": "实测取值：1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_48": {
+    "tooltip_zh": "实测取值：1.0 / 5.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_49": {
+    "tooltip_zh": "实测取值：0.5",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_7": {
+    "tooltip_zh": "实测取值：0.5 / 0.800000011920929 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_8": {
+    "tooltip_zh": "实测取值：0.0 / 0.20000000298023224 / 0.800000011920929 / 1.0 / 2.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonFixEnd": {
+   "sb_unkn0": {
+    "tooltip_zh": "Required Version: MHRSB (.2818730) or above",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_1": {
+    "tooltip_zh": "实测取值：0.0 / 1.0 / 3.0 / 6.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_10": {
+    "tooltip_zh": "实测取值：0.0 / 1.401298464324817e-45 / 2.802596928649634e-45 / 4.203895392974451e-45 / 5.605193857299268e-45 / 7.006492321624085e-45 / 1.2611686178923354e-44 / 1.6815581571897805e-44",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_11": {
+    "tooltip_zh": "实测取值：0.5 / 0.550000011920929",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_12": {
+    "tooltip_zh": "实测取值：0.0 / 0.800000011920929 / 0.8999999761581421 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_13": {
+    "tooltip_zh": "实测取值：0 / 1 / 2 / 3 / 5 / 10 / 35 / 50 …（共 10 种）",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_15": {
+    "tooltip_zh": "实测取值：2.802596928649634e-45 / 4.203895392974451e-45 / 5.605193857299268e-45 / 7.006492321624085e-45 / 8.407790785948902e-45 / 1.1210387714598537e-44 / 1.401298464324817e-44",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_16": {
+    "tooltip_zh": "实测取值：0 / 1036831949 / 1106247680",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_17": {
+    "tooltip_zh": "实测取值：-16776961 / -14875631 / -1 / 255 / 2327021 / 16777215 / 1660956671 / 1799971513",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_18": {
+    "tooltip_zh": "实测取值：-14450195 / -12451548 / -11967815 / -30720 / -1 / 255 / 26367 / 1207959551",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_20": {
+    "tooltip_zh": "实测取值：0.0 / 0.20000000298023224 / 0.5 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_21": {
+    "tooltip_zh": "实测取值：0.15000000596046448 / 0.4000000059604645 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_22": {
+    "tooltip_zh": "实测取值：0.0 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_23": {
+    "tooltip_zh": "实测取值：0.5 / 1.0 / 15.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_24": {
+    "tooltip_zh": "实测取值：0.5 / 1.0 / 15.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_25": {
+    "tooltip_zh": "实测取值：0.10000000149011612 / 0.3499999940395355 / 0.5",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_26": {
+    "tooltip_zh": "实测取值：1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_27": {
+    "tooltip_zh": "实测取值：0.800000011920929 / 0.949999988079071 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_7": {
+    "tooltip_zh": "实测取值：0.30000001192092896 / 0.5 / 1.0 / 1.5 / 2.0 / 3.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_8": {
+    "tooltip_zh": "实测取值：0.0 / 0.800000011920929 / 0.9800000190734863 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_9": {
+    "tooltip_zh": "实测取值：1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonLengthExpression": {
+   "unkn6": {
+    "tooltip_zh": "实测取值：0 / 2 / 4",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn8": {
+    "tooltip_zh": "实测取值：2",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonLightweight": {
+   "sb_unkn0": {
+    "tooltip_zh": "Required Version: MHRSB (.2818730) or above",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn1": {
+    "tooltip_zh": "实测取值：0 / 128",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_10": {
+    "tooltip_zh": "实测取值：1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_4": {
+    "tooltip_zh": "实测取值：0 / 1028443341 / 1036831949 / 1041865114 / 1045220557 / 1048576000 / 1050253722 / 1056964608 …（共 9 种）",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_7": {
+    "tooltip_zh": "实测取值：0.0 / 0.10000000149011612 / 0.25 / 0.800000011920929 / 1.0 / 10.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_8": {
+    "tooltip_zh": "实测取值：1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2_9": {
+    "tooltip_zh": "实测取值：2.802596928649634e-45 / 4.203895392974451e-45 / 5.605193857299268e-45 / 1.1210387714598537e-44",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Main.EFXAttributeTypeStrainRibbonV3": {
+   "color1": {
+    "tooltip_zh": "实测取值：-16776680 / -14540213 / -11374994 / -5121575 / -1",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn2": {
+    "tooltip_zh": "实测取值：2 / 4",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn3_2": {
+    "tooltip_zh": "实测取值：0.0 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn3_3": {
+    "tooltip_zh": "实测取值：0.0 / 6.2831854820251465",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Misc.EFXAttributeAttractor": {
+   "boneName": {
+    "tooltip_zh": "实测取值：16",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Misc.EFXAttributeDistortion": {
+   "Influence": {
+    "tooltip_zh": "畸变表面模糊度",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Misc.EFXAttributeEmitMask": {
+   "mask": {
+    "tooltip_zh": "？",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Misc.EFXAttributeProceduralDistortionDelayFrame": {
+   "frameDelay": {
+    "tooltip_zh": "实测取值：3 / 20 / 200",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Misc.EFXAttributeRgbWater": {
+   "SpecularColor": {
+    "tooltip_zh": "颜色",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "UseSheetLife": {
+    "tooltip_zh": "开关",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "UseSpecularLife": {
+    "tooltip_zh": "开关",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Pt.EFXAttributePtBehavior": {
+   "behaviorString": {
+    "tooltip_zh": "特效行为类别",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "behaviorStringLength": {
+    "tooltip_zh": "实测取值：29 / 32 / 33 / 34 / 35 / 36 / 38 / 53",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn1": {
+    "tooltip_zh": "实测取值：0 / 2",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Pt.EFXAttributePtCollision": {
+   "stringBitFlag": {
+    "tooltip_zh": "bitflag, determines whether there will be strings read",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Pt.EFXAttributePtColorClip": {
+   "unkn1": {
+    "tooltip_zh": "实测取值：0 / 1",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Pt.EFXAttributePtLife": {
+   "ActionIndex": {
+    "tooltip_zh": "绑定的action编号",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeAngularVelocity3DDelayFrame": {
+   "unkn1": {
+    "tooltip_zh": "实测取值：0 / 3",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeEmitterShape3D": {
+   "RangeDivideAxis": {
+    "tooltip_zh": "粒子生成固定间隔轴0X1Y2Z",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "RangeX": {
+    "tooltip_zh": "范围",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "RotationOrder": {
+    "tooltip_zh": "控制粒子生成平面的旋转",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "ScaleHorizontal": {
+    "tooltip_zh": "弧度制，粒子发射器范围限制",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "ShapeType": {
+    "tooltip_zh": "0立方体1球型2圆柱(非圆柱上面的范围值为对称范围效果，圆柱则是生成范围效果)",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "UseExtension": {
+    "tooltip_zh": "0无变化1立方体变四棱锥，球型两侧内凹，圆柱变圆锥(一般和间隔一起使用形成按规律生成)",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeFadeByDepth": {
+   "FarEnd": {
+    "tooltip_zh": "远处最远生效距离",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "FarStart": {
+    "tooltip_zh": "远处开始生效距离",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "NearEnd": {
+    "tooltip_zh": "近处最远生效距离",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "NearStart": {
+    "tooltip_zh": "近处开始生效距离",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeMeshEmitterV2": {
+   "EmissionMaskMapColorChannel": {
+    "tooltip_zh": "遮罩贴图通道？",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "EmissionVertexColorChannel": {
+    "tooltip_zh": "网格顶点色通道？",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "EmissionVertexColorThreshold": {
+    "tooltip_zh": "网格顶点色阈值？",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "LocalRotation": {
+    "tooltip_zh": "网格旋转",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "LocalScale": {
+    "tooltip_zh": "网格缩放",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "ParticleNum": {
+    "tooltip_zh": "粒子数量",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "PartsNumber": {
+    "tooltip_zh": "部件编号",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "TriangleFilter": {
+    "tooltip_zh": "三角面过滤",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributePtTransform3DClip": {
+   "unkn1": {
+    "tooltip_zh": "实测取值：0 / 1",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributePtVelocity3D": {
+   "unkn1_1": {
+    "tooltip_zh": "实测取值：0.0 / 1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeRotateAnimDelayFrame": {
+   "unkn2": {
+    "tooltip_zh": "实测取值：0 / 3 / 5 / 10 / 15",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeScaleAnimDelayFrame": {
+   "unkn2": {
+    "tooltip_zh": "实测取值：0 / 1 / 2 / 3 / 5 / 10 / 50",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeScaleAnimExpression": {
+   "unkn3": {
+    "tooltip_zh": "实测取值：0 / 2",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeTransform3D": {
+   "LocalRotation": {
+    "tooltip_zh": "数值为弧度制",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeVelocity2D": {
+   "unkn1_0": {
+    "tooltip_zh": "实测取值：1.3089969158172607 / 1.5707963705062866",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn1_1": {
+    "tooltip_zh": "粒子运动旋转\n实测取值：0.0 / 0.1745329201221466 / 0.3490658402442932",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn1_2": {
+    "tooltip_zh": "粒子运动旋转随机值\n实测取值：-200.0 / 0.5 / 1.350000023841858 / 10.0 / 30.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn1_3": {
+    "tooltip_zh": "x轴运动？\n实测取值：0.0 / 0.25 / 2.0 / 5.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn1_4": {
+    "tooltip_zh": "x轴运动随机值？\n实测取值：1.0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   },
+   "unkn1_5": {
+    "tooltip_zh": "粒子运动加速度（小于1减速大于1加速）\n实测取值：0",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeVelocity3D": {
+   "VelocityType": {
+    "tooltip_zh": "运动类型0无初速度1线性运动2扩散运动",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  },
+  "ReeLib.Efx.Structs.Transforms.EFXAttributeVelocity3DDelayFrame": {
+   "unkn2": {
+    "tooltip_zh": "实测取值：0 / 1 / 2 / 3 / 5 / 10 / 15",
+    "confidence": "guess",
+    "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx；由 tools/mine_btx_semantics.py 按字段名自动匹配导入"
+   }
+  }
+ }
+}

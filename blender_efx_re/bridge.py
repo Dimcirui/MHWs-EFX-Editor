@@ -14,6 +14,13 @@ JsonPolymorphismOptions），本文件上一版记录的"Expression 数据 load 
 NotSupportedException"缺口已不存在，见 docs/TOPLEVEL_STRUCTURE.md。dump/load 现在还会
 调用 vendor 的 `EfxFile.ParseExpressions()`/`FlattenExpressionTrees()`，把公式在人类可读
 文本和二进制后缀栈之间转换，见 tools/EfxBridge/Program.cs。
+
+2026-09-09 vendor 升级（`9d9b39e`）：公式文本语法多了两样东西——MHWilds 专属函数
+（`Unary11`/`Unary12`/`Func18`~`Func21`）和 multi root value 分隔符 `|`（形如 `a | b`，
+一条曲线带两个根值）。前者在此之前会被当成 1 参函数少读参数、后者的第二个根值会被直接
+丢弃，都是静默出错，这是升级的主要动机。`Func18`/`Func19`/`Func20` 目前**写不回去**
+（上游解析器 bug，见 KNOWN_UPSTREAM_ISSUES.md #6），会在 check_expression()/load_efx()
+上抛出来，不会静默写坏文件。
 """
 
 from __future__ import annotations
@@ -92,3 +99,36 @@ def check_expression(formula: str) -> str | None:
     except BridgeError as ex:
         return str(ex)
     return None
+
+
+def new_attribute(type_name: str) -> dict:
+    """凭空造一个指定类型的空白 attribute，返回和 dump 里同一形状的 dict（含 `$type`）。
+
+    不需要我们自己攒模板/预设：vendor 每个 attribute 类型都是真实的 C# 类，`new` 出来就是
+    一份带默认值的实例，序列化规则和 dump 完全一致，直接喂给 io_tree.build_attribute_object()
+    即可。姊妹项目 EFX-Editor 要靠人工攒预设字节，是因为它没有这层类型化对象模型。
+
+    注意默认值就是 C# 的字段默认值（数值全 0），不是"游戏里好看的默认值"——比如 Transform3D
+    新建出来 LocalScale 是 (0,0,0) 而不是 (1,1,1)。这是有意的：我们没有依据去替 Capcom 定
+    "合理默认值"，与其猜一个，不如让用户看到真实的零值自己填。
+    """
+    return _run_json("new", "attribute", type_name)
+
+
+def new_entry() -> dict:
+    """凭空造一个空白 Entry（无 attribute）。"""
+    return _run_json("new", "entry")
+
+
+def new_action() -> dict:
+    """凭空造一个空白 Action（无 attribute）。"""
+    return _run_json("new", "action")
+
+
+def _run_json(*args: str) -> dict:
+    """跑一个把结果写进 JSON 文件的子命令，读回来返回 dict。"""
+    with tempfile.TemporaryDirectory(prefix="mhws_efx_new_") as tmpdir:
+        json_path = Path(tmpdir) / "out.json"
+        _run(*args, str(json_path))
+        with open(json_path, "r", encoding="utf-8") as f:
+            return json.load(f)

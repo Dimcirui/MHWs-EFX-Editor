@@ -1,8 +1,13 @@
 """
 blender_efx_re/io_tree.py —— ~TYPE 对象树 ↔ EfxFile JSON dict 互转
 
-对齐姊妹项目 EFX-Editor 的 io_tree.py 角色：Entry/Attribute 是独立 Blender Object，靠 parent
-关系组织归属（不是 PropertyGroup 集合），Collection 只做 Outliner 视觉分组。命名跟随
+对齐姊妹项目 EFX-Editor 的 io_tree.py 角色：Entry/Attribute 是独立 Blender Object，Attribute 靠
+parent 关系挂在 Entry/Action 下（不是 PropertyGroup 集合）。
+
+**EFX_ROOT 是 Collection 本身，不是 Empty 对象**（同姊妹项目 `root_col["~TYPE"]="EFX_ROOT"`）：
+文件级数据挂在集合上，Entry/Action 的归属靠"在哪个 `*_Entries` / `*_Actions` 子集合里"表达，
+它们没有父对象。Collection 没有 parent 属性、挂不到 Object 下面，所以 PlayEmitter 内嵌的那个
+完整 EfxFile 反过来由 attribute 上的 `efx_nested_root` 指针指向，见 model.py 的说明。命名跟随
 RE-Engine-Lib（`EfxFile.Entries: List<EFXEntry>`）叫 Entry，不叫 EFX-Editor（MHWI）习惯用的
 Body——同一层概念，两个项目各自的命名习惯不同。与 EFX-Editor 不同的两点，见 PLAN.md
 "Blender 对象模型草案"：
@@ -20,7 +25,7 @@ Version/actionUnkn0 等），一律原样存进 model.save_opaque()/load_opaque(
 
 Attribute 对象名带 `[父对象名]` 前缀（如 `[Emitter] Life`）：同一个 Entry/Action 下常有多个
 同类型 attribute（不同 Entry 也大量共享同一批常见 attribute 类型，比如几乎每个 Entry 都有
-ParentOptions），如果只用 `_short_attr_name()` 裸类型名当对象名，Blender 全局对象名唯一性会
+ParentOptions），如果只用 `short_attr_name()` 裸类型名当对象名，Blender 全局对象名唯一性会
 把它们批量改成 `.001`/`.002`，Outliner 里分不清谁是谁。带上父对象名前缀后碰撞概率大幅降低
 （虽然理论上同一父对象下两个"同类型+同名"attribute 仍可能撞，这种情况交给 Blender 的
 `.001` 后备机制兜底，纯展示，不影响导出——导出靠 parent 链和 efx_index，不靠对象名）。
@@ -43,7 +48,7 @@ def _new_empty(name: str, collection: Collection) -> Object:
     return obj
 
 
-def _short_attr_name(attr_type: str) -> str:
+def short_attr_name(attr_type: str) -> str:
     """`ReeLib.Efx.Structs.Main.EFXAttributeUnitCulling` -> `UnitCulling`（纯展示用，不影响导出）。"""
     short = attr_type.rsplit(".", 1)[-1]
     if short.startswith("EFXAttribute"):
@@ -137,7 +142,7 @@ def _populate_expression_attribute(obj: Object, attr_dict: dict) -> None:
 
 def build_attribute_object(attr_dict: dict, index: int, parent_obj: Object, collection: Collection) -> Object:
     attr_type = attr_dict.get("$type", "")
-    obj = _new_empty(f"[{parent_obj.name}] {_short_attr_name(attr_type)}", collection)
+    obj = _new_empty(f"[{parent_obj.name}] {short_attr_name(attr_type)}", collection)
     obj.parent = parent_obj
     obj["~TYPE"] = model.TYPE_ATTRIBUTE
     obj.efx_index = index
@@ -173,14 +178,14 @@ def build_attribute_object(attr_dict: dict, index: int, parent_obj: Object, coll
         # _populate_expression_attribute()），不进通用树——IMaterialExpressionAttribute
         # 暴露的是不同的键名 MaterialExpressions，不受影响，仍然原样进通用树。
         #
-        # 和 Clip 反过来：Clip 是"Clip/ClipBits 只读别名，clipData/clipBits 才是真字段"，
-        # Expression 是"Expression/ExpressionBits 是真字段（`EFXAttributeXxxExpression` 类的
-        # 属性，Expression 甚至带 setter），expressions/expressionBits 才是小写的实际
-        # 后备字段"——两者在 JSON 里内容完全相同（已用真实样本核对：
-        # attr["Expression"] == attr["expressions"]、attr["ExpressionBits"] ==
-        # attr["expressionBits"]），只是 System.Text.Json 把公开字段和公开属性都当成独立成员
-        # 各序列化一份。四个键都要从通用树里剔除，否则 Fields 列表里会重复显示一遍
-        # 一模一样的内容。
+        # 和 Clip 同一个模式：小写的 expressions/expressionBits 才是真字段，大写的
+        # Expression/ExpressionBits 是类上的属性别名（`Expression` 带 setter，
+        # `ExpressionBits` 是 `=> expressionBits` 的只读属性）。两者在 JSON 里内容完全相同
+        # （已用真实样本核对：attr["Expression"] == attr["expressions"]、
+        # attr["ExpressionBits"] == attr["expressionBits"]），只是 System.Text.Json 把公开
+        # 字段和公开属性都当成独立成员各序列化一份。四个键都要从通用树里剔除，否则 Fields
+        # 列表里会重复显示一遍一模一样的内容；导出时只写小写的那两个，见
+        # export_attribute_object()。
         content.pop("Expression", None)
         content.pop("ExpressionBits", None)
         content.pop("expressions", None)
@@ -198,12 +203,13 @@ def build_attribute_object(attr_dict: dict, index: int, parent_obj: Object, coll
     return obj
 
 
-def build_entry_object(entry_dict: dict, index: int, parent_obj: Object, collection: Collection) -> Object:
+def build_entry_object(entry_dict: dict, index: int, collection: Collection) -> Object:
+    """Entry 不再 parent 到任何对象——EFX_ROOT 是集合，归属靠"在哪个 *_Entries 集合里"表达。"""
     display_name = entry_dict.get("name") or f"Entry_{index}"
     obj = _new_empty(display_name, collection)
-    obj.parent = parent_obj
     obj["~TYPE"] = model.TYPE_ENTRY
     obj.efx_index = index
+    obj.efx_name = entry_dict.get("name") or ""
 
     for group_name in entry_dict.get("Groups", []) or []:
         tag = obj.efx_groups.add()
@@ -218,12 +224,13 @@ def build_entry_object(entry_dict: dict, index: int, parent_obj: Object, collect
     return obj
 
 
-def build_action_object(action_dict: dict, index: int, parent_obj: Object, collection: Collection) -> Object:
+def build_action_object(action_dict: dict, index: int, collection: Collection) -> Object:
+    """同 build_entry_object()：归属靠所在的 *_Actions 集合，不靠 parent。"""
     display_name = action_dict.get("name") or f"Action_{index}"
     obj = _new_empty(display_name, collection)
-    obj.parent = parent_obj
     obj["~TYPE"] = model.TYPE_ACTION
     obj.efx_index = index
+    obj.efx_name = action_dict.get("name") or ""
 
     leftover = {k: v for k, v in action_dict.items() if k not in model.ACTION_STRUCTURAL_KEYS}
     model.save_opaque(obj, leftover)
@@ -239,25 +246,34 @@ def build_root_from_efxfile(
     parent_collection: Collection,
     name: str,
     parent_obj: Object | None = None,
-) -> Object:
-    """把一个 EfxFile JSON dict 建成一棵 ~TYPE 对象树，返回 EFX_ROOT 对象。
+) -> Collection:
+    """把一个 EfxFile JSON dict 建成一棵 ~TYPE 对象树，返回 **EFX_ROOT 集合**。
+
+    EFX_ROOT 就是这个紫色集合本身，没有根 Empty——对齐姊妹项目 EFX-Editor 的做法
+    （`root_col["~TYPE"] = "EFX_ROOT"`，见其 root_collection.py）。文件级数据
+    （Bones / FieldParameterValues / UvarGroups / ExpressionParameters / 剩余 opaque）
+    全部挂在集合上，见 model.py 的属性注册。
 
     parent_collection：新建的这一层 Collection 挂在哪个 Collection 下面（顶层文件传
     context.scene.collection；PlayEmitter 递归时传外层 attribute 所在的 collection）。
-    parent_obj：仅递归场景使用，把嵌套 EFX_ROOT parent 到外层 PlayEmitter attribute 对象上，
-    使导出时能通过 parent-child 关系找到它（不依赖 collection 归属）。
+    parent_obj：仅递归场景使用。Collection 没有 parent 属性、挂不到 Object 下面，所以反过来
+    在那个 PlayEmitter attribute 上记一个 `efx_nested_root` 指针指向这里，导出时靠它找回来。
     """
     own_collection = bpy.data.collections.new(name)
     parent_collection.children.link(own_collection)
+    # 紫色（COLOR_06）：对齐姊妹项目 EFX-Editor 的约定（见其 CLAUDE.md §4，mrl3 用 COLOR_05 蓝、
+    # EFX 用紫区分）。Outliner 里一眼能认出哪些集合是 EFX 文件——尤其是同时导入好几个、或者
+    # 场景里还有别的资产的时候。子集合（Entries/Actions）不染色，留给顶层集合当唯一标识。
+    own_collection.color_tag = "COLOR_06"
     entries_collection = bpy.data.collections.new(f"{name}_Entries")
     own_collection.children.link(entries_collection)
     actions_collection = bpy.data.collections.new(f"{name}_Actions")
     own_collection.children.link(actions_collection)
 
-    root_obj = _new_empty(name, own_collection)
-    root_obj["~TYPE"] = model.TYPE_ROOT
+    own_collection["~TYPE"] = model.TYPE_ROOT
+    root_obj = own_collection  # 下面这一大段原样沿用，只是承载体从 Empty 换成了集合
     if parent_obj is not None:
-        root_obj.parent = parent_obj
+        parent_obj.efx_nested_root = own_collection
 
     leftover = {k: v for k, v in efxfile_dict.items() if k not in model.ROOT_STRUCTURAL_KEYS}
     model.save_opaque(root_obj, leftover)
@@ -306,12 +322,12 @@ def build_root_from_efxfile(
             item.rgba_str = str(int(value.get("rgba", 0) or 0))
 
     for index, entry_dict in enumerate(efxfile_dict.get("Entries", []) or []):
-        build_entry_object(entry_dict, index, root_obj, entries_collection)
+        build_entry_object(entry_dict, index, entries_collection)
 
     for index, action_dict in enumerate(efxfile_dict.get("Actions", []) or []):
-        build_action_object(action_dict, index, root_obj, actions_collection)
+        build_action_object(action_dict, index, actions_collection)
 
-    return root_obj
+    return own_collection
 
 
 # ---------------------------------------------------------------------------
@@ -321,30 +337,118 @@ def build_root_from_efxfile(
 def typed_children(obj: Object, type_tag: str) -> list[Object]:
     """obj 的直接子对象里 ~TYPE 等于 type_tag 的那些，按 efx_index 排序（见 model.py 里的说明，
     不依赖 Blender children/collection 的迭代顺序）。公开给 copy_paste.py 复用（找兄弟对象、
-    算新粘贴对象该排的 efx_index）。"""
+    算新粘贴对象该排的 efx_index）。
+
+    **只接受 Object**（找一个 Entry/Action 下的 Attribute）。传集合进来会当场报错，不静默返回
+    空列表——Collection 也有 `.children`（那是子集合），拿它当参数会一条不匹配、安静地返回 []，
+    调用方看到的是"这个 efx 没有 entry"而不是"你用错函数了"。EFX_ROOT 现在是集合，找它下面的
+    Entry/Action 请用 root_entries() / root_actions()。
+    """
+    if isinstance(obj, Collection):
+        raise TypeError(
+            "typed_children() 只接受 Object。EFX_ROOT 是集合，"
+            "找它下面的 Entry/Action 请用 root_entries() / root_actions()。"
+        )
     matched = [child for child in obj.children if child.get("~TYPE") == type_tag]
     matched.sort(key=lambda o: o.efx_index)
     return matched
 
 
-def find_root(obj: Object | None) -> Object | None:
-    """从任意一个 ~TYPE 对象往 parent 链上找 EFX_ROOT，找不到返回 None。
-    operators.py（Export）和 copy_paste.py（Paste）共用。"""
-    while obj is not None:
-        if obj.get("~TYPE") == model.TYPE_ROOT:
-            return obj
-        obj = obj.parent
+def collection_parent(col: Collection) -> Collection | None:
+    """一个 Collection 的父集合。Blender 的 Collection 没有 `parent` 属性，只能反向找——
+    扫一遍谁的 children 里有它。集合数量是场景级的（几十上百），这个代价可以忽略。"""
+    for candidate in bpy.data.collections:
+        if col.name in candidate.children:
+            return candidate
+    for scene in bpy.data.scenes:
+        if col.name in scene.collection.children:
+            return scene.collection
     return None
 
 
-def root_collections(root_obj: Object) -> tuple[Collection, Collection]:
-    """返回一个 EFX_ROOT 对象的 (entries_collection, actions_collection)。按
+def find_root(obj: Object | None) -> Collection | None:
+    """从任意一个 ~TYPE 对象找到它所属的 EFX_ROOT **集合**，找不到返回 None。
+
+    EFX_ROOT 是集合不是对象，所以走法是两段：先沿 parent 链爬到最外层的对象（Attribute →
+    Entry/Action），再从它所在的集合沿父集合链往上找带 `~TYPE == EFX_ROOT` 标记的那个。
+
+    嵌套的 efxrData 子树也能正确解析：它的集合就 link 在外层 attribute 所在的集合下面，
+    沿父集合链往上第一个撞到的 EFX_ROOT 就是这个嵌套根本身（不是外层文件），符合预期——
+    "这个对象属于哪个 efx 文件"要的就是最近的那一层。
+    """
+    while obj is not None and obj.parent is not None:
+        obj = obj.parent
+    if obj is None:
+        return None
+    for col in obj.users_collection:
+        found = _root_of_collection(col)
+        if found is not None:
+            return found
+    return None
+
+
+def _root_of_collection(col: Collection | None) -> Collection | None:
+    """从一个集合沿父集合链往上找第一个 EFX_ROOT（含它自己）。"""
+    seen = set()
+    while col is not None and col.name not in seen:
+        seen.add(col.name)
+        if col.get("~TYPE") == model.TYPE_ROOT:
+            return col
+        col = collection_parent(col)
+    return None
+
+
+def resolve_root(context) -> Collection | None:
+    """当前操作该落在哪个 EFX_ROOT 集合上：先看活动对象所在的树，再看活动集合，
+    最后退到场景级的"当前 EFX"选择器（`Scene.efx_re_active_root`，见 panels.py register()）。
+
+    对齐姊妹项目 EFX-Editor 主面板顶部的 Active EFX 选择器：那边所有"往某个 efx 里加东西"
+    的算子都以它为目标，用户不必先在 Outliner 里点中树里的某个对象。这里保留"活动对象优先"
+    是因为本项目的导出/粘贴一直是这么用的，同时开着两棵树时按选中的那棵走更符合直觉。
+
+    中间多了一档"活动集合"：EFX_ROOT 现在就是集合，用户在 Outliner 里点中那个紫色集合是
+    最自然的"我要操作这个文件"的表达，不该还要求他再点一个里面的对象。
+
+    选择器指向的集合可能已经被删掉或者被改成别的东西了（PointerProperty 只保证指向仍存在的
+    数据块，不保证它还带 EFX_ROOT 标记），所以这里再验一次 ~TYPE。"""
+    root = find_root(getattr(context, "object", None))
+    if root is not None:
+        return root
+    active_col = getattr(context, "collection", None)
+    root = _root_of_collection(active_col)
+    if root is not None:
+        return root
+    active = getattr(context.scene, "efx_re_active_root", None)
+    if active is not None and active.get("~TYPE") == model.TYPE_ROOT:
+        return active
+    return None
+
+
+def root_collections(root_col: Collection) -> tuple[Collection, Collection]:
+    """返回一个 EFX_ROOT 集合的 (entries_collection, actions_collection)。按
     build_root_from_efxfile() 里固定的链接顺序取（先 link entries_collection 再 link
-    actions_collection），不靠名字匹配——Collection 和 Object 各自的去重命名空间是独立的，
-    root_obj.name 撞名被 Blender 加 .001 后缀时，不代表它的 own_collection 名字也跟着变，
-    反过来也一样，所以不能假设两者同名。供 copy_paste.py 的 Paste Entry 找粘贴目标用。"""
-    own_collection = root_obj.users_collection[0]
-    return own_collection.children[0], own_collection.children[1]
+    actions_collection），不靠名字匹配——集合撞名时 Blender 会加 `.001` 后缀，按
+    `f"{name}_Entries"` 去查会落空。"""
+    return root_col.children[0], root_col.children[1]
+
+
+def root_entries(root_col: Collection) -> list[Object]:
+    """一个 EFX_ROOT 集合下的全部 Entry 对象，按 efx_index 排序。
+
+    Entry 没有父对象（EFX_ROOT 是集合），归属靠"在哪个 *_Entries 子集合里"表达，
+    所以这里按集合成员筛，不是按 children 筛。"""
+    entries_collection, _ = root_collections(root_col)
+    matched = [o for o in entries_collection.objects if o.get("~TYPE") == model.TYPE_ENTRY]
+    matched.sort(key=lambda o: o.efx_index)
+    return matched
+
+
+def root_actions(root_col: Collection) -> list[Object]:
+    """同 root_entries()，取 *_Actions 集合里的 Action 对象。"""
+    _, actions_collection = root_collections(root_col)
+    matched = [o for o in actions_collection.objects if o.get("~TYPE") == model.TYPE_ACTION]
+    matched.sort(key=lambda o: o.efx_index)
+    return matched
 
 
 def _export_clip_attribute(obj: Object) -> tuple[dict, dict]:
@@ -435,20 +539,40 @@ def export_attribute_object(obj: Object) -> dict:
 
     if obj.efx_is_expression_attribute:
         expression_dict, expression_bits = _export_expression_attribute(obj)
-        attr_dict["Expression"] = expression_dict
-        attr_dict["ExpressionBits"] = expression_bits
+        # 必须写小写的后备字段名，不能写 Expression/ExpressionBits：`ExpressionBits` 在每个
+        # IExpressionAttribute 实现类上都是 `=> expressionBits` 这种无 setter 的只读属性，
+        # System.Text.Json 反序列化时直接跳过（PreferredPropertyObjectCreationHandling
+        # =Populate 只在 EfxJsonTypeResolver 里给 EFXAttribute 基类和 EfxFile/EFXEntry/
+        # EFXAction 挂了，具体 attribute 子类的 JsonTypeInfo 走不到那个分支），置位信息会被
+        # 静默丢掉、按 BitSet 默认值（全 0）写出。`Expression` 恰好带 setter
+        # （`{ get => expressions; set => expressions = value; }`）所以能进去，但同一处用两套
+        # 命名只会让下一个人再踩一次——两个都统一写小写，和 clipData/clipBits 那条路对齐。
+        attr_dict["expressions"] = expression_dict
+        attr_dict["expressionBits"] = expression_bits
 
-    nested_root = next(
-        (child for child in obj.children if child.get("~TYPE") == model.TYPE_ROOT), None
-    )
-    if nested_root is not None:
+    # 嵌套的 efxrData：Collection 挂不到 Object 下面，所以由 attribute 拿指针指向它，
+    # 见 model.py `Object.efx_nested_root` 的说明。
+    nested_root = obj.efx_nested_root
+    if nested_root is not None and nested_root.get("~TYPE") == model.TYPE_ROOT:
         attr_dict["efxrData"] = export_root_to_efxfile(nested_root)
 
     return attr_dict
 
 
+def _apply_name(target: dict, obj: Object) -> None:
+    """把 efx_name 写回导出字典。
+
+    `efx_name` 为空时**保留 opaque 里原有的 name 不动**：`name` 是这一版才从 opaque 挪进
+    专属属性的，早先导入、存在 .blend 里的对象没有 efx_name，直接覆盖会把它们的名字清空。
+    新导入的对象一定有值（build_* 里赋的），所以这条兼容分支只影响老场景。
+    """
+    if obj.efx_name:
+        target["name"] = obj.efx_name
+
+
 def export_entry_object(obj: Object) -> dict:
     entry_dict = model.load_opaque(obj)  # index 已随其余 opaque 字段原样透传，见 model.py 说明。
+    _apply_name(entry_dict, obj)
     entry_dict["Groups"] = [tag.name for tag in obj.efx_groups]
     entry_dict["Attributes"] = [
         export_attribute_object(attr_obj) for attr_obj in typed_children(obj, model.TYPE_ATTRIBUTE)
@@ -458,20 +582,18 @@ def export_entry_object(obj: Object) -> dict:
 
 def export_action_object(obj: Object) -> dict:
     action_dict = model.load_opaque(obj)
+    _apply_name(action_dict, obj)
     action_dict["Attributes"] = [
         export_attribute_object(attr_obj) for attr_obj in typed_children(obj, model.TYPE_ATTRIBUTE)
     ]
     return action_dict
 
 
-def export_root_to_efxfile(root_obj: Object) -> dict:
+def export_root_to_efxfile(root_col: Collection) -> dict:
+    root_obj = root_col  # 下面沿用旧名字，承载体是集合
     efxfile_dict = model.load_opaque(root_obj)
-    efxfile_dict["Entries"] = [
-        export_entry_object(obj) for obj in typed_children(root_obj, model.TYPE_ENTRY)
-    ]
-    efxfile_dict["Actions"] = [
-        export_action_object(obj) for obj in typed_children(root_obj, model.TYPE_ACTION)
-    ]
+    efxfile_dict["Entries"] = [export_entry_object(obj) for obj in root_entries(root_col)]
+    efxfile_dict["Actions"] = [export_action_object(obj) for obj in root_actions(root_col)]
     # EffectGroups 整体不透传：C# 后端 DoWrite() 里的 UpdateEffectGroups() 会在写入前从
     # 每个 Entry 的 Groups 反向重建 efxEntryIndexes + 两个哈希字段，传空数组即可，
     # 见 PLAN.md 验证记录（读 vendor EfxFile.cs:893 UpdateEffectGroups() 的结论）。
@@ -489,7 +611,7 @@ def export_root_to_efxfile(root_obj: Object) -> dict:
     ]
     # UvarGroups 最多 2 项，超出的会在 vendor 写出逻辑里被静默忽略（只处理下标 0/1，见
     # docs/TOPLEVEL_STRUCTURE.md "UvarGroups 结构调研"）——UI 侧的 Add 按钮已经拦住了超过
-    # 2 项的情况（EFX_OT_uvar_group_add），这里不需要重复校验。
+    # 2 项的情况（EFX_RE_OT_uvar_group_add），这里不需要重复校验。
     efxfile_dict["UvarGroups"] = [
         {"uvarType": int(item.uvar_type), "path": item.path, "group": item.group}
         for item in root_obj.efx_uvar_groups
@@ -538,8 +660,8 @@ def _missing_bone_refs(parent_obj: Object, known_names: set) -> list:
     return missing
 
 
-def check_bone_references(root_obj: Object) -> None:
-    """导出前校验：任何 attribute 的 ParentBone 字段只要非空，必须能在 root_obj.efx_bones
+def check_bone_references(root_col: Collection) -> None:
+    """导出前校验：任何 attribute 的 ParentBone 字段只要非空，必须能在 root_col.efx_bones
     里找到同名条目。C# 后端写出时用 Bones.FindIndex(name) 反查下标，找不到会静默写成 -1
     （"无父骨骼"），不报任何异常或警告（见 docs/TOPLEVEL_STRUCTURE.md "风险 2"）——这正是
     架构决策 9 想避免的"错误结构骗过用户"，只是这次是我们自己的 Python 胶水层要对齐这个纪律，
@@ -552,11 +674,11 @@ def check_bone_references(root_obj: Object) -> None:
     导出后大概率会失效，这是 vendor 自身的行为、不是这个校验函数能堵上的，范围先收在顶层，
     等有真实带嵌套骨骼绑定的样本确认这条路径实际行为后再决定要不要处理。
     """
-    known_names = {item.name for item in root_obj.efx_bones}
+    known_names = {item.name for item in root_col.efx_bones}
     missing = []
-    for entry_obj in typed_children(root_obj, model.TYPE_ENTRY):
+    for entry_obj in root_entries(root_col):
         missing.extend(_missing_bone_refs(entry_obj, known_names))
-    for action_obj in typed_children(root_obj, model.TYPE_ACTION):
+    for action_obj in root_actions(root_col):
         missing.extend(_missing_bone_refs(action_obj, known_names))
     if missing:
         raise BoneReferenceError(
@@ -595,18 +717,28 @@ def _walk_clip_issues(obj: Object) -> list:
     的 bit_count/bits 校验是纯粹局部的（不依赖任何文件级共享表，不像 Bones 那样有已知的嵌套
     读写不对称问题），直接沿 Blender parent-child 关系整棵树走一遍即可。"""
     issues = []
-    tag = obj.get("~TYPE")
-    if tag == model.TYPE_ATTRIBUTE:
+    if obj.get("~TYPE") == model.TYPE_ATTRIBUTE:
         issues.extend(_clip_bit_issues(obj))
+        # 嵌套的 efxrData 是一个集合，不在 children 里，走指针下去
+        nested = obj.efx_nested_root
+        if nested is not None and nested.get("~TYPE") == model.TYPE_ROOT:
+            issues.extend(_walk_clip_issues_root(nested))
     for child in obj.children:
-        if child.get("~TYPE") in (model.TYPE_ROOT, model.TYPE_ENTRY, model.TYPE_ACTION, model.TYPE_ATTRIBUTE):
+        if child.get("~TYPE") in (model.TYPE_ENTRY, model.TYPE_ACTION, model.TYPE_ATTRIBUTE):
             issues.extend(_walk_clip_issues(child))
     return issues
 
 
-def check_clip_bits(root_obj: Object) -> None:
+def _walk_clip_issues_root(root_col: Collection) -> list:
+    issues = []
+    for obj in root_entries(root_col) + root_actions(root_col):
+        issues.extend(_walk_clip_issues(obj))
+    return issues
+
+
+def check_clip_bits(root_col: Collection) -> None:
     """导出前校验：见 ClipBitError 的说明。"""
-    issues = _walk_clip_issues(root_obj)
+    issues = _walk_clip_issues_root(root_col)
     if issues:
         raise ClipBitError(
             "以下 Clip attribute 的曲线 bit_index 有问题（越界或重复），会导致导出出错或"
@@ -641,20 +773,48 @@ def _walk_expression_issues(obj: Object) -> list:
     收集 Expression bit 校验问题。和 _walk_clip_issues() 一样是纯局部校验，直接沿 Blender
     parent-child 关系整棵树走一遍即可。"""
     issues = []
-    tag = obj.get("~TYPE")
-    if tag == model.TYPE_ATTRIBUTE:
+    if obj.get("~TYPE") == model.TYPE_ATTRIBUTE:
         issues.extend(_expression_bit_issues(obj))
+        nested = obj.efx_nested_root
+        if nested is not None and nested.get("~TYPE") == model.TYPE_ROOT:
+            issues.extend(_walk_expression_issues_root(nested))
     for child in obj.children:
-        if child.get("~TYPE") in (model.TYPE_ROOT, model.TYPE_ENTRY, model.TYPE_ACTION, model.TYPE_ATTRIBUTE):
+        if child.get("~TYPE") in (model.TYPE_ENTRY, model.TYPE_ACTION, model.TYPE_ATTRIBUTE):
             issues.extend(_walk_expression_issues(child))
     return issues
 
 
-def check_expression_bits(root_obj: Object) -> None:
+def _walk_expression_issues_root(root_col: Collection) -> list:
+    issues = []
+    for obj in root_entries(root_col) + root_actions(root_col):
+        issues.extend(_walk_expression_issues(obj))
+    return issues
+
+
+def check_expression_bits(root_col: Collection) -> None:
     """导出前校验：见 ExpressionBitError 的说明。"""
-    issues = _walk_expression_issues(root_obj)
+    issues = _walk_expression_issues_root(root_col)
     if issues:
         raise ExpressionBitError(
             "以下 Expression attribute 的公式 bit_index 有问题（越界或重复），会导致导出出错或"
             "静默丢数据，请先修正：\n" + "\n".join(f"  {m}" for m in issues)
         )
+
+
+def collect_issues(root_col: Collection) -> list[str]:
+    """把导出前那三项校验各跑一遍，收集**全部**问题，返回人类可读的一行一条；空列表 = 没问题。
+
+    和上面三个 check_*() 的分工：那三个是导出路径上的关卡，发现问题直接抛异常拦下导出（架构
+    决策 9，不静默降级）；这个是给面板 Validate 按钮用的，用户主动点一下想知道"现在这棵树能
+    不能导出"，所以要一次把所有问题都列出来，不能第一条就中断。判据完全复用，不另写一套——
+    两边结论不一致的话，Validate 说"没问题"、导出却失败，比没有 Validate 更糟。
+    """
+    known_names = {item.name for item in root_col.efx_bones}
+    issues: list[str] = []
+    for entry_obj in root_entries(root_col):
+        issues.extend(f"ParentBone 不在骨骼表里 — {m}" for m in _missing_bone_refs(entry_obj, known_names))
+    for action_obj in root_actions(root_col):
+        issues.extend(f"ParentBone 不在骨骼表里 — {m}" for m in _missing_bone_refs(action_obj, known_names))
+    issues.extend(f"Clip bit — {m}" for m in _walk_clip_issues_root(root_col))
+    issues.extend(f"Expression bit — {m}" for m in _walk_expression_issues_root(root_col))
+    return issues
