@@ -758,8 +758,16 @@ def _draw_root_content(layout, context, obj) -> None:
             box.prop(expr_item, "value1")
 
 
+def _draw_name_row(layout, obj) -> None:
+    """Entry/Action 的游戏侧名字。**不是 Blender 对象名**——对象名全局唯一、撞名会被加 `.001`，
+    而 EFX 里两个 entry 完全可以同名，见 model.py `Object.efx_name` 的说明。"""
+    layout.prop(obj, "efx_name", text=T("name.label"))
+
+
 def _draw_entry_content(layout, context, obj) -> None:
-    """EFX_ENTRY 的数据：目前只有 Subselect 组标签。"""
+    """EFX_ENTRY 的数据：名称 + Subselect 组标签。"""
+    _draw_name_row(layout, obj)
+    layout.separator(factor=0.5)
     layout.label(text=T("entry.subselect_groups"), translate=False)
     _draw_uilist_row(
         layout, "EFX_RE_UL_groups", obj, "efx_groups", "efx_groups_active_index",
@@ -777,6 +785,11 @@ def _attr_type_label(attr_type: str) -> str:
     entry = semantics.get_type_entry(attr_type)
     label = (entry or {}).get("label_zh")
     return f"{label} ({short})" if label else short
+
+
+def _draw_action_content(layout, context, obj) -> None:
+    """EFX_ACTION 的数据：目前只有名称（其余字段还在 opaque 里）。"""
+    _draw_name_row(layout, obj)
 
 
 def _draw_attribute_content(layout, context, obj) -> None:
@@ -983,7 +996,16 @@ class EFX_RE_PT_add(Panel):
             row.label(text=T("add.target_prefix") + target.name, icon="PLUS", translate=False)
 
         wm = context.window_manager
+        layout.prop(wm, "efx_re_attr_category", text=T("add.category"))
         layout.prop(wm, "efx_re_attr_type", text=T("add.attr_type"))
+        # 选中类型的中文名（分类下拉里只有英文类型名，那是权威检索词；中文名放这儿）
+        info = attribute_types.by_name(wm.efx_re_attr_type)
+        if info is not None and info.get("type"):
+            label = _attr_type_label(info["type"])
+            if label != io_tree.short_attr_name(info["type"]):
+                sub = layout.row()
+                sub.enabled = False
+                sub.label(text=label, translate=False)
         op = layout.operator("efx_re.attribute_add", text=T("add.attribute"), icon="ADD", translate=False)
         op.attr_type = wm.efx_re_attr_type
 
@@ -1021,6 +1043,7 @@ def _poll_expression(cls, context):
 _DATA_PANELS = (
     ("root",       "EFX File",   _draw_root_content,       _poll_type(model.TYPE_ROOT),      None,        -3, False),
     ("entry",      "Entry",      _draw_entry_content,      _poll_type(model.TYPE_ENTRY),     None,        -3, False),
+    ("action",     "Action",     _draw_action_content,     _poll_type(model.TYPE_ACTION),    None,        -3, False),
     ("attribute",  "Attribute",  _draw_attribute_content,  _poll_type(model.TYPE_ATTRIBUTE), None,        -3, False),
     # Clip / Expression 默认折叠：只有一部分 attribute 类型有，而且属于"要动动画曲线时才展开"
     # 的深水区；字段树是选中一个 attribute 后最常看的东西，默认展开。
@@ -1112,6 +1135,18 @@ _CLASSES = (
 )
 
 
+def _on_category_change(self, context) -> None:
+    """切分类后把类型选择重置到新分类的第一项。
+
+    动态 items 的 EnumProperty 内部按**下标**存值，items 换了之后原下标指向的东西就变了——
+    不显式重置的话，界面上会显示成新分类里恰好排在同一位置的另一个类型，用户以为自己选的还是
+    原来那个。
+    """
+    first = attribute_types.first_type_in(self.efx_re_attr_category)
+    if first:
+        self.efx_re_attr_type = first
+
+
 def _active_root_poll(self, obj):
     """"当前 EFX"选择器的候选：只列 EFX_ROOT 对象。"""
     return obj.get("~TYPE") == model.TYPE_ROOT
@@ -1134,6 +1169,12 @@ def register():
     # io_tree.resolve_root()。导入时自动指向刚建好的那棵树。
     # "新增 Attribute" 的类型选择器。放 WindowManager 而不是 Scene：这是纯粹的界面临时状态，
     # 不该被存进 .blend 文件跟着场景走。
+    bpy.types.WindowManager.efx_re_attr_category = EnumProperty(
+        name="Category",
+        description="按 vendor 自己的源文件分组过滤 attribute 类型",
+        items=attribute_types.category_items,
+        update=_on_category_change,
+    )
     bpy.types.WindowManager.efx_re_attr_type = EnumProperty(
         name="Attribute Type",
         description="要新增的 attribute 类型（只列 vendor 有读写实现类的那些）",
@@ -1154,9 +1195,10 @@ def unregister():
             delattr(bpy.types.Scene, prop)
         except AttributeError:
             pass
-    try:
-        del bpy.types.WindowManager.efx_re_attr_type
-    except AttributeError:
-        pass
+    for prop in ("efx_re_attr_type", "efx_re_attr_category"):
+        try:
+            delattr(bpy.types.WindowManager, prop)
+        except AttributeError:
+            pass
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)

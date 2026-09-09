@@ -88,6 +88,9 @@ class EFX_RE_OT_set_language(Operator):
 
     def execute(self, context):
         set_lang(self.lang)
+        # 分类下拉的显示文案是缓存住的（EnumProperty items 的字符串必须被持有），切语言后要重算
+        from . import attribute_types
+        attribute_types.invalidate_labels()
         # 面板正文是在 draw() 里现查的，重画一次所有区域就够，不需要重注册任何类。
         for window in context.window_manager.windows:
             for area in window.screen.areas:
@@ -139,11 +142,38 @@ _STRINGS: dict[str, dict[str, str]] = {
     "add.action":             {"EN": "Add Action",          "ZH": "新增 Action"},
     "add.attribute":          {"EN": "Add Attribute",       "ZH": "新增 Attribute"},
     "add.attr_type":          {"EN": "Type",                "ZH": "类型"},
+    "add.category":           {"EN": "Category",            "ZH": "分类"},
     "add.target_prefix":      {"EN": "Add to: ",            "ZH": "加到："},
     "add.no_target":          {"EN": "(select an Entry or Action)",
                                "ZH": "（先选中一个 Entry 或 Action）"},
     "add.order_hint":         {"EN": "Order is fixed by itemTypeId.",
                                "ZH": "排列顺序由 itemTypeId 定死，不可手动调整。"},
+
+    # Attribute 分类。id 由 tools/gen_attribute_catalogue.py 按 vendor 的源文件分组打上，
+    # 这里只负责文案。漏词条时 T() 会原样返回 "category.xxx"，界面上一眼能看见。
+    "category.all":              {"EN": "All",               "ZH": "全部"},
+    "category.render_billboard": {"EN": "Billboard",         "ZH": "渲染 · 公告板"},
+    "category.render_mesh":      {"EN": "Mesh",              "ZH": "渲染 · 网格"},
+    "category.render_ribbon":    {"EN": "Ribbon",            "ZH": "渲染 · 飘带"},
+    "category.render_polygon":   {"EN": "Polygon",           "ZH": "渲染 · 多边形"},
+    "category.render_strain":    {"EN": "Strain",            "ZH": "渲染 · 拉丝"},
+    "category.render_lightning": {"EN": "Lightning",         "ZH": "渲染 · 闪电"},
+    "category.render_other":     {"EN": "Other Renderers",   "ZH": "渲染 · 其它"},
+    "category.transform":        {"EN": "Transform",         "ZH": "变换"},
+    "category.emitter":          {"EN": "Emitter",           "ZH": "发射器"},
+    "category.velocity":         {"EN": "Velocity",          "ZH": "速度"},
+    "category.particle":         {"EN": "Particle Behavior", "ZH": "粒子行为"},
+    "category.fade":             {"EN": "Fade",              "ZH": "淡出"},
+    "category.fluid":            {"EN": "Fluid",             "ZH": "流体"},
+    "category.vortexel":         {"EN": "Vortexel",          "ZH": "涡元"},
+    "category.field":            {"EN": "Field",             "ZH": "场"},
+    "category.basic":            {"EN": "Basic",             "ZH": "基础"},
+    "category.misc":             {"EN": "Misc",              "ZH": "杂项"},
+
+    # 重命名
+    "name.label":             {"EN": "Name",                "ZH": "名称"},
+    "name.hint":              {"EN": "Written to the EFX string table; nameHash follows automatically.",
+                               "ZH": "写进 EFX 字符串表，nameHash 会自动跟着重算。"},
 
     # Edit（复制/粘贴、删除这类工具操作）
     "edit.copy_entry":        {"EN": "Copy Entry",          "ZH": "复制 Entry"},

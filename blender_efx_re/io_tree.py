@@ -204,6 +204,7 @@ def build_entry_object(entry_dict: dict, index: int, parent_obj: Object, collect
     obj.parent = parent_obj
     obj["~TYPE"] = model.TYPE_ENTRY
     obj.efx_index = index
+    obj.efx_name = entry_dict.get("name") or ""
 
     for group_name in entry_dict.get("Groups", []) or []:
         tag = obj.efx_groups.add()
@@ -224,6 +225,7 @@ def build_action_object(action_dict: dict, index: int, parent_obj: Object, colle
     obj.parent = parent_obj
     obj["~TYPE"] = model.TYPE_ACTION
     obj.efx_index = index
+    obj.efx_name = action_dict.get("name") or ""
 
     leftover = {k: v for k, v in action_dict.items() if k not in model.ACTION_STRUCTURAL_KEYS}
     model.save_opaque(obj, leftover)
@@ -475,8 +477,20 @@ def export_attribute_object(obj: Object) -> dict:
     return attr_dict
 
 
+def _apply_name(target: dict, obj: Object) -> None:
+    """把 efx_name 写回导出字典。
+
+    `efx_name` 为空时**保留 opaque 里原有的 name 不动**：`name` 是这一版才从 opaque 挪进
+    专属属性的，早先导入、存在 .blend 里的对象没有 efx_name，直接覆盖会把它们的名字清空。
+    新导入的对象一定有值（build_* 里赋的），所以这条兼容分支只影响老场景。
+    """
+    if obj.efx_name:
+        target["name"] = obj.efx_name
+
+
 def export_entry_object(obj: Object) -> dict:
     entry_dict = model.load_opaque(obj)  # index 已随其余 opaque 字段原样透传，见 model.py 说明。
+    _apply_name(entry_dict, obj)
     entry_dict["Groups"] = [tag.name for tag in obj.efx_groups]
     entry_dict["Attributes"] = [
         export_attribute_object(attr_obj) for attr_obj in typed_children(obj, model.TYPE_ATTRIBUTE)
@@ -486,6 +500,7 @@ def export_entry_object(obj: Object) -> dict:
 
 def export_action_object(obj: Object) -> dict:
     action_dict = model.load_opaque(obj)
+    _apply_name(action_dict, obj)
     action_dict["Attributes"] = [
         export_attribute_object(attr_obj) for attr_obj in typed_children(obj, model.TYPE_ATTRIBUTE)
     ]

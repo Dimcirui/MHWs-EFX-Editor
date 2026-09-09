@@ -17,6 +17,10 @@ blender_efx_re/semantics/mhws_attribute_types.json`，随仓库分发。
     type        完整 C# 类名，等于 dump 出来的 `$type`，也是 Object.efx_attr_type 存的值
     readable    false = vendor 只登记了 id→枚举名、没有读写实现类（KNOWN_UPSTREAM_ISSUES #4），
                 这类既解析不了也新建不了，选择器里直接不列出来
+    category    分类 id，由 tools/gen_attribute_catalogue.py 按 **vendor 自己的源文件分组**
+                （EfxTypeBillboard.cs / EfxTransform.cs / EfxPtBehavior.cs …）打上。
+                不用命名空间：`Main` 一个就占 77 个、`Misc` 占 45 个，对着面板选类型的人
+                毫无意义。分类文案在 i18n.py 里按 `category.<id>` 取。
     fields      dump/load 走的 JSON 键名
 """
 
@@ -56,18 +60,34 @@ def _catalogue() -> dict:
         print(f"[MHWs EFX Editor] attribute 类型清单加载失败，新增功能不可用：{ex}")
 
     readable.sort(key=lambda i: i["name"])
-    _cache = {"by_name": by_name, "by_type": by_type, "readable": readable}
+    categories = sorted({i.get("category") or "misc" for i in readable})
+    _cache = {"by_name": by_name, "by_type": by_type, "readable": readable,
+              "categories": categories}
     return _cache
 
 
 def reload_catalogue() -> None:
-    global _cache
+    global _cache, _enum_items_cache, _category_items_cache
     _cache = None
+    _enum_items_cache = {}
+    _category_items_cache = None
 
 
-def readable_types() -> list[dict]:
-    """能新建的类型（vendor 有读写实现类的那些），按名字排序。"""
-    return _catalogue()["readable"]
+def readable_types(category: str = "ALL") -> list[dict]:
+    """能新建的类型（vendor 有读写实现类的那些），按名字排序。
+
+    按名字排就够了，不需要再把 Clip/Expression 变体单独分一类——`TypeBillboard3D` /
+    `TypeBillboard3DClip` / `TypeBillboard3DExpression` 名字共享前缀，字母序下天然聚在一起。
+    """
+    items = _catalogue()["readable"]
+    if category and category != "ALL":
+        items = [i for i in items if (i.get("category") or "misc") == category]
+    return items
+
+
+def categories() -> list[str]:
+    """清单里实际出现过的分类 id，按字母排序。"""
+    return _catalogue()["categories"]
 
 
 def by_name(name: str) -> Optional[dict]:
@@ -82,20 +102,49 @@ def item_type_id(attr_type_fullname: str) -> Optional[int]:
 
 # EnumProperty 的 items 回调必须自己持有返回的元组，不能每次现造：Blender 只保存指向字符串
 # 的指针、不复制内容，回调返回的临时字符串被 Python 回收后界面上就是乱码（官方文档明写的坑）。
-_enum_items_cache: Optional[list] = None
+# 按分类缓存。
+_enum_items_cache: dict = {}
+_category_items_cache = None
+
+
+def category_items(self, context):
+    """分类下拉的条目。第一项固定是"全部"。"""
+    global _category_items_cache
+    if _category_items_cache is None:
+        from .i18n import T
+        # 文案要跟着语言切换走，所以这里不能一次性缓存死；但元组本身必须被持有（见上面的坑），
+        # 折中办法是缓存"这一次生成的列表"，语言切换时由 i18n 那边 tag_redraw 触发重新生成。
+        _category_items_cache = [("ALL", T("category.all"), "")] + [
+            (cat, T("category." + cat), "") for cat in categories()
+        ]
+    return _category_items_cache
+
+
+def invalidate_labels() -> None:
+    """语言切换后调用：分类下拉的显示文案要重算。"""
+    global _category_items_cache
+    _category_items_cache = None
 
 
 def enum_items(self, context):
-    """给"新增 Attribute"的类型下拉用。条目形如 (name, "显示名", "tooltip")。"""
-    global _enum_items_cache
-    if _enum_items_cache is None:
+    """类型下拉的条目，按当前选中的分类过滤。条目形如 (name, "显示名", "tooltip")。"""
+    category = getattr(context.window_manager, "efx_re_attr_category", "ALL") if context else "ALL"
+    cached = _enum_items_cache.get(category)
+    if cached is None:
         # 这里不查 semantics 的中文名：items 回调在 draw 期间跑，而语言可以随时切换，
         # 缓存住就跟不上切换了。显示名统一用英文类型名（本来就是权威检索词），
         # 中文名放在选中之后的面板正文里显示。
-        _enum_items_cache = [
+        cached = [
             (item["name"], item["name"], f"itemTypeId {item['itemTypeId']}")
-            for item in readable_types()
+            for item in readable_types(category)
         ]
-        if not _enum_items_cache:
-            _enum_items_cache = [("", "（类型清单未加载）", "")]
-    return _enum_items_cache
+        if not cached:
+            cached = [("", "（该分类下没有可新建的类型）", "")]
+        _enum_items_cache[category] = cached
+    return cached
+
+
+def first_type_in(category: str) -> str:
+    """某个分类下的第一个类型名，切换分类时用来把类型选择重置到合法值。"""
+    items = readable_types(category)
+    return items[0]["name"] if items else ""

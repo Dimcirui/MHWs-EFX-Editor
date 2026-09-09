@@ -73,8 +73,8 @@ ATTRIBUTE_CLIP_VIEW_KEYS = frozenset({"Clip", "ClipBits", "MaterialClip"})
 # 标识（推测是权威制作工具的创建序号，语义未知），按数组位置强行重算反而会在完全没有编辑的
 # 往返里就篡改这个字段。按决策 9"不确定就别自作主张改写"的精神，改为和其余未知字段一样原样
 # 透传，不在导出时重算。删除 Entry 后 index 是否需要重新分配，等确认其真实语义后再决定。
-ENTRY_STRUCTURAL_KEYS = frozenset({"Attributes", "Groups"})
-ACTION_STRUCTURAL_KEYS = frozenset({"Attributes"})
+ENTRY_STRUCTURAL_KEYS = frozenset({"Attributes", "Groups", "name"})
+ACTION_STRUCTURAL_KEYS = frozenset({"Attributes", "name"})
 
 # EfxFile 顶层字典里，Entries/Actions 单独按子对象处理，EffectGroups 整体不透传
 # （导出时固定输出空数组，靠 C# 后端 UpdateEffectGroups() 从各 Entry 的 Groups 反向重建，
@@ -784,6 +784,22 @@ _CLASSES = (
 )
 
 
+def _sync_object_name(self, context) -> None:
+    """改了 efx_name 就顺手把 Blender 对象也改名，不然 Outliner 里还是旧名字。
+
+    对象名撞名时 Blender 会自己加 `.001`，那只影响显示、不影响导出（导出走 efx_name 和
+    parent 链，不看对象名）。子 attribute 的对象名带着父级名前缀（`[Entry] Life`），这里
+    **不**跟着重命名——那只是导入时生成的一次性显示名，跟着改反而会让正在看的列表跳来跳去。
+    """
+    if not self.efx_name:
+        return
+    try:
+        if self.name != self.efx_name:
+            self.name = self.efx_name
+    except Exception:  # 对象正被删除等边缘情况，改名失败不该拖垮属性赋值
+        pass
+
+
 def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
@@ -799,6 +815,19 @@ def register():
     # Attributes）里的原始下标，导出时按这个值排序还原顺序——不依赖 Blender children/collection
     # 的迭代顺序（未必稳定），沿用 EFX-Editor build_local_index_map 的做法。当前阶段没有做
     # 拖拽重排 UI，这个下标只反映 import 时的原始顺序。
+    # EFX_ENTRY / EFX_ACTION 的游戏侧名字。**不复用 Blender 的对象名**：Blender 对象名全局
+    # 唯一，撞名会被自动加 `.001` 后缀，而 EFX 里两个 entry 完全可以同名——拿对象名当数据会
+    # 静默改掉用户的名字。这里单独存一份，对象名只作显示用。
+    #
+    # 改名是安全的：写出时 C# 侧会按 name 重算 nameHash（EfxFile.cs `EFXEntry.DoWrite` /
+    # `EFXAction.DoWrite`），文件头的字符串表也按 Entries/Actions 的 name 整体重建
+    # （`Strings.EfxNames = Entries.Select(e => e.name ...)`），不存在改了名字对不上哈希的问题。
+    Object.efx_name = StringProperty(
+        name="EFX Name",
+        description="这个 Entry/Action 在 EFX 文件里的名字",
+        update=_sync_object_name,
+    )
+
     Object.efx_index = IntProperty(name="Original Index")
 
     # EFX_ENTRY 专属：Subselect 标签（对应 EFXEntry.Groups）。
@@ -904,6 +933,7 @@ def unregister():
     del Object.efx_groups_active_index
     del Object.efx_groups
     del Object.efx_index
+    del Object.efx_name
     del Object.efx_opaque_text
 
     for cls in reversed(_CLASSES):
