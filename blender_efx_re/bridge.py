@@ -99,3 +99,36 @@ def check_expression(formula: str) -> str | None:
     except BridgeError as ex:
         return str(ex)
     return None
+
+
+def new_attribute(type_name: str) -> dict:
+    """凭空造一个指定类型的空白 attribute，返回和 dump 里同一形状的 dict（含 `$type`）。
+
+    不需要我们自己攒模板/预设：vendor 每个 attribute 类型都是真实的 C# 类，`new` 出来就是
+    一份带默认值的实例，序列化规则和 dump 完全一致，直接喂给 io_tree.build_attribute_object()
+    即可。姊妹项目 EFX-Editor 要靠人工攒预设字节，是因为它没有这层类型化对象模型。
+
+    注意默认值就是 C# 的字段默认值（数值全 0），不是"游戏里好看的默认值"——比如 Transform3D
+    新建出来 LocalScale 是 (0,0,0) 而不是 (1,1,1)。这是有意的：我们没有依据去替 Capcom 定
+    "合理默认值"，与其猜一个，不如让用户看到真实的零值自己填。
+    """
+    return _run_json("new", "attribute", type_name)
+
+
+def new_entry() -> dict:
+    """凭空造一个空白 Entry（无 attribute）。"""
+    return _run_json("new", "entry")
+
+
+def new_action() -> dict:
+    """凭空造一个空白 Action（无 attribute）。"""
+    return _run_json("new", "action")
+
+
+def _run_json(*args: str) -> dict:
+    """跑一个把结果写进 JSON 文件的子命令，读回来返回 dict。"""
+    with tempfile.TemporaryDirectory(prefix="mhws_efx_new_") as tmpdir:
+        json_path = Path(tmpdir) / "out.json"
+        _run(*args, str(json_path))
+        with open(json_path, "r", encoding="utf-8") as f:
+            return json.load(f)

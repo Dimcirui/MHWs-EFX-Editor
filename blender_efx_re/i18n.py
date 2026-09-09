@@ -134,7 +134,18 @@ _STRINGS: dict[str, dict[str, str]] = {
     "attribute.no_fields":    {"EN": "This attribute has no editable fields.",
                                "ZH": "这个 attribute 没有可编辑字段。"},
 
-    # Edit（复制/粘贴这类工具操作）
+    # Add（新增结构）
+    "add.entry":              {"EN": "Add Entry",           "ZH": "新增 Entry"},
+    "add.action":             {"EN": "Add Action",          "ZH": "新增 Action"},
+    "add.attribute":          {"EN": "Add Attribute",       "ZH": "新增 Attribute"},
+    "add.attr_type":          {"EN": "Type",                "ZH": "类型"},
+    "add.target_prefix":      {"EN": "Add to: ",            "ZH": "加到："},
+    "add.no_target":          {"EN": "(select an Entry or Action)",
+                               "ZH": "（先选中一个 Entry 或 Action）"},
+    "add.order_hint":         {"EN": "Order is fixed by itemTypeId.",
+                               "ZH": "排列顺序由 itemTypeId 定死，不可手动调整。"},
+
+    # Edit（复制/粘贴、删除这类工具操作）
     "edit.copy_entry":        {"EN": "Copy Entry",          "ZH": "复制 Entry"},
     "edit.paste_entry":       {"EN": "Paste Entry",         "ZH": "粘贴 Entry"},
     "edit.copy_attribute":    {"EN": "Copy Attribute",      "ZH": "复制 Attribute"},

@@ -29,10 +29,10 @@ blender_efx_re/panels.py —— 面板层
 from __future__ import annotations
 
 import bpy
-from bpy.props import BoolProperty, PointerProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, PointerProperty, StringProperty
 from bpy.types import Panel, UIList
 
-from . import bridge, i18n, io_tree, model, semantics
+from . import attribute_types, bridge, i18n, io_tree, model, semantics, structure_ops
 from .i18n import T
 
 
@@ -937,6 +937,60 @@ class EFX_RE_PT_edit(Panel):
         row.operator("efx_re.attribute_copy", text=T("edit.copy_attribute"), icon="COPYDOWN", translate=False)
         row.operator("efx_re.attribute_paste", text=T("edit.paste_attribute"), icon="PASTEDOWN", translate=False)
 
+        layout.separator()
+        layout.operator("efx_re.delete", text=T("edit.delete"), icon="TRASH", translate=False)
+        if context.object is not None and context.object.get("~TYPE") == model.TYPE_ROOT:
+            sub = layout.row()
+            sub.enabled = False
+            sub.label(text=T("edit.delete_root_hint"), translate=False)
+
+
+class EFX_RE_PT_add(Panel):
+    """工具面板：新增 Entry / Action / Attribute。
+
+    Attribute 的排列顺序被 itemTypeId 定死（见 structure_ops 的说明），所以这里只有"新增"，
+    **没有上移/下移**——那种交互在这个格式里不成立。
+    """
+
+    bl_idname = "EFX_RE_PT_add"
+    bl_label = "Add"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = _CATEGORY
+    bl_order = -2
+    bl_options = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        return io_tree.resolve_root(context) is not None
+
+    def draw(self, context):
+        layout = self.layout
+        row = layout.row(align=True)
+        row.operator("efx_re.entry_add", text=T("add.entry"), icon="ADD", translate=False)
+        row.operator("efx_re.action_add", text=T("add.action"), icon="PLAY", translate=False)
+
+        layout.separator()
+
+        # 新 attribute 挂到哪：和算子用同一套解析（选中 Attribute 时也算它的父级），
+        # 免得面板说的和实际落点不一致
+        target = structure_ops._resolve_attribute_parent(context)
+        row = layout.row()
+        if target is None:
+            row.enabled = False
+            row.label(text=T("add.target_prefix") + T("add.no_target"), icon="INFO", translate=False)
+        else:
+            row.label(text=T("add.target_prefix") + target.name, icon="PLUS", translate=False)
+
+        wm = context.window_manager
+        layout.prop(wm, "efx_re_attr_type", text=T("add.attr_type"))
+        op = layout.operator("efx_re.attribute_add", text=T("add.attribute"), icon="ADD", translate=False)
+        op.attr_type = wm.efx_re_attr_type
+
+        sub = layout.row()
+        sub.enabled = False
+        sub.label(text=T("add.order_hint"), translate=False)
+
 
 def _poll_type(type_tag: str):
     def poll(cls, context):
@@ -1053,6 +1107,7 @@ _CLASSES = (
     EFX_RE_OT_expression_formula_check,
     EFX_RE_PT_main,
     *_GENERATED_PANELS,
+    EFX_RE_PT_add,
     EFX_RE_PT_edit,
 )
 
@@ -1077,6 +1132,13 @@ def register():
     )
     # "当前 EFX"：活动对象不属于任何 EFX 树时，导出/粘贴退到这里指定的根，见
     # io_tree.resolve_root()。导入时自动指向刚建好的那棵树。
+    # "新增 Attribute" 的类型选择器。放 WindowManager 而不是 Scene：这是纯粹的界面临时状态，
+    # 不该被存进 .blend 文件跟着场景走。
+    bpy.types.WindowManager.efx_re_attr_type = EnumProperty(
+        name="Attribute Type",
+        description="要新增的 attribute 类型（只列 vendor 有读写实现类的那些）",
+        items=attribute_types.enum_items,
+    )
     bpy.types.Scene.efx_re_active_root = PointerProperty(
         type=bpy.types.Object,
         name="Active EFX",
@@ -1092,5 +1154,9 @@ def unregister():
             delattr(bpy.types.Scene, prop)
         except AttributeError:
             pass
+    try:
+        del bpy.types.WindowManager.efx_re_attr_type
+    except AttributeError:
+        pass
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)

@@ -85,6 +85,10 @@ if (args.Length >= 1 && args[0] == "types")
 {
     return RunTypes(args);
 }
+if (args.Length >= 1 && args[0] == "new")
+{
+    return RunNew(args);
+}
 
 if (args.Length < 2 || args[0] != "roundtrip")
 {
@@ -94,6 +98,8 @@ if (args.Length < 2 || args[0] != "roundtrip")
     Console.WriteLine("  dotnet <dll> load <json 文件路径> <efx 输出路径>");
     Console.WriteLine("  dotnet <dll> exprcheck <公式文本>");
     Console.WriteLine("  dotnet <dll> types <json 输出路径> [游戏版本，默认 MHWilds]");
+    Console.WriteLine("  dotnet <dll> new attribute <类型名> <json 输出路径> [游戏版本，默认 MHWilds]");
+    Console.WriteLine("  dotnet <dll> new entry|action <json 输出路径> [游戏版本，默认 MHWilds]");
     return 1;
 }
 
@@ -432,6 +438,130 @@ static int RunTypes(string[] args)
     var readable = items.Count(i => (bool)i.GetType().GetProperty("readable")!.GetValue(i)!);
     Console.WriteLine($"OK: {version} 共 {items.Count} 个类型（可读写 {readable} 个）-> {jsonOutPath}");
     return 0;
+}
+
+// new 子命令：凭空造一个空白的 attribute / entry / action，序列化成和 dump 里同一形状的 JSON。
+//
+// C 层"新增"功能的地基。**不需要我们自己写模板/预设文件**——vendor 的每个 attribute 类型都是
+// 真实的 C# 类，`new` 出来就是一份带正确默认值的实例，序列化器再按 dump 的同一套规则写出去，
+// Python 侧直接喂给 io_tree.build_attribute_object() 就行。姊妹项目 EFX-Editor 那边要靠人工
+// 攒预设字节，是因为它没有这层类型化对象模型。
+//
+//   new attribute <类型名> <json 输出> [版本]   类型名 = EfxAttributeType 枚举名，见 types 子命令
+//   new entry <json 输出> [版本]
+//   new action <json 输出> [版本]
+static int RunNew(string[] args)
+{
+    if (args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> new attribute <类型名> <json 输出路径> [版本]");
+        Console.WriteLine("      dotnet <dll> new entry|action <json 输出路径> [版本]");
+        return 1;
+    }
+
+    var kind = args[1];
+    string jsonOutPath;
+    string? typeName = null;
+    int versionArgIndex;
+    if (kind == "attribute")
+    {
+        if (args.Length < 4)
+        {
+            Console.WriteLine("用法: dotnet <dll> new attribute <类型名> <json 输出路径> [版本]");
+            return 1;
+        }
+        typeName = args[2];
+        jsonOutPath = args[3];
+        versionArgIndex = 4;
+    }
+    else if (kind == "entry" || kind == "action")
+    {
+        jsonOutPath = args[2];
+        versionArgIndex = 3;
+    }
+    else
+    {
+        Console.WriteLine($"[ERROR] 未知的 new 类型: {kind}（只支持 attribute / entry / action）");
+        return 1;
+    }
+
+    var version = EfxVersion.MHWilds;
+    if (args.Length > versionArgIndex && !Enum.TryParse(args[versionArgIndex], true, out version))
+    {
+        Console.WriteLine($"[ERROR] 未知的 EfxVersion: {args[versionArgIndex]}");
+        return 1;
+    }
+
+    var options = CreateBridgeJsonOptions();
+    try
+    {
+        object payload;
+        if (kind == "attribute")
+        {
+            if (!Enum.TryParse<EfxAttributeType>(typeName, true, out var attrType))
+            {
+                Console.WriteLine($"[ERROR] 未知的 attribute 类型名: {typeName}");
+                return 1;
+            }
+            // 必须走 EFXAttribute.Create 而不是 EfxAttributeTypeRemapper.Create：
+            // `protected EFXAttribute(EfxAttributeType type) { }` 的函数体是**空的**，把参数
+            // 丢掉了，所以直接 new 出来的实例 `type` 字段是 0（Unknown），连带 IsTypeAttribute
+            // 也恒为 false。只有静态工厂里那句 `item.type = type;` 会补上。写出 .efx 时
+            // EFXEntry.DoWrite 拿 attr.type 反查 itemTypeId，type=0 会直接写坏文件。
+            EFXAttribute attr;
+            try
+            {
+                attr = EFXAttribute.Create(version, attrType);
+            }
+            catch (ArgumentException)
+            {
+                // vendor 只登记了 id→枚举名、没有读写实现类，见 KNOWN_UPSTREAM_ISSUES #4
+                Console.WriteLine($"[ERROR] {version} 的 {attrType} 没有读写实现类，无法新建");
+                return 1;
+            }
+            attr.Version = version;
+            InitBlankClipData(attr);
+            payload = attr;
+        }
+        else if (kind == "entry")
+        {
+            payload = new EFXEntry { Version = version };
+        }
+        else
+        {
+            payload = new EFXAction { Version = version };
+        }
+
+        // attribute 必须按基类 EFXAttribute 序列化，多态转换器才会写出 `$type` 判别字段——
+        // build_attribute_object() 就是靠它认类型的。按具体子类序列化会少这一项。
+        var declaredType = kind == "attribute" ? typeof(EFXAttribute) : payload.GetType();
+        File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(payload, declaredType, options));
+        Console.WriteLine($"OK: new {kind}{(typeName != null ? " " + typeName : "")} ({version}) -> {jsonOutPath}");
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ERROR] 新建失败");
+        Console.WriteLine(ex.ToString());
+        return 1;
+    }
+}
+
+// 空白的 *Clip attribute 直接序列化会炸：`EfxClipData.ParsedClip` 是个惰性计算属性
+// （`parsedClips ??= ParseClip()`），而 `ParseClip()` 上来就解引用 `clips!` / `frames!` /
+// `interpolationData!` 这三个数组——刚 new 出来的实例它们都是 null，序列化器一读这个属性就
+// NullReferenceException。238 个可读写类型里有 23 个（全是 *Clip）中招。
+//
+// 我们自己并不需要 ParsedClip（io_tree._populate_clip_attribute 读的是 clipData/clipBits
+// 原始数组），所以只要把三个数组初始化成空数组，让那个 getter 能正常走完就行——语义上就是
+// "一条曲线都没有的空 clip"，正是新建时应有的状态。
+static void InitBlankClipData(EFXAttribute attr)
+{
+    if (attr is not IClipAttribute clipAttr) return;
+    var clip = clipAttr.Clip;
+    clip.clips ??= Array.Empty<EfxClipHeader>();
+    clip.frames ??= Array.Empty<EfxClipFrame>();
+    clip.interpolationData ??= Array.Empty<EfxClipInterpolationTangents>();
 }
 
 static int RunExprCheck(string[] args)
