@@ -251,6 +251,10 @@ def build_root_from_efxfile(
     """
     own_collection = bpy.data.collections.new(name)
     parent_collection.children.link(own_collection)
+    # 紫色（COLOR_06）：对齐姊妹项目 EFX-Editor 的约定（见其 CLAUDE.md §4，mrl3 用 COLOR_05 蓝、
+    # EFX 用紫区分）。Outliner 里一眼能认出哪些集合是 EFX 文件——尤其是同时导入好几个、或者
+    # 场景里还有别的资产的时候。子集合（Entries/Actions）不染色，留给顶层集合当唯一标识。
+    own_collection.color_tag = "COLOR_06"
     entries_collection = bpy.data.collections.new(f"{name}_Entries")
     own_collection.children.link(entries_collection)
     actions_collection = bpy.data.collections.new(f"{name}_Actions")
