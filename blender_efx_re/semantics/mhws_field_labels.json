@@ -2496,6 +2496,3770 @@
         "tester": "assistant",
         "date": "2026-09-10"
       }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeGpuPolygon": {
+      "SizeScalar": {
+        "label_zh": "整体大小",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释 \"粒子大小\"（该模板把 via.Range 拆成了两个标量字段，注释挂在其中一个上）；按 vendor 字段声明顺序（SizeScalar 在 Width/Height 之前）与模板同名 comment 顺序对齐，未做游戏内验证",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Width": {
+        "label_zh": "X轴大小",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板对应字段注释 \"粒子x轴大小\"，按 vendor 字段声明顺序对齐，未做游戏内验证",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Height": {
+        "label_zh": "Y轴大小",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板对应字段注释 \"粒子y轴大小\"，按 vendor 字段声明顺序对齐，未做游戏内验证",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeAttractor": {
+      "boneName": {
+        "confidence": "unknown",
+        "evidence": "机器挖掘表把这个字段的 tooltip 猜成 \"实际取值：16\"——那是字符串长度统计的误挖，不是有意义的取值分布（boneName 是骨骼名字符串，字段本身已自解释）。显式留空盖掉挖掘表的噪声猜测。",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonFixEndExpression": {
+      "color": {
+        "label_zh": "颜色（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译；这是 Expression 子系统的赋值方式开关字段，不是颜色值本身",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "alpha": {
+        "label_zh": "透明度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color2": {
+        "label_zh": "颜色2（可能是自发光色，表达式赋值方式）",
+        "confidence": "guess",
+        "evidence": "vendor 源码注释 \"may be emissive color\"，作者本人标注不确定，未做游戏内验证",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color3": {
+        "label_zh": "颜色3（可能是自发光色，表达式赋值方式）",
+        "confidence": "guess",
+        "evidence": "vendor 源码注释 \"may be emissive color\"，作者本人标注不确定，未做游戏内验证",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonParticleMaterialExpression": {
+      "color1": {
+        "label_zh": "颜色1（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译；这是 Expression 子系统的赋值方式开关字段，不是颜色值本身",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color2": {
+        "label_zh": "颜色2（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color3": {
+        "label_zh": "颜色3（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributePtTransform3DExpression": {
+      "posX": {
+        "label_zh": "位置X（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "posY": {
+        "label_zh": "位置Y（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 posX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "posZ": {
+        "label_zh": "位置Z（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 posX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotationX": {
+        "label_zh": "旋转X（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 posX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotationY": {
+        "label_zh": "旋转Y（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 posX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotationZ": {
+        "label_zh": "旋转Z（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 posX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scaleX": {
+        "label_zh": "缩放X（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 posX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scaleY": {
+        "label_zh": "缩放Y（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 posX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scaleZ": {
+        "label_zh": "缩放Z（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 posX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Vortexel.EFXAttributePtVortexelPhysics": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Shape": {
+        "label_zh": "碰撞体形状",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + 枚举类型 SolidBodyShapeType 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Size": {
+        "label_zh": "碰撞体尺寸",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "BounceRate": {
+        "label_zh": "反弹系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Friction": {
+        "label_zh": "摩擦力",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "MassDensity": {
+        "label_zh": "质量密度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "MomentBias": {
+        "label_zh": "转矩偏置",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "PenaltyKinetic": {
+        "label_zh": "穿透修正动能",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationX": {
+        "label_zh": "初始旋转X",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationY": {
+        "label_zh": "初始旋转Y",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 RotationX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationZ": {
+        "label_zh": "初始旋转Z",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 RotationX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "InitAngularVelocityX": {
+        "label_zh": "初始角速度X",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "InitAngularVelocityY": {
+        "label_zh": "初始角速度Y",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 InitAngularVelocityX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "InitAngularVelocityZ": {
+        "label_zh": "初始角速度Z",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 InitAngularVelocityX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AngularVelocityCoef": {
+        "label_zh": "角速度系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeTransform3DExpression": {
+      "translationX": {
+        "label_zh": "位置X（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "translationY": {
+        "label_zh": "位置Y（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 translationX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "translationZ": {
+        "label_zh": "位置Z（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 translationX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotationX": {
+        "label_zh": "旋转X（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 translationX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotationY": {
+        "label_zh": "旋转Y（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 translationX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotationZ": {
+        "label_zh": "旋转Z（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 translationX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scaleX": {
+        "label_zh": "缩放X（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 translationX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scaleY": {
+        "label_zh": "缩放Y（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 translationX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scaleZ": {
+        "label_zh": "缩放Z（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 translationX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeEmitterColor": {
+      "ColorOperator": {
+        "label_zh": "颜色叠加方式",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + 枚举类型 EmitterColorOperator 已足以说明作用，直接翻译，枚举各档含义未展开",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AlphaOperator": {
+        "label_zh": "透明度叠加方式",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 ColorOperator",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Color": {
+        "label_zh": "颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeFlowMap": {
+      "Strength": {
+        "label_zh": "强度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "StrengthCoef": {
+        "label_zh": "强度系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Speed": {
+        "label_zh": "流动速度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "SpeedCoef": {
+        "label_zh": "流动速度系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "flowmapMaskPath": {
+        "label_zh": "流动贴图遮罩路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeAngularVelocity3D": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationOrder": {
+        "label_zh": "旋转轴顺序",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + 枚举类型 RotationOrder 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Radius": {
+        "label_zh": "旋转半径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AddRadius": {
+        "label_zh": "半径增量",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AddRadiusCoef": {
+        "label_zh": "半径增量系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationAxisX": {
+        "label_zh": "旋转轴角速度X",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationAxisY": {
+        "label_zh": "旋转轴角速度Y",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 RotationAxisX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationAxisZ": {
+        "label_zh": "旋转轴角速度Z",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 RotationAxisX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AddRotationAxisX": {
+        "label_zh": "旋转轴角速度增量X",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AddRotationAxisY": {
+        "label_zh": "旋转轴角速度增量Y",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 AddRotationAxisX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AddRotationAxisZ": {
+        "label_zh": "旋转轴角速度增量Z",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 AddRotationAxisX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AddRotationCoef": {
+        "label_zh": "角速度增量系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeRgbCommonExpression": {
+      "particleColor": {
+        "label_zh": "粒子颜色（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用；这是 Expression 子系统的赋值方式开关字段，不是颜色值本身",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "colorIntensityGreen": {
+        "label_zh": "绿色通道强度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 里 GreenChIntensity 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "colorSaturate": {
+        "label_zh": "颜色饱和度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 里 GreenChSaturate 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "particleColor2": {
+        "label_zh": "粒子颜色2（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "colorIntensityRed": {
+        "label_zh": "红色通道强度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 里 RedChIntensity 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "alpha1": {
+        "label_zh": "透明度1（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 里 Alpha1 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "alpha2": {
+        "label_zh": "透明度2（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 里 Alpha2 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Basic.EFXAttributeTextureFilter": {
+      "TexelAlphaRate": {
+        "label_zh": "像素透明度比率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "TexelAlphaHPThreshold": {
+        "label_zh": "像素透明度高通阈值",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "TexelAlphaHPMinValue": {
+        "label_zh": "像素透明度高通最小值",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonFollow": {
+      "BlendFlags": {
+        "label_zh": "混合标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Color": {
+        "label_zh": "颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorRange": {
+        "label_zh": "颜色随机范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorRate": {
+        "label_zh": "颜色变化速率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Intensity": {
+        "label_zh": "强度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "EdgeBlendRange": {
+        "label_zh": "边缘混合范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AlphaRate": {
+        "label_zh": "透明度变化速率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "SizeScalar": {
+        "label_zh": "整体大小",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Width": {
+        "label_zh": "宽度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "TextureRepeatNum": {
+        "label_zh": "贴图重复次数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ShadowMultiplier": {
+        "label_zh": "阴影倍率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FadeSide": {
+        "label_zh": "淡出方向",
+        "confidence": "guess",
+        "evidence": "字段名直译；vendor 源码本身标了 \"TODO verify values here\"，作者也不确定具体取值含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FollowFlags": {
+        "label_zh": "跟随标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "StretchDistance": {
+        "label_zh": "拉伸距离",
+        "confidence": "guess",
+        "evidence": "字段名直译；vendor 源码本身标了 \"TODO verify values here\"",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ShapeDivision": {
+        "label_zh": "形状分段数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "SplineDivision": {
+        "label_zh": "曲线分段数",
+        "confidence": "guess",
+        "evidence": "字段名直译；vendor 源码本身标了 \"TODO verify values\"",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorPlace1": {
+        "label_zh": "颜色渐变点1",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorPlace2": {
+        "label_zh": "颜色渐变点2",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorPlace1Ratio": {
+        "label_zh": "颜色渐变点1位置",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorPlace2Ratio": {
+        "label_zh": "颜色渐变点2位置",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "HeadScale": {
+        "label_zh": "头部大小",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ScalePlace1": {
+        "label_zh": "大小渐变点1",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ScalePlace2": {
+        "label_zh": "大小渐变点2",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ScalePlace1Ratio": {
+        "label_zh": "大小渐变点1位置",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ScalePlace2Ratio": {
+        "label_zh": "大小渐变点2位置",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FadeByTwistMin": {
+        "label_zh": "扭转淡出下限",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FadeByTwistMax": {
+        "label_zh": "扭转淡出上限",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "GhostStretch": {
+        "label_zh": "残影拉伸",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeProceduralDistortion": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "UScale": {
+        "label_zh": "U方向缩放",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "VScale": {
+        "label_zh": "V方向缩放",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "WaveFrequency": {
+        "label_zh": "波动频率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "WaveAmplitude": {
+        "label_zh": "波动幅度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "WaveAmplitudeCoef": {
+        "label_zh": "波动幅度系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "WaveOffset": {
+        "label_zh": "波动偏移",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "WaveTimer": {
+        "label_zh": "波动计时器",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "SpinInit": {
+        "label_zh": "旋转初始值",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "SpinMax": {
+        "label_zh": "旋转最大值",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "SpinTimer": {
+        "label_zh": "旋转计时器",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "SpinTimerCoef": {
+        "label_zh": "旋转计时器系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RadialOscillationFrequency": {
+        "label_zh": "径向振荡频率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RadialOscillationAmplitude": {
+        "label_zh": "径向振荡幅度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RadialOscillationFrequencyNoiseFrequency": {
+        "label_zh": "径向振荡频率噪声频率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RadialOscillationFrequencyNoiseAmplitude": {
+        "label_zh": "径向振荡频率噪声幅度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RadialOscillationAmplitudeNoiseFrequency": {
+        "label_zh": "径向振荡幅度噪声频率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RadialOscillationAmplitudeNoiseAmplitude": {
+        "label_zh": "径向振荡幅度噪声幅度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RadialOscillationTimer": {
+        "label_zh": "径向振荡计时器",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeVanishArea3D": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AreaPosition": {
+        "label_zh": "区域位置",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AreaScale": {
+        "label_zh": "区域大小",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AreaAngle": {
+        "label_zh": "区域角度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "VanishFrame": {
+        "label_zh": "消亡帧数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "JointName": {
+        "label_zh": "绑定骨骼名",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Pt.EFXAttributePtColor": {
+      "ColorOperator": {
+        "label_zh": "颜色叠加方式",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + 枚举类型 PtColorOperator 已足以说明作用，直接翻译，枚举各档含义未展开",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AlphaOperator": {
+        "label_zh": "透明度叠加方式",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 ColorOperator",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Color": {
+        "label_zh": "颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeGpuRibbonFollow": {
+      "BlendFlags": {
+        "label_zh": "混合标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Color": {
+        "label_zh": "颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorRange": {
+        "label_zh": "颜色随机范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorRate": {
+        "label_zh": "颜色变化速率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Intensity": {
+        "label_zh": "强度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "EdgeBlendRange": {
+        "label_zh": "边缘混合范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AlphaRate": {
+        "label_zh": "透明度变化速率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FollowFlags": {
+        "label_zh": "跟随标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ParticleNum": {
+        "label_zh": "粒子数量",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "SegmentNum": {
+        "label_zh": "分段数量",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ControlPointNum": {
+        "label_zh": "控制点数量",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "SizeScalar": {
+        "label_zh": "整体大小",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeAssignCSV": {
+      "RandomizeIndexOrder": {
+        "label_zh": "随机索引顺序",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "UseTableRange": {
+        "label_zh": "使用表格范围限制",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "mTableRange": {
+        "label_zh": "表格取值范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "efcsvPostionListPath": {
+        "label_zh": "位置 CSV 表路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "efcsvRotationListPath": {
+        "label_zh": "旋转 CSV 表路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "efcsvVelocityListPath": {
+        "label_zh": "速度 CSV 表路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "efcsvColorListPath": {
+        "label_zh": "颜色 CSV 表路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeEmitterShape3DExpression": {
+      "rangeXMin": {
+        "label_zh": "X范围下限（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rangeXMax": {
+        "label_zh": "X范围上限（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 rangeXMin",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rangeYMin": {
+        "label_zh": "Y范围下限（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 rangeXMin",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rangeYMax": {
+        "label_zh": "Y范围上限（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 rangeXMin",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rangeZMin": {
+        "label_zh": "Z范围下限（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 rangeXMin",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rangeZMax": {
+        "label_zh": "Z范围上限（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 rangeXMin",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "spawnNum": {
+        "label_zh": "生成数量（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeRepeatArea": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Area": {
+        "label_zh": "重复区域大小",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonParticle": {
+      "color1": {
+        "label_zh": "颜色1",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + via.Color 类型已足以说明作用，直接翻译。这个结构体绝大多数字段是匿名 ukn*，只有 color1/color2 有真名字，其余留空等后续专门啃",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color2": {
+        "label_zh": "颜色2",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 color1",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Field.EFXAttributeVectorFieldParameter": {
+      "Parameter": {
+        "label_zh": "参数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Lacunarity": {
+        "label_zh": "间隙度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用（噪声场常用术语），直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Gain": {
+        "label_zh": "增益",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Blend": {
+        "label_zh": "混合度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "lfoRange": {
+        "label_zh": "低频振荡范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用（LFO=低频振荡），直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "lfoTime": {
+        "label_zh": "低频振荡周期",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Rotation": {
+        "label_zh": "旋转",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Scale": {
+        "label_zh": "缩放",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Coefficient": {
+        "label_zh": "系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "EdgeOffset": {
+        "label_zh": "边缘偏移",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Falloff": {
+        "label_zh": "衰减",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FieldIndex": {
+        "label_zh": "力场索引",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Basic.EFXAttributePlayEfx": {
+      "efxPath": {
+        "label_zh": "引用的 EFX 文件路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeTerrainSnap": {
+      "SnapType": {
+        "label_zh": "贴地方式",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + 枚举类型 TerrainSnapType 已足以说明作用，直接翻译，枚举各档含义未展开",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "InitSnap": {
+        "label_zh": "初始即贴地",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "HorizontalBounceRate": {
+        "label_zh": "水平反弹系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "VerticalBounceRate": {
+        "label_zh": "垂直反弹系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Offset": {
+        "label_zh": "贴地偏移",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "IgnoreScale": {
+        "label_zh": "忽略缩放",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FinishParticleAngleApplyEmitterAngle": {
+        "label_zh": "结束角度跟随发射器角度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FinishParticleAngleMaxRad": {
+        "label_zh": "结束角度上限（弧度）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FinishParticleAngleMinRad": {
+        "label_zh": "结束角度下限（弧度）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FinishParticleAngleFrame": {
+        "label_zh": "结束角度渐变帧数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "KillParticleHeight": {
+        "label_zh": "粒子销毁高度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Pt.EFXAttributePtColliderAction": {
+      "dataFlags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义（后面一串 ukn_flag2_* 字段是这个标志位按位门控的附加数据，未解）",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "linkedAction": {
+        "label_zh": "关联动作",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeMeshEmitter": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "YNormalRange": {
+        "label_zh": "Y轴法线范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "PartsNumber": {
+        "label_zh": "部件数量",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ClusterNumber": {
+        "label_zh": "簇数量",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationOrder": {
+        "label_zh": "旋转轴顺序",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + 枚举类型 RotationOrder 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "LocalScale": {
+        "label_zh": "局部缩放",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "LocalRotation": {
+        "label_zh": "局部旋转",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorUTilingCount": {
+        "label_zh": "颜色贴图U方向重复次数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorVTilingCount": {
+        "label_zh": "颜色贴图V方向重复次数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorUVOffset": {
+        "label_zh": "颜色贴图UV偏移",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "MaskUTilingCount": {
+        "label_zh": "遮罩贴图U方向重复次数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "MaskVTilingCount": {
+        "label_zh": "遮罩贴图V方向重复次数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "MaskUVOffset": {
+        "label_zh": "遮罩贴图UV偏移",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "EmissionThreshold": {
+        "label_zh": "发射阈值",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "EmissionVertexColorThreshold": {
+        "label_zh": "顶点色发射阈值",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "EmissionVertexColorChannel": {
+        "label_zh": "顶点色发射通道",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "EmissionMaskMapColorChannel": {
+        "label_zh": "遮罩贴图发射通道",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ParticleNum": {
+        "label_zh": "粒子数量",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "LodIndex": {
+        "label_zh": "LOD 等级",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "TriangleFilter": {
+        "label_zh": "三角面过滤",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "DynamicColorMapPath": {
+        "label_zh": "动态颜色贴图路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor 注释 \"mapName: NormalRoughnessMap\" 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "MeshPath": {
+        "label_zh": "网格文件路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "MeshMirrorPath": {
+        "label_zh": "镜像网格文件路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorMapPath": {
+        "label_zh": "颜色贴图路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "MaskMapPath": {
+        "label_zh": "遮罩贴图路径",
+        "confidence": "guess",
+        "evidence": "字段名直译；vendor 源码注释提示这个字段可能实际指向别的用途（\"might be a path to something else\"），且 RE4 完全不用这个字段",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "TargetGameObjectName": {
+        "label_zh": "目标游戏对象名",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeNoDrawExpression": {
+      "color": {
+        "label_zh": "颜色（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用；这是 Expression 子系统的赋值方式开关字段，不是颜色值本身",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "colorRand": {
+        "label_zh": "颜色随机（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "alpha": {
+        "label_zh": "透明度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "alphaRand": {
+        "label_zh": "透明度随机（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Vortexel.EFXAttributeVortexelWindEmitter": {
+      "EmitType": {
+        "label_zh": "发风方式",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + 枚举类型 VelocityEmitType 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Shape": {
+        "label_zh": "风场形状",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + 枚举类型 VelocityShapeType 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Direction": {
+        "label_zh": "风向形状",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Attenuation": {
+        "label_zh": "衰减方式",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + 枚举类型 VelocityAttenuationType 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Axis": {
+        "label_zh": "风向轴",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Speed": {
+        "label_zh": "风速",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "UseOcclusionRate": {
+        "label_zh": "使用遮蔽比率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "UsePressureRate": {
+        "label_zh": "使用压力比率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "IsOutdoorWind": {
+        "label_zh": "室外风",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AttenuatePressure": {
+        "label_zh": "压力随距离衰减",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeMeshExpression": {
+      "color1": {
+        "label_zh": "颜色1（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用；这是 Expression 子系统的赋值方式开关字段，不是颜色值本身。vendor 源码里 bit 6/7/14-21 还标了 speed/scale/sizeX/sizeY 等猜测名，但那些字段实际仍叫 unkn6~unkn21（vendor 自己也标了 TODO 版本化位表），没有真正改名，不采信",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color1Rand": {
+        "label_zh": "颜色1随机（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "alpha": {
+        "label_zh": "透明度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "alphaRand": {
+        "label_zh": "透明度随机（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Pt.EFXAttributePtPathTranslate": {
+      "rotation": {
+        "label_zh": "旋转",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译。结构体绝大多数字段是匿名 unkn*，只有这个和 scale 有真名字",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scale": {
+        "label_zh": "缩放",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 rotation",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Basic.EFXAttributeLifeExpression": {
+      "appearLife": {
+        "label_zh": "渐入帧数（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译；对应 Life.AppearFrame 的表达式版",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "appearLifeRand": {
+        "label_zh": "渐入帧数随机（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "keepLife": {
+        "label_zh": "持续帧数（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译；对应 Life.KeepFrame 的表达式版",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "keepLifeRand": {
+        "label_zh": "持续帧数随机（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "vanishLife": {
+        "label_zh": "消亡帧数（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译；对应 Life.VanishFrame 的表达式版",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "vanishLifeRand": {
+        "label_zh": "消亡帧数随机（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Basic.EFXAttributeUVSequenceExpression": {
+      "speed": {
+        "label_zh": "速度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "speedRand": {
+        "label_zh": "速度随机（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Vortexel.EFXAttributeVortexelCollider": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeTransform3DModifierDelayFrame": {
+      "frameDelay": {
+        "label_zh": "延迟帧数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Vortexel.EFXAttributePtVortexelSnap": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RayDistance": {
+        "label_zh": "射线检测距离",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RayStartOffset": {
+        "label_zh": "射线起点偏移",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RayHitOffset": {
+        "label_zh": "射线命中偏移",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FinishAngleMin": {
+        "label_zh": "结束角度下限",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FinishAngleMax": {
+        "label_zh": "结束角度上限",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeFakeDoF": {
+      "NearDistance": {
+        "label_zh": "近端距离",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "MaxScale": {
+        "label_zh": "最大缩放",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "MinAlpha": {
+        "label_zh": "最小透明度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "UsingMipLevel": {
+        "label_zh": "使用的贴图 Mip 等级",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "VanishDistance": {
+        "label_zh": "消失距离",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeColorGrading": {
+      "HighBrightnessColor": {
+        "label_zh": "高亮部分颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "LowBrightnessColor": {
+        "label_zh": "暗部分颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "HighBrightnessIntensity": {
+        "label_zh": "高亮部分强度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "LowBrightnessIntensity": {
+        "label_zh": "暗部分强度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "HighGradingBorder": {
+        "label_zh": "高亮分级边界",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "LowGradingBorder": {
+        "label_zh": "暗部分级边界",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributePtTransform3D": {
+      "position": {
+        "label_zh": "位置",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotation": {
+        "label_zh": "旋转",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scale": {
+        "label_zh": "缩放",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeGpuBillboardExpression": {
+      "colorR": {
+        "label_zh": "红色通道（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用；这是 Expression 子系统的赋值方式开关字段，不是颜色值本身",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "colorG": {
+        "label_zh": "绿色通道（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 colorR",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "colorB": {
+        "label_zh": "蓝色通道（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 colorR",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "colorA": {
+        "label_zh": "透明度通道（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 colorR",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "colorRate": {
+        "label_zh": "颜色变化速率（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "alpha2": {
+        "label_zh": "透明度2（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "particleSize": {
+        "label_zh": "粒子大小（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "particleSizeRand": {
+        "label_zh": "粒子大小随机（表达式赋值方式）",
+        "confidence": "guess",
+        "evidence": "字段名直译；vendor 源码注释提示这个字段的版本门控可能不准确（\"could be RE4+ and not RERT+\"），字段本身含义没有疑问",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonLengthMaterial": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义。这个结构体绝大多数字段是匿名 unkn*，只有 Flags/color1~5 有真名字，其余留空等后续专门啃",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color1": {
+        "label_zh": "颜色1",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + via.Color 类型已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color2": {
+        "label_zh": "颜色2",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 color1",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color3": {
+        "label_zh": "颜色3",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 color1",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color4": {
+        "label_zh": "颜色4",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 color1",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color5": {
+        "label_zh": "颜色5",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 color1",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Vortexel.EFXAttributePtVortexelPhysicsSimple": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "HorizontalBounceRate": {
+        "label_zh": "水平反弹系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "VerticalBounceRate": {
+        "label_zh": "垂直反弹系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Radius": {
+        "label_zh": "碰撞半径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeAttractorExpression": {
+      "posX": {
+        "label_zh": "吸引点位置X（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "posY": {
+        "label_zh": "吸引点位置Y（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 posX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "posZ": {
+        "label_zh": "吸引点位置Z（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 posX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "posX_2": {
+        "label_zh": "吸引点位置2 X（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译；对应 Attractor 的 ReversalDistance 类反向力场第二组坐标",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "posY_2": {
+        "label_zh": "吸引点位置2 Y（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 posX_2",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "posZ_2": {
+        "label_zh": "吸引点位置2 Z（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 posX_2",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "attractionForce": {
+        "label_zh": "吸引力（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeGpuMeshExpression": {
+      "color": {
+        "label_zh": "颜色（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用；这是 Expression 子系统的赋值方式开关字段，不是颜色值本身",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "colorRand": {
+        "label_zh": "颜色随机（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "alpha": {
+        "label_zh": "透明度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "alphaRate": {
+        "label_zh": "透明度变化速率（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "size": {
+        "label_zh": "大小（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "sizeRand": {
+        "label_zh": "大小随机（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeGpuRibbonLengthExpression": {
+      "color": {
+        "label_zh": "颜色（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用；这是 Expression 子系统的赋值方式开关字段，不是颜色值本身",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "alpha": {
+        "label_zh": "透明度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "alphaRate": {
+        "label_zh": "透明度变化速率（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeWindInfluence3D": {
+      "InfluenceRate": {
+        "label_zh": "影响比率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "InfluenceCoef": {
+        "label_zh": "影响系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "InfluenceFrame": {
+        "label_zh": "影响持续帧数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributePlaneCollider": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Position": {
+        "label_zh": "平面位置",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Rotation": {
+        "label_zh": "平面旋转",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "BounceNum": {
+        "label_zh": "反弹次数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "BounceRate": {
+        "label_zh": "反弹系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FaceNormalRotation": {
+        "label_zh": "法线旋转",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "IdleTime": {
+        "label_zh": "静止判定时间",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeRgbWaterExpression": {
+      "particleColor": {
+        "label_zh": "粒子颜色（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用；这是 Expression 子系统的赋值方式开关字段，不是颜色值本身。与 RgbCommonExpression 结构同源",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "colorIntensityGreen": {
+        "label_zh": "绿色通道强度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 里 GreenChIntensity 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "colorSaturate": {
+        "label_zh": "颜色饱和度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 里 GreenChSaturate 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "particleColor2": {
+        "label_zh": "粒子颜色2（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "colorIntensityRed": {
+        "label_zh": "红色通道强度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 里 RedChIntensity 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "alpha1": {
+        "label_zh": "透明度1（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 里 Alpha1 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "alpha2": {
+        "label_zh": "透明度2（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 里 Alpha2 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeRotateAnimExpression": {
+      "rotateSpeedX": {
+        "label_zh": "X轴旋转速度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotateSpeedXRand": {
+        "label_zh": "X轴旋转速度随机（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotateSpeedY": {
+        "label_zh": "Y轴旋转速度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotateSpeedYRand": {
+        "label_zh": "Y轴旋转速度随机（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotateSpeedZ": {
+        "label_zh": "Z轴旋转速度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotateSpeedZRand": {
+        "label_zh": "Z轴旋转速度随机（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Vortexel.EFXAttributeVortexelIndoorMask": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeFadeByOcclusion": {
+      "Radius": {
+        "label_zh": "检测半径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Offset": {
+        "label_zh": "检测偏移",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "MinSize": {
+        "label_zh": "最小尺寸",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeLightning3DExpression": {
+      "color": {
+        "label_zh": "颜色（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用；这是 Expression 子系统的赋值方式开关字段，不是颜色值本身。这个结构体绝大多数字段是匿名 unkn*（48 位位表只标了 4 个），只有这 4 个有真名字",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "terminalPosX": {
+        "label_zh": "终点位置X（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "terminalPosY": {
+        "label_zh": "终点位置Y（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 terminalPosX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "terminalPosZ": {
+        "label_zh": "终点位置Z（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 terminalPosX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Fluid.EFXAttributeFluidParticleEmitter": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Pt.EFXAttributePtColorMixer": {
+      "colorCount": {
+        "label_zh": "颜色数量",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Colors": {
+        "label_zh": "颜色列表",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Fluid.EFXAttributeFluidParticleEmitterTarget": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "UserDataFilePath": {
+        "label_zh": "用户数据文件路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Fluid.EFXAttributeFluidParticle2DSimulator": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义。这个结构体绝大多数字段是匿名 unkn*，只有 Flags 有真名字",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeVanishArea3DExpression": {
+      "positionX": {
+        "label_zh": "位置X（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "positionY": {
+        "label_zh": "位置Y（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 positionX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "positionZ": {
+        "label_zh": "位置Z（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 positionX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeEmitterHSV": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Hue": {
+        "label_zh": "色相",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color": {
+        "label_zh": "颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Range1": {
+        "label_zh": "范围1",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，具体对应哪个 HSV 分量未知",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Range2": {
+        "label_zh": "范围2",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 Range1",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Range3": {
+        "label_zh": "范围3",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 Range1",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypePolygonExpression": {
+      "color": {
+        "label_zh": "颜色（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用；这是 Expression 子系统的赋值方式开关字段，不是颜色值本身",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "alpha": {
+        "label_zh": "透明度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "emissive": {
+        "label_zh": "自发光（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "colorStrength": {
+        "label_zh": "颜色强度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scale": {
+        "label_zh": "缩放（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "size": {
+        "label_zh": "大小（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonParticleMaterial": {
+      "color1": {
+        "label_zh": "颜色1",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + via.Color 类型已足以说明作用，直接翻译。这个结构体绝大多数字段是匿名 ukn*，只有 color1~5 有真名字，其余留空等后续专门啃（与 TypeRibbonParticle 同源）",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color2": {
+        "label_zh": "颜色2",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 color1",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color3": {
+        "label_zh": "颜色3",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 color1",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color4": {
+        "label_zh": "颜色4",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 color1",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color5": {
+        "label_zh": "颜色5",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 color1",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypePolygonTrail": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Color": {
+        "label_zh": "颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorRange": {
+        "label_zh": "颜色随机范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorRate": {
+        "label_zh": "颜色变化速率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Intensity": {
+        "label_zh": "强度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "EdgeBlendRate": {
+        "label_zh": "边缘混合速率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AlphaRate": {
+        "label_zh": "透明度变化速率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Axis": {
+        "label_zh": "拖尾轴向",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + 枚举类型 AxisType 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Length": {
+        "label_zh": "拖尾长度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "StretchDistance": {
+        "label_zh": "拉伸距离",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "NumTrailDivision": {
+        "label_zh": "拖尾分段数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "NumVerticalDivision": {
+        "label_zh": "垂直分段数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "NumSplineDivision": {
+        "label_zh": "曲线分段数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "IntervalFrame": {
+        "label_zh": "间隔帧数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "HeadColor": {
+        "label_zh": "头部颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Place1": {
+        "label_zh": "颜色渐变点1",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Place2": {
+        "label_zh": "颜色渐变点2",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Place1Ratio": {
+        "label_zh": "颜色渐变点1位置",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Place2Ratio": {
+        "label_zh": "颜色渐变点2位置",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonFollowExpression": {
+      "color": {
+        "label_zh": "颜色（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用；这是 Expression 子系统的赋值方式开关字段，不是颜色值本身",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scale": {
+        "label_zh": "大小（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scaleRand": {
+        "label_zh": "大小随机（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeRotateAnimDelayFrame": {
+      "frameDelay": {
+        "label_zh": "延迟帧数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeTexelChannelOperator": {
+      "HueShift": {
+        "label_zh": "色相偏移",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "HueIntensity": {
+        "label_zh": "色相强度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ShadeColor": {
+        "label_zh": "阴影颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ShadeAlphaBlendRate": {
+        "label_zh": "阴影透明度混合比率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Desaturate": {
+        "label_zh": "去饱和度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AmbientColorIntensity": {
+        "label_zh": "环境光颜色强度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "EmissiveRate": {
+        "label_zh": "自发光比率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "EmissivePower": {
+        "label_zh": "自发光强度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Opacity": {
+        "label_zh": "不透明度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "HueIntensityCurve": {
+        "label_zh": "色相强度曲线",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "UseIntEnvelope": {
+        "label_zh": "使用整数包络",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Appear": {
+        "label_zh": "渐入帧数范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Keep": {
+        "label_zh": "持续帧数范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Vanish": {
+        "label_zh": "消亡帧数范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonParticleExpression": {
+      "color": {
+        "label_zh": "颜色（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用；这是 Expression 子系统的赋值方式开关字段，不是颜色值本身。这个结构体绝大多数字段是匿名 unkn*，只有这个有真名字",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributePointCloudEmitter": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeStrainRibbonExpression": {
+      "posX": {
+        "label_zh": "位置X（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "posY": {
+        "label_zh": "位置Y（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 posX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "posZ": {
+        "label_zh": "位置Z（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 posX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonLengthMaterialExpression": {
+      "color": {
+        "label_zh": "颜色（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用；这是 Expression 子系统的赋值方式开关字段，不是颜色值本身。这个结构体绝大多数字段是匿名 unkn*，只有这个有真名字",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeEmitterHSVExpression": {
+      "emitRate": {
+        "label_zh": "发射速率（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用；这是 Expression 子系统的赋值方式开关字段。这个结构体绝大多数字段是匿名 unkn*，只有这个有真名字",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Pt.EFXAttributePtCollisionInfluence": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义。这个结构体大部分字段是匿名 Unkn*，只有 Flags 有真名字",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeAngularVelocity3DDelayFrame": {
+      "frameDelay": {
+        "label_zh": "延迟帧数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypePolygonMaterial": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Color": {
+        "label_zh": "颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorRange": {
+        "label_zh": "颜色随机范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationOrder": {
+        "label_zh": "旋转轴顺序",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + 枚举类型 RotationOrder 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationX": {
+        "label_zh": "旋转X",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationY": {
+        "label_zh": "旋转Y",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 RotationX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationZ": {
+        "label_zh": "旋转Z",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 RotationX",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "SizeScalar": {
+        "label_zh": "整体大小",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Width": {
+        "label_zh": "宽度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Height": {
+        "label_zh": "高度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Offset": {
+        "label_zh": "偏移",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonFollowMaterial": {
+      "BlendFlags": {
+        "label_zh": "混合标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义；与 TypeRibbonFollow 同源结构",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Color": {
+        "label_zh": "颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorRange": {
+        "label_zh": "颜色随机范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorRate": {
+        "label_zh": "颜色变化速率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Intensity": {
+        "label_zh": "强度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "EdgeBlendRange": {
+        "label_zh": "边缘混合范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AlphaRate": {
+        "label_zh": "透明度变化速率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "SizeScalar": {
+        "label_zh": "整体大小",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Width": {
+        "label_zh": "宽度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "TextureRepeatNum": {
+        "label_zh": "贴图重复次数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ShadowMultiplier": {
+        "label_zh": "阴影倍率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FadeSide": {
+        "label_zh": "淡出方向",
+        "confidence": "guess",
+        "evidence": "字段名直译；TypeRibbonFollow 同名字段 vendor 源码标了 \"TODO verify values here\"，作者也不确定具体取值含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FollowFlags": {
+        "label_zh": "跟随标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "StretchDistance": {
+        "label_zh": "拉伸距离",
+        "confidence": "guess",
+        "evidence": "字段名直译；TypeRibbonFollow 同名字段 vendor 源码标了 \"TODO verify values here\"",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ShapeDivision": {
+        "label_zh": "形状分段数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "SplineDivision": {
+        "label_zh": "曲线分段数",
+        "confidence": "guess",
+        "evidence": "字段名直译；TypeRibbonFollow 同名字段 vendor 源码标了 \"TODO verify values\"",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "HeadColor": {
+        "label_zh": "头部颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorPlace1": {
+        "label_zh": "颜色渐变点1",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorPlace2": {
+        "label_zh": "颜色渐变点2",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorPlace1Ratio": {
+        "label_zh": "颜色渐变点1位置",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorPlace2Ratio": {
+        "label_zh": "颜色渐变点2位置",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "HeadScale": {
+        "label_zh": "头部大小",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ScalePlace1": {
+        "label_zh": "大小渐变点1",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ScalePlace2": {
+        "label_zh": "大小渐变点2",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ScalePlace1Ratio": {
+        "label_zh": "大小渐变点1位置",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ScalePlace2Ratio": {
+        "label_zh": "大小渐变点2位置",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FadeByTwistMin": {
+        "label_zh": "扭转淡出下限",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FadeByTwistFlags": {
+        "label_zh": "扭转淡出标志位",
+        "confidence": "guess",
+        "evidence": "字段名直译；vendor 源码本身标了 \"TODO recheck\"",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeGpuMeshTrail": {
+      "color0": {
+        "label_zh": "颜色0",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + via.Color 类型已足以说明作用，直接翻译。这个结构体绝大多数字段是匿名 unkn*，只有 color0/color1 有真名字，其余留空等后续专门啃",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color1": {
+        "label_zh": "颜色1",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "同 color0",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeDestinationCSV": {
+      "efcsvPath": {
+        "label_zh": "CSV 表路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译。这个结构体绝大多数字段是匿名 unkn* 或占位的 unknPath2~4，只有这个有真名字",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Basic.EFXAttributeRenderTarget": {
+      "rtexPath": {
+        "label_zh": "渲染目标贴图路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeGpuRibbonFollowExpression": {
+      "color": {
+        "label_zh": "颜色（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用；这是 Expression 子系统的赋值方式开关字段，不是颜色值本身",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "alpha": {
+        "label_zh": "透明度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "colorRate": {
+        "label_zh": "颜色变化速率（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "size": {
+        "label_zh": "大小（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "sizeRange": {
+        "label_zh": "大小随机范围（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNameDict 命名已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeEffectOptimizeShader": {
+      "shaderPath": {
+        "label_zh": "Shader 文件路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译。这个结构体（对应 EfxAttributeType.EffectShader，类名却叫 EffectOptimizeShader，跟命名规律 EFXAttribute<TypeName> 不一致，机械按名字找类会找不到）其余 22 个 unknShaderCRCHash0~21 是已知死局：010 模板自己也没有这批哈希的名字对照表，vendor 也没实现对应的 CRC32 算法，跟 MdfPropertyName 那套有哈希表可查的哈希域不是一回事，没有可验证的候选名字来源",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Pt.EFXAttributePtSort": {
+      "SortType": {
+        "label_zh": "排序方式",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + 枚举类型 SortType 已足以说明作用，直接翻译，枚举各档含义未展开",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeMesh": {
+      "overriddenHashCount": {
+        "label_zh": "材质属性覆盖数量",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译；对应下面的 properties 材质属性覆盖列表长度",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color1": {
+        "label_zh": "颜色1",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "color2": {
+        "label_zh": "颜色2",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "frameCount": {
+        "label_zh": "动画帧数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "startingFrameMin": {
+        "label_zh": "起始帧下限",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "startingFrameMax": {
+        "label_zh": "起始帧上限",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "animationSpeedMin": {
+        "label_zh": "动画速度下限",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "animationSpeedMax": {
+        "label_zh": "动画速度上限",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "animationMode": {
+        "label_zh": "动画模式",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，具体档位含义未展开",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotationX": {
+        "label_zh": "旋转X",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotationXVariation": {
+        "label_zh": "旋转X随机幅度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotationY": {
+        "label_zh": "旋转Y",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotationYVariation": {
+        "label_zh": "旋转Y随机幅度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotationZ": {
+        "label_zh": "旋转Z",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "rotationZVariation": {
+        "label_zh": "旋转Z随机幅度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scaleX": {
+        "label_zh": "缩放X",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scaleXVariation": {
+        "label_zh": "缩放X随机幅度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scaleY": {
+        "label_zh": "缩放Y",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scaleYVariation": {
+        "label_zh": "缩放Y随机幅度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scaleZ": {
+        "label_zh": "缩放Z",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scaleZVariation": {
+        "label_zh": "缩放Z随机幅度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scaleMultiplier": {
+        "label_zh": "整体缩放倍率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "scaleMultiplierVariation": {
+        "label_zh": "整体缩放倍率随机幅度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "texCount": {
+        "label_zh": "贴图数量",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "meshPath": {
+        "label_zh": "网格文件路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "mdfPath": {
+        "label_zh": "材质文件路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeFixRandomGenerator": {
+      "useRandomSeedTableCount": {
+        "label_zh": "种子表使用次数",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "字段布局与姊妹项目 EFX-Editor（MHWI）的 RandomFix 逐字段同名同序（useRandomSeedTableCount + randomSeedTable0~7 + tableSelectionGroup，共10个字段），对方已用 22946 个官方语料块核实过语义；本项目用 EfxBridge fieldstats 对 29150 个 MHWS 实例复核过，取值分布同样是众数 1、范围 0~8 的小整数，与 MHWI 结论一致（MHWI 是次数计数器不严格 ≤8，MHWS 复核结果恰好没超过 8，暂未见反例）",
+        "tester": "user+assistant",
+        "date": "2026-09-10"
+      },
+      "randomSeedTable0": {
+        "label_zh": "随机种子表0",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "同 useRandomSeedTableCount；MHWS 语料复核显示这个槽位几乎不取 -1（几乎总是被使用），和 table1~7 default 为 -1（未用）的模式不同，与 MHWI 结论一致",
+        "tester": "user+assistant",
+        "date": "2026-09-10"
+      },
+      "randomSeedTable1": {
+        "label_zh": "随机种子表1",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "同 useRandomSeedTableCount；MHWS 语料复核 28687/29150 取 -1（未用槽位），非零时落在真随机 int32 种子的量级，与 MHWI 结论一致",
+        "tester": "user+assistant",
+        "date": "2026-09-10"
+      },
+      "randomSeedTable2": {
+        "label_zh": "随机种子表2",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "同 randomSeedTable1",
+        "tester": "user+assistant",
+        "date": "2026-09-10"
+      },
+      "randomSeedTable3": {
+        "label_zh": "随机种子表3",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "同 randomSeedTable1",
+        "tester": "user+assistant",
+        "date": "2026-09-10"
+      },
+      "randomSeedTable4": {
+        "label_zh": "随机种子表4",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "同 randomSeedTable1",
+        "tester": "user+assistant",
+        "date": "2026-09-10"
+      },
+      "randomSeedTable5": {
+        "label_zh": "随机种子表5",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "同 randomSeedTable1",
+        "tester": "user+assistant",
+        "date": "2026-09-10"
+      },
+      "randomSeedTable6": {
+        "label_zh": "随机种子表6",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "同 randomSeedTable1",
+        "tester": "user+assistant",
+        "date": "2026-09-10"
+      },
+      "randomSeedTable7": {
+        "label_zh": "随机种子表7",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "同 randomSeedTable1",
+        "tester": "user+assistant",
+        "date": "2026-09-10"
+      },
+      "tableSelectionGroup": {
+        "label_zh": "种子表选择组",
+        "tooltip_zh": "按位选择启用哪几个随机种子表槽位。",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "MHWI 侧穷举语料确认取值是 8 位掩码（bit i = 第 i 个种子表槽位，1/2/4/8/16/32/64/128/255 等 2 的幂/位组合）；MHWS 语料复核（29150 实例）里 -1 占绝大多数（29008），其余是 0/1/2/4 这种小整数——推测 MHWS 用 -1 当“未设置/不限制”哨兵值，跟 MHWI 显式掩码语义不完全一致，这个哨兵值差异是本项目复核新增的发现",
+        "bits": [
+          {
+            "mask": 255,
+            "label_zh": "种子表选择组",
+            "label_en": "Table Selection Group",
+            "items": [
+              [1, "表0", "Table 0"],
+              [2, "表1", "Table 1"],
+              [4, "表2", "Table 2"],
+              [8, "表3", "Table 3"],
+              [16, "表4", "Table 4"],
+              [32, "表5", "Table 5"],
+              [64, "表6", "Table 6"],
+              [128, "表7", "Table 7"]
+            ]
+          }
+        ],
+        "tester": "user+assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Basic.EFXAttributeSpawnExpression": {
+      "spawnNum": {
+        "label_zh": "生成数量（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + vendor BitNames 命名已足以说明作用；这是 Expression 子系统的赋值方式开关字段，不是数值本身。对应 Spawn.SpawnNum 的表达式版",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "spawnNumRange": {
+        "label_zh": "生成数量范围（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "intervalFrame": {
+        "label_zh": "生成间隔帧数（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "intervalFrameRange": {
+        "label_zh": "生成间隔帧数范围（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "emitterDelayFrame": {
+        "label_zh": "发射器延迟帧数（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "emitterDelayFrameRange": {
+        "label_zh": "发射器延迟帧数范围（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "speed": {
+        "label_zh": "速度（表达式赋值方式）",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Basic.EFXAttributeUVSequenceModifier": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "PlaySpeedInit": {
+        "label_zh": "初始播放速度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "PlaySpeedFinal": {
+        "label_zh": "最终播放速度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "PlaySpeedChangeTimeCoef": {
+        "label_zh": "播放速度变化耗时系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeNoDraw": {
+      "Flags": {
+        "label_zh": "标志位",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Color": {
+        "label_zh": "颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorRange": {
+        "label_zh": "颜色随机范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationOrder": {
+        "label_zh": "旋转轴顺序",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名 + 枚举类型 RotationOrder 已足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Rotation": {
+        "label_zh": "旋转",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationRandom": {
+        "label_zh": "旋转随机幅度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Size": {
+        "label_zh": "大小",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "SizeRandom": {
+        "label_zh": "大小随机幅度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeLayout": {
+      "flags1": {
+        "label_zh": "标志位1",
+        "confidence": "guess",
+        "evidence": "字段名直译；vendor 源码本身标了 \"not 100% on the flag bits but most Wilds files seem to work with this\"，位含义不完全确定",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "flags2": {
+        "label_zh": "标志位2",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未拆解具体位含义",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "layoutName": {
+        "label_zh": "布局名称",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译。这个结构体是已知解析缺口（KNOWN_UPSTREAM_ISSUES.md 记过约 13.3% 语料解析失败），后面的 layoutDataFloats 是未解码的裸字节数组，没有内部结构可标",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeEmitMask": {
+      "mask": {
+        "label_zh": "遮罩",
+        "confidence": "guess",
+        "evidence": "字段名本身几乎只是重复了结构体名 EmitMask，没有更多信息；具体是按位遮罩还是数值阈值未知",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
     }
   }
 }
