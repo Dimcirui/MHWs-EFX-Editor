@@ -283,6 +283,39 @@ class EFX_RE_OT_attribute_add(Operator):
         return {"FINISHED"}
 
 
+class EFX_RE_OT_attribute_add_search(Operator):
+    """按名字模糊搜索 attribute 类型并直接新增，不用先猜它归在哪个分类。
+
+    ~150+ 种类型分类浏览效率太低——这里走 Blender 原生的
+    `WindowManager.invoke_search_popup()`（键盘打字模糊过滤，官方文档"Enum Search Popup"
+    那个标准写法），条目用 `attribute_types.all_enum_items()`（不受分类下拉过滤，覆盖全部
+    类型）。选中之后不重复一遍新增逻辑，直接转调 `efx_re.attribute_add`，同一份
+    `add_attribute()` 只写一次。"""
+
+    bl_idname = "efx_re.attribute_add_search"
+    bl_label = "Search Attribute Type"
+    bl_description = "按名字模糊搜索 attribute 类型，选中即新增"
+    bl_options = {"REGISTER", "UNDO"}
+    bl_property = "attr_type"
+
+    attr_type: EnumProperty(
+        name="Type",
+        description="要新增的 attribute 类型",
+        items=attribute_types.all_enum_items,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return _resolve_attribute_parent(context) is not None
+
+    def invoke(self, context, event):
+        context.window_manager.invoke_search_popup(self)
+        return {"RUNNING_MODAL"}
+
+    def execute(self, context):
+        return bpy.ops.efx_re.attribute_add(attr_type=self.attr_type)
+
+
 class EFX_RE_OT_delete(Operator):
     """删除当前选中的 Entry / Action / Attribute（连同它的子对象）"""
 
@@ -356,6 +389,7 @@ _CLASSES = (
     EFX_RE_OT_entry_add,
     EFX_RE_OT_action_add,
     EFX_RE_OT_attribute_add,
+    EFX_RE_OT_attribute_add_search,
     EFX_RE_OT_delete,
 )
 

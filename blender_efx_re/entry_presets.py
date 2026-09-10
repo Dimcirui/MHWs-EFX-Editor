@@ -159,6 +159,37 @@ class EFX_RE_OT_entry_preset_new(Operator):
         return {"FINISHED"}
 
 
+class EFX_RE_OT_entry_preset_new_search(Operator):
+    """按名字模糊搜索 Entry 预设并直接新建，同 `structure_ops.EFX_RE_OT_attribute_add_search`
+    的做法（Blender 原生 `invoke_search_popup`）。预设列表现在只有内置的 `Basic` + 用户自己攒的
+    几个，暂时不算多，但会随用户攒预设一直涨，跟 attribute 那边一样提前给个搜索入口，不用等
+    列表长到不好用了再回来补。
+
+    选中之后不重复"内置 vs 用户预设"的分支逻辑，直接把选中的名字写回
+    `WindowManager.efx_re_entry_preset`（`efx_re.entry_preset_new` 读的就是这个），再转调它。
+    """
+
+    bl_idname = "efx_re.entry_preset_new_search"
+    bl_label = "Search Entry Preset"
+    bl_description = "按名字模糊搜索 Entry 预设，选中即新建"
+    bl_options = {"REGISTER", "UNDO"}
+    bl_property = "preset_name"
+
+    preset_name: EnumProperty(name="Preset", items=_preset_items)
+
+    @classmethod
+    def poll(cls, context):
+        return io_tree.resolve_root(context) is not None
+
+    def invoke(self, context, event):
+        context.window_manager.invoke_search_popup(self)
+        return {"RUNNING_MODAL"}
+
+    def execute(self, context):
+        context.window_manager.efx_re_entry_preset = self.preset_name
+        return bpy.ops.efx_re.entry_preset_new()
+
+
 class EFX_RE_OT_entry_preset_delete(Operator):
     """删除 `WindowManager.efx_re_entry_preset` 选中的预设。内置的 `BUILTIN_NAME` 不在
     `poll()` 允许的范围内——它不是用户存进 JSON 文件的东西，没有"删除"这个操作可谈。"""
@@ -181,7 +212,10 @@ class EFX_RE_OT_entry_preset_delete(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (EFX_RE_OT_entry_preset_save, EFX_RE_OT_entry_preset_new, EFX_RE_OT_entry_preset_delete)
+_CLASSES = (
+    EFX_RE_OT_entry_preset_save, EFX_RE_OT_entry_preset_new,
+    EFX_RE_OT_entry_preset_new_search, EFX_RE_OT_entry_preset_delete,
+)
 
 
 def register():

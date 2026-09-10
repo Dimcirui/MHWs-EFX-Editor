@@ -155,9 +155,7 @@ def invalidate_labels() -> None:
     _category_items_cache = None
 
 
-def enum_items(self, context):
-    """类型下拉的条目，按当前选中的分类过滤。条目形如 (name, "显示名", "tooltip")。"""
-    category = getattr(context.window_manager, "efx_re_attr_category", "ALL") if context else "ALL"
+def _cached_enum_items(category: str) -> list:
     cached = _enum_items_cache.get(category)
     if cached is None:
         # 这里不查 semantics 的中文名：items 回调在 draw 期间跑，而语言可以随时切换，
@@ -171,3 +169,17 @@ def enum_items(self, context):
             cached = [("", "（该分类下没有可新建的类型）", "")]
         _enum_items_cache[category] = cached
     return cached
+
+
+def enum_items(self, context):
+    """类型下拉的条目，按当前选中的分类过滤。条目形如 (name, "显示名", "tooltip")。"""
+    category = getattr(context.window_manager, "efx_re_attr_category", "ALL") if context else "ALL"
+    return _cached_enum_items(category)
+
+
+def all_enum_items(self, context):
+    """全部可新建类型的下拉条目，不看当前选中的分类——搜索弹窗
+    （`efx_re.attribute_add_search`，见 structure_ops.py）要覆盖全部 ~150+ 种类型，不能被
+    "浏览场景当前选中哪个分类"这个过滤状态限制住，不然用户得先猜对分类才能搜到，等于没解决
+    "类型太多找不到"这个问题。"""
+    return _cached_enum_items("ALL")

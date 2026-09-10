@@ -74,6 +74,38 @@ def _ensure_uvs_version_suffix(filepath: str, data: dict) -> tuple[str, str | No
     ), True
 
 
+class EFX_UVS_OT_new(Operator):
+    """新建一个空白 EFX_UVS 集合，不经过 EfxBridge/文件系统。
+
+    `uvs_io.build_uvs_root()` 本来就是"按 dict 里有什么建什么"（`textures`/`sequences` 都是
+    `data.get(key, []) or []`），传一个空 dict 就会退化成"贴图表和 sequence 表都是空的"——不需要
+    为"新建"另写一套。2026-09-10 验证过：手写的空 payload（`{"fileVersion":8,"header":
+    {"attributes":0},"textures":[],"sequences":[]}`）过 EfxBridge 的 uvsload 后能稳定二次往返
+    （bytes1==bytes2），没有类似 EFX `dimensionType` 那种"默认值是错的"隐性字段——`.uvs` 语料
+    里没有真正全空的样本能逐字节比对，退回项目本身的稳定性判据（规则 #9）。"""
+
+    bl_idname = "efx_uvs.new"
+    bl_label = "New UVS"
+    bl_description = "新建一个空白 UVS，用 Add Texture / Add Sequence 继续填内容"
+    bl_options = {"REGISTER", "UNDO"}
+
+    root_name: StringProperty(name="Name", default="NewUVS")
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        self.layout.prop(self, "root_name")
+
+    def execute(self, context):
+        name = self.root_name.strip() or "NewUVS"
+        root_col = uvs_io.build_uvs_root({}, context.scene.collection, name)
+        # 同 EFX_RE_OT_new：没有 Export 该沿用的原始文件名，留空给 ExportHelper 自己兜底。
+        context.scene.efx_uvs_active_root = root_col
+        self.report({"INFO"}, f"已新建空白 UVS '{root_col.name}'")
+        return {"FINISHED"}
+
+
 class EFX_UVS_OT_import(Operator, ImportHelper):
     """通过 EfxBridge 读取一个或多个 .uvs 文件，建成 EFX_UVS 集合。"""
 
@@ -437,7 +469,7 @@ class EFX_UVS_OT_pattern_cutout_apply_to_sequence(Operator):
 
 
 _CLASSES = (
-    EFX_UVS_OT_import, EFX_UVS_FH_import, EFX_UVS_OT_export,
+    EFX_UVS_OT_new, EFX_UVS_OT_import, EFX_UVS_FH_import, EFX_UVS_OT_export,
     EFX_UVS_OT_texture_add, EFX_UVS_OT_texture_remove,
     EFX_UVS_OT_sequence_add, EFX_UVS_OT_sequence_remove,
     EFX_UVS_OT_pattern_add, EFX_UVS_OT_pattern_remove, EFX_UVS_OT_pattern_generate_grid,

@@ -137,6 +137,10 @@ if (args.Length >= 1 && args[0] == "fieldstatsbatch")
 {
     return RunFieldStatsBatch(args);
 }
+if (args.Length >= 1 && args[0] == "attrindex")
+{
+    return RunAttrIndex(args);
+}
 
 if (args.Length < 2 || args[0] != "roundtrip")
 {
@@ -1081,6 +1085,98 @@ static int RunFieldStatsBatch(string[] args)
     };
     File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true }));
     Console.WriteLine($"OK: {wanted.Count} 种类型（扫描 {scanned}/{files.Count} 个文件，失败 {failed}）-> {jsonOutPath}");
+    return 0;
+}
+
+// attrindex 子命令：在整个语料上建一份 "attribute 类型 -> 出现过它的文件列表" 反查索引，
+// 给 Blender 那边的资产库面板用（"设定语料路径 -> 挑一个 attr 类型 -> 列出命中文件 -> 直接
+// 导入"）。只做文件级命中，不记录具体是哪个 entry/第几个实例——用途是"找一个带这个 attr 的
+// 参考文件"，不是"精确定位"。
+//
+// 和 fieldstats/fieldstatsbatch 的关键区别：那两个只统计跨语料的聚合值（取值分布、实例数），
+// 从不记录"这个实例来自哪个文件"；这里反过来，每种类型只需要知道"文件命中过没有"，不需要
+// 字段级直方图，所以不走 Tally/Bump 那一套，只用 HashSet 去重。
+//
+//   attrindex <语料目录> <json 输出路径>
+static int RunAttrIndex(string[] args)
+{
+    if (args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> attrindex <语料目录> <json 输出路径>");
+        return 1;
+    }
+    var dir = args[1];
+    var jsonOutPath = args[2];
+
+    if (!Directory.Exists(dir))
+    {
+        Console.WriteLine($"目录不存在: {dir}");
+        return 1;
+    }
+
+    var files = Directory.EnumerateFiles(dir, "*.efx.*", SearchOption.AllDirectories).ToList();
+    // key 用 attr.type.ToString()（EfxAttributeType 枚举名），和 `types` 子命令输出的
+    // `name` 字段、`attribute_types.py` 里 readable_types() 的 "name" 是同一个字符串——
+    // Blender 侧用这个反查回类目/可读性目录才对得上号。
+    var hits = new Dictionary<string, HashSet<string>>();
+
+    void Visit(EFXEntryBase container, HashSet<string> touched)
+    {
+        foreach (var attr in container.Attributes)
+        {
+            touched.Add(attr.type.ToString());
+            if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
+            {
+                foreach (var e in pe.efxrData.Entries) Visit(e, touched);
+                foreach (var a in pe.efxrData.Actions) Visit(a, touched);
+            }
+        }
+    }
+
+    int scanned = 0, failed = 0;
+    foreach (var path in files)
+    {
+        try
+        {
+            var efx = new EfxFile(new FileHandler(path));
+            efx.Read();
+            scanned++;
+
+            // 一个文件里同一类型可能出现好几次，只需要记一次"这个文件命中过"——先收集到
+            // 一个临时集合里，再统一写回 hits，避免同一文件在 hits[type] 里被 Add 好几遍
+            // （HashSet.Add 本身就去重，这里只是省一次重复的字典查找，不影响正确性）。
+            var touched = new HashSet<string>();
+            foreach (var e in efx.Entries) Visit(e, touched);
+            foreach (var a in efx.Actions) Visit(a, touched);
+
+            if (touched.Count > 0)
+            {
+                var relPath = Path.GetRelativePath(dir, path).Replace('\\', '/');
+                foreach (var typeName in touched)
+                {
+                    if (!hits.TryGetValue(typeName, out var set))
+                        hits[typeName] = set = new HashSet<string>();
+                    set.Add(relPath);
+                }
+            }
+        }
+        catch (Exception)
+        {
+            failed++;  // 语料里本来就有一批读不了的，见 KNOWN_UPSTREAM_ISSUES，跳过不中断整批
+        }
+    }
+
+    var payload = new
+    {
+        corpusRoot = dir,
+        filesTotal = files.Count,
+        filesScanned = scanned,
+        filesFailed = failed,
+        types = hits.OrderBy(kv => kv.Key)
+            .ToDictionary(kv => kv.Key, kv => kv.Value.OrderBy(p => p, StringComparer.Ordinal).ToList()),
+    };
+    File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine($"OK: {hits.Count} 种类型（扫描 {scanned}/{files.Count} 个文件，失败 {failed}）-> {jsonOutPath}");
     return 0;
 }
 

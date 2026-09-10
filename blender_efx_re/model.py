@@ -56,6 +56,16 @@ TYPE_ENTRY = "EFX_RE_ENTRY"
 TYPE_ACTION = "EFX_RE_ACTION"
 TYPE_ATTRIBUTE = "EFX_RE_ATTRIBUTE"
 
+# 新建空白 EFX 时 Header 需要的两个字段。只有这两个——2026-09-10 拿语料里最小的真实空文件
+# （11_evc0023_50_039.efx.5571972，56 字节，Entries/Actions/... 全空）跟纯手写的裸 JSON 逐字节
+# 比对过：Version 之外，`dimensionType` 不会被 C# 侧 `UpdateHeaderData()` 重算（entryCount 等
+# 计数字段会），C# 默认值是 0，但 MHWs 语料恒为 1，漏填不会报错、会静默产出语义错误的文件
+# （vendor 注释：`1 = 3D, 0 = 2D`）。别的 Header 字段全部由 DoWrite() 按内容重算，不需要在这里
+# 补。见 vendor/RE-Engine-Lib/REE-Lib/OtherFiles/EfxFile.cs `EfxHeader.dimensionType` 声明处的
+# 原始注释。
+MHWILDS_EFX_VERSION = 5571972  # = vendor EfxVersion.MHWilds
+MHWILDS_EFX_DIMENSION_TYPE = 1
+
 
 def short_attr_name(attr_type: str) -> str:
     """`ReeLib.Efx.Structs.Main.EFXAttributeUnitCulling` -> `UnitCulling`（纯展示用，不影响
@@ -274,6 +284,25 @@ def _set_rgba_color(self, value) -> None:
         child.int_value = raw
 
 
+def _promote_null_to_string(self, context) -> None:
+    """`string_value` 的 `update` 回调：`data_type == "NULL"` 的节点被用户往里面打字，就地
+    转正成 `STRING`。
+
+    2026-09-10 实机发现：`bridge.new_attribute()`/`new_entry()` 吐出来的空白 attribute，
+    C# 侧 `string?` 字段的默认值是 `null`（不是 `""`），JSON 里对应字面 `null`，
+    `populate_node()` 建出来的节点是 `data_type == "NULL"`——而 `panels.py::_draw_scalar_prop()`
+    对 NULL 节点只画一行 `label(text="null")`，没有任何控件，用户没法把新建的
+    `UVSequence.UVSPath` 这类路径字段填上任何值。扫过 vendor 全部 EFX attribute 类源码：
+    可空字段只有 `string?` 一种（没有 `int?`/`float?`/`bool?`），所以"NULL 节点等于一个还没
+    填的字符串"这个假设覆盖了全部已知情形，不是针对某个字段名的特判。
+
+    只处理"转正"，不处理反向（清空文本框不会退回 NULL）——`??=  ""` 那种 C# 写出侧本来就把
+    `null` 和 `""` 当同一回事（见 `_normalize_path_separators()` 头部说明的 `filePath` 先例），
+    保持 `STRING("")` 更简单，不需要再造一个"用户主动清空 vs 从没填过"的状态区分。"""
+    if self.data_type == "NULL":
+        self.data_type = "STRING"
+
+
 def _read_packed_int(node: "EFXValueNode") -> int:
     """INT/BIGINT 节点当前的无符号整数值。BIGINT 存在 `uint_str`（十进制字符串），INT 存在
     `int_value`（有符号）——统一换算成无符号读出，供 `enum_proxy` 和位域弹窗（bitfield.py）
@@ -370,7 +399,7 @@ class EFXValueNode(PropertyGroup):
     int_value: IntProperty(name="Value")
     uint_str: StringProperty(name="Value")
     bool_value: BoolProperty(name="Value")
-    string_value: StringProperty(name="Value")
+    string_value: StringProperty(name="Value", update=_promote_null_to_string)
     # children 在类体外挂（见下），因为类体内还不能引用 EFXValueNode 自己。
 
     # 只在这个节点是 via.Color 的序列化形状（见 _rgba_child）时才有意义，面板据此判断要不要

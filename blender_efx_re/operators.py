@@ -26,13 +26,14 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
 
 import bpy
 from bpy.props import BoolProperty, StringProperty
 from bpy.types import Operator
 from bpy_extras.io_utils import ExportHelper, ImportHelper
 
-from . import bridge, i18n, io_tree, transform3d_view
+from . import bridge, i18n, io_tree, model, transform3d_view
 
 _DIGITS_RE = re.compile(r"[0-9]+")
 
@@ -96,6 +97,47 @@ def _ensure_version_suffix(filepath: str, data: dict) -> tuple[str, str | None, 
         f"（`名字.efx.{header_version}`），主干里不能有别的点。请把 '{basename}' "
         "里多余的点去掉再导出。"
     ), True
+
+
+class EFX_RE_OT_new(Operator):
+    """新建一个空白 EFX_ROOT，不经过 EfxBridge/文件系统。
+
+    直接在 Python 侧拼一份验证过的最小 EfxFile dict，交给 `io_tree.build_root_from_efxfile()`
+    走它原有的导入路径（各字段都是 `.get(key, []) or []`，本来就能吃空数组，不需要为"新建"
+    另写一遍建树逻辑）。这份最小 dict 不是猜的——2026-09-10 拿语料里最小的真实空 `.efx`
+    （56 字节）跟纯手写 JSON 逐字节比对过，确认 `Header.Version` + `Header.dimensionType`
+    这两个字段之外不需要再补别的，见 `model.MHWILDS_EFX_DIMENSION_TYPE` 的说明。"""
+
+    bl_idname = "efx_re.new"
+    bl_label = "New EFX"
+    bl_description = "新建一个空白 EFX，用 Add Entry / Add Action 继续填内容"
+    bl_options = {"REGISTER", "UNDO"}
+
+    root_name: StringProperty(name="Name", default="NewEFX")
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        self.layout.prop(self, "root_name")
+
+    def execute(self, context):
+        name = self.root_name.strip() or "NewEFX"
+        blank = {
+            "Header": {
+                "Version": model.MHWILDS_EFX_VERSION,
+                "dimensionType": model.MHWILDS_EFX_DIMENSION_TYPE,
+            },
+            "Entries": [], "Actions": [], "Bones": [], "BoneRelations": [],
+            "ExpressionParameters": [], "FieldParameterValues": [],
+            "EffectGroups": [], "UvarGroups": [],
+        }
+        root_col = io_tree.build_root_from_efxfile(blank, context.scene.collection, name)
+        # 没有 Export 该沿用哪个原始文件名这回事（从没导入过），留空——
+        # ExportHelper.invoke() 自己会兜底成 blend 文件名 + filename_ext。
+        context.scene.efx_re_active_root = root_col
+        self.report({"INFO"}, f"已新建空白 EFX '{root_col.name}'")
+        return {"FINISHED"}
 
 
 class EFX_RE_OT_import(Operator, ImportHelper):
@@ -276,10 +318,40 @@ class EFX_RE_OT_export(Operator, ExportHelper):
             self.report({"ERROR"}, notice)
             return {"CANCELLED"}
 
+        # 写完立刻原样读一遍，读不回来就拒绝导出——不能只看 load 的退出码：语料里约 13.3%
+        # 的文件带 Layout attribute（KNOWN_UPSTREAM_ISSUES.md #1），vendor 的 bug 实际触发点
+        # 是"重新解析自己刚写出的字节"，不是原始文件的 Read 本身，所以 load 对这些文件退出码
+        # 是 0（"成功"），却写出一个字节数不同、读不回来的坏文件，界面上完全看不出来——铁律 2
+        # 明确不允许这种静默丢数据。校验路径必须落在跟 out_path 同名的临时文件上（放在
+        # 目标同目录的临时子目录里），不能随便拼后缀：版本号是从**文件名**解析的
+        # （FileHandler.FileVersion，见本文件头部说明），拼后缀会把 dump_efx() 的校验本身搞错。
+        export_dir = os.path.dirname(os.path.abspath(out_path)) or "."
+        if not os.path.isdir(export_dir):
+            self.report({"ERROR"}, f"目标目录不存在：{export_dir}")
+            return {"CANCELLED"}
+
         try:
-            bridge.load_efx(data, out_path)
-        except bridge.BridgeError as ex:
-            self.report({"ERROR"}, f"EfxBridge load 失败，拒绝导出：\n{ex}")
+            with tempfile.TemporaryDirectory(prefix="mhws_efx_export_", dir=export_dir) as tmpdir:
+                tmp_path = os.path.join(tmpdir, os.path.basename(out_path))
+                try:
+                    bridge.load_efx(data, tmp_path)
+                except bridge.BridgeError as ex:
+                    self.report({"ERROR"}, f"EfxBridge load 失败，拒绝导出：\n{ex}")
+                    return {"CANCELLED"}
+
+                try:
+                    bridge.dump_efx(tmp_path)
+                except bridge.BridgeError as ex:
+                    self.report(
+                        {"ERROR"},
+                        f"写出的文件读不回来，已拒绝导出（vendor 已知缺陷，见 "
+                        f"KNOWN_UPSTREAM_ISSUES.md #1）：\n{ex}",
+                    )
+                    return {"CANCELLED"}
+
+                os.replace(tmp_path, out_path)  # 校验通过才原子替换到真正的目标路径
+        except OSError as ex:
+            self.report({"ERROR"}, f"导出目录不可写，拒绝导出：{ex}")
             return {"CANCELLED"}
 
         if notice is not None:
@@ -324,7 +396,7 @@ class EFX_RE_OT_validate(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (EFX_RE_OT_import, EFX_RE_FH_import, EFX_RE_OT_export, EFX_RE_OT_validate)
+_CLASSES = (EFX_RE_OT_new, EFX_RE_OT_import, EFX_RE_FH_import, EFX_RE_OT_export, EFX_RE_OT_validate)
 
 
 def register():

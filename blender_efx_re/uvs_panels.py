@@ -78,6 +78,8 @@ class EFX_UVS_PT_main(Panel):
         i18n.draw_language_toggle(layout)
         layout.separator(factor=0.5)
 
+        layout.operator("efx_uvs.new", text=T("uvs.new"), icon="FILE_NEW", translate=False)
+
         row = layout.row(align=True)
         row.operator("efx_uvs.import", text=T("uvs.import"), icon="IMPORT", translate=False)
         row.operator("efx_uvs.export", text=T("uvs.export"), icon="EXPORT", translate=False)

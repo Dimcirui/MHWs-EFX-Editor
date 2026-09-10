@@ -108,6 +108,7 @@ class EFX_RE_OT_set_language(Operator):
 
 _STRINGS: dict[str, dict[str, str]] = {
     # 主面板
+    "main.new":                {"EN": "New EFX",             "ZH": "新建 EFX"},
     "main.import":            {"EN": "Import EFX",          "ZH": "导入 EFX"},
     "main.export":            {"EN": "Export EFX",          "ZH": "导出 EFX"},
     "main.active_efx":        {"EN": "Active EFX",          "ZH": "当前 EFX"},
@@ -148,6 +149,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     # Add（新增结构）
     "add.action":             {"EN": "Add Action",          "ZH": "新增 Action"},
     "add.attribute":          {"EN": "Add Attribute",       "ZH": "新增 Attribute"},
+    "add.search_attribute":   {"EN": "Search Attribute Type", "ZH": "搜索 Attribute 类型"},
     "add.category":           {"EN": "Category",            "ZH": "分类"},
     "add.target_prefix":      {"EN": "Add to: ",            "ZH": "加到："},
     "add.no_target":          {"EN": "(select an Entry or Action)",
@@ -157,6 +159,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "add.no_types_in_category": {"EN": "(no addable types in this category)",
                                "ZH": "（该分类下没有可新建的类型）"},
     "add.entry_from_preset":  {"EN": "New Entry from Preset", "ZH": "从预设新建 Entry"},
+    "add.search_entry_preset": {"EN": "Search Entry Preset", "ZH": "搜索 Entry 预设"},
     "add.save_entry_preset":  {"EN": "Save Entry as Preset",  "ZH": "另存为预设"},
     "add.save_preset_no_target": {"EN": "(select an Entry first)",
                                "ZH": "（先选中一个 Entry）"},
@@ -202,6 +205,7 @@ _STRINGS: dict[str, dict[str, str]] = {
                                "ZH": "没有当前 EFX——先导入一个文件，或在「当前 EFX」里选一个。"},
 
     # MHWilds UVS 标签页
+    "uvs.new":                 {"EN": "New UVS",             "ZH": "新建 UVS"},
     "uvs.import":             {"EN": "Import UVS",          "ZH": "导入 UVS"},
     "uvs.export":              {"EN": "Export UVS",          "ZH": "导出 UVS"},
     "uvs.active_uvs":          {"EN": "Active UVS",          "ZH": "当前 UVS"},
@@ -223,6 +227,26 @@ _STRINGS: dict[str, dict[str, str]] = {
     "uvs.sequences":           {"EN": "Sequences",           "ZH": "Sequence 列表"},
     "uvs.textures":            {"EN": "Textures",            "ZH": "贴图列表"},
     "uvs.flags":               {"EN": "Flags",               "ZH": "标志位"},
+
+    # Asset Browser（attribute 反查资产库）
+    "asset.corpus_dir":       {"EN": "EFX Root Directory",  "ZH": "EFX 根目录"},
+    "asset.rebuild_index":    {"EN": "Rebuild Index",       "ZH": "重建索引"},
+    "asset.not_built":        {"EN": "(index not built — set an EFX root directory and rebuild)",
+                               "ZH": "（索引尚未建立——设置 EFX 根目录后点重建）"},
+    "asset.stats_prefix":     {"EN": "Indexed: ",           "ZH": "已索引："},
+    "asset.types_suffix":     {"EN": "types",               "ZH": "种类型"},
+    "asset.pick_type":        {"EN": "Pick Type",           "ZH": "选择类型"},
+    "asset.no_type_selected": {"EN": "(no type selected)",  "ZH": "（未选择类型）"},
+    "asset.no_types_in_category": {"EN": "(no indexed types in this category)",
+                               "ZH": "（该分类下没有已索引的类型）"},
+    "asset.no_matches":       {"EN": "(no files contain this type)",
+                               "ZH": "（没有文件包含这个类型）"},
+    "asset.import_selected":  {"EN": "Import Selected",     "ZH": "导入选中项"},
+
+    # File > Import / Export 菜单（file_menu.py）
+    "filemenu.efx":      {"EN": "MHWs Effect (.efx)",             "ZH": "MHWs 特效 (.efx)"},
+    "filemenu.uvs":       {"EN": "MHWs UV Sequence (.uvs)",        "ZH": "MHWs UV 序列 (.uvs)"},
+    "filemenu.vecfield":  {"EN": "MHWs Vector Field (.tex)",       "ZH": "MHWs 向量场 (.tex)"},
 }
 
 

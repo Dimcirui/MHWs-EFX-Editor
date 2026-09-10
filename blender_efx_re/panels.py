@@ -150,6 +150,15 @@ def _draw_scalar_prop(layout, node, text: str = "", prop_name: str | None = None
     `prop_name` 显式指定要绑定的属性名，覆盖按 `data_type` 推算的默认值——目前只有"角度显示"
     开关命中时会传 `"degrees_value"`（画弧度制角度字段的 X/Y/Z 分量），见 `draw_node()` 的
     XYZ 分支。"""
+    if node.data_type == "NULL":
+        # NULL 不是"没法编辑"，是"还没被填过的字符串"——vendor 里可空字段只有 `string?`
+        # 这一种（没有 int?/float?/bool?，见 model._promote_null_to_string() 的说明），画一个
+        # 正常的文本框绑定 string_value；用户一打字，`_promote_null_to_string()` 这个 update
+        # 回调就把 data_type 转成 STRING，之后就是普通字符串字段。新建的 attribute 常常整批
+        # 都是这种状态（`bridge.new_attribute()` 的 C# 默认值），不给控件的话用户连
+        # UVSequence.UVSPath 这种必填路径都填不进去。
+        layout.prop(node, "string_value", text=text)
+        return
     attr = prop_name or _SCALAR_PROP_ATTR.get(node.data_type)
     if attr is None:
         layout.label(text="null", translate=False)
@@ -1183,6 +1192,8 @@ class EFX_RE_PT_main(Panel):
         i18n.draw_language_toggle(layout)
         layout.separator(factor=0.5)
 
+        layout.operator("efx_re.new", text=T("main.new"), icon="FILE_NEW", translate=False)
+
         row = layout.row(align=True)
         row.operator("efx_re.import", text=T("main.import"), icon="IMPORT", translate=False)
         row.operator("efx_re.export", text=T("main.export"), icon="EXPORT", translate=False)
@@ -1256,6 +1267,11 @@ def _draw_add_entry_tab(layout, context) -> None:
     下拉框 + 独立 Add 按钮的两步流程，不是点了就立刻建）。"""
     wm = context.window_manager
 
+    layout.operator(
+        "efx_re.entry_preset_new_search", text=T("add.search_entry_preset"),
+        icon="VIEWZOOM", translate=False,
+    )
+
     row = layout.row(align=True)
     row.prop(wm, "efx_re_entry_preset", text="")
     row.operator("efx_re.entry_preset_delete", text="", icon="REMOVE")
@@ -1295,6 +1311,11 @@ def _draw_add_attribute_tab(layout, context) -> None:
         row.label(text=T("add.target_prefix") + T("add.no_target"), icon="INFO", translate=False)
     else:
         row.label(text=T("add.target_prefix") + target.name, icon="PLUS", translate=False)
+
+    layout.operator(
+        "efx_re.attribute_add_search", text=T("add.search_attribute"),
+        icon="VIEWZOOM", translate=False,
+    )
 
     wm = context.window_manager
     layout.prop(wm, "efx_re_attr_category", text=T("add.category"))

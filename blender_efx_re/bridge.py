@@ -174,3 +174,17 @@ def _run_json(*args: str) -> dict:
         _run(*args, str(json_path))
         with open(json_path, "r", encoding="utf-8") as f:
             return json.load(f)
+
+
+def build_attr_index(corpus_dir: str | Path, out_path: str | Path) -> dict:
+    """扫一遍语料目录，建一份"attribute 类型 -> 出现过它的文件（相对路径）列表"的反查索引。
+
+    跟 `_run_json()` 的临时目录模式不同：`out_path` 是调用方指定的持久化位置（资产库面板
+    要把这份索引存到 Blender 用户配置目录、下次启动接着用），不是用完即丢。这也是第一个
+    跑全语料批处理（而不是单文件 request/response）的 Python 调用点，语料上千个文件、耗时
+    以分钟计，不设超时（`_run()` 本来就没有 timeout 参数）——调用方（资产库的 Rebuild 算子）
+    自己负责给用户一个"正在扫描，请稍候"的等待反馈。
+    """
+    _run("attrindex", str(corpus_dir), str(out_path))
+    with open(out_path, "r", encoding="utf-8") as f:
+        return json.load(f)
