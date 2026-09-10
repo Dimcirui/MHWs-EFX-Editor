@@ -20,7 +20,7 @@ tools/EfxBridge（调用 vendor/RE-Engine-Lib），blender_efx_re/bridge.py 只�
 bl_info = {
     "name": "MHWs EFX Editor",
     "author": "Dimcirui",
-    "version": (0, 0, 1),
+    "version": (0, 1, 0),
     "blender": (4, 3, 0),
     "location": "View3D > Sidebar > Wilds EFX / MHWilds UVS",
     "description": "Import and export Monster Hunter Wilds EFX effect files and UVS texture atlases",

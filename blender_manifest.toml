@@ -5,7 +5,7 @@ type    = "add-on"
 
 name     = "MHWs EFX Editor"
 tagline  = "Import and export Monster Hunter Wilds EFX effect files"
-version  = "0.0.1"
+version  = "0.1.0"
 
 maintainer = "Dimcirui"
 
@@ -15,8 +15,42 @@ license = ["SPDX:GPL-3.0-or-later"]
 
 tags = ["Import-Export"]
 
-# 打包正式扩展时需要把 blender_efx_re/ 放入包根目录，并在 [build] 声明；
-# 开发期本地安装（Blender 扩展系统 "Install from Disk" 指向仓库根目录）可省略。
+# 打包正式扩展：只收 Python 插件本体 + 编译好的 EfxBridge 运行时产物（含依赖 dll），不带
+# vendor/RE-Engine-Lib 源码、tools/ 下的分析脚本、docs/、PLAN.md 这些开发期文件。
 #
-# [build]
-# paths = ["blender_efx_re/"]
+# 用 paths_exclude_pattern（黑名单）而不是 paths（白名单）：`paths` 只认字面量文件路径，
+# 目录条目不会展开递归（实测 Blender 5.1 的 bl_pkg 打包器行为，见其
+# `blender_ext.py::build_paths_expand_iter()`——只有完全不写 [build] 或者只用
+# paths_exclude_pattern 时才会 `scandir_recursive()` 展开），手动枚举 blender_efx_re/
+# 下每个 .py 文件不现实。两者二选一，不能同时声明。
+#
+# tools/EfxBridge/bin/Debug/net8.0/ 那个路径必须和 bridge.py::_ADDON_ROOT 拼出来的相对路径
+# 完全一致，改了目录结构（比如切到 Release 配置）要同步改这里，也要同步改 bridge.py。
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    ".*",
+    "*.blend[1-9]",
+    "Thumbs.db",
+    "*.user",
+    "vendor/",
+    "docs/",
+    "dist/",
+    # 诊断用游戏资产（Capcom 原始 EFX，不可分发）——照抄 .gitignore 里同一条禁令，这里必须
+    # 单独重复一遍：打包器扫的是物理磁盘，不看 .gitignore，漏了这条会把版权文件塞进发行包。
+    "diag/",
+    "diag2/",
+    "*.efx",
+    "*.efx.*",
+    "ATTRIBUTE_TYPES.md",
+    "CLAUDE.md",
+    "KNOWN_UPSTREAM_ISSUES.md",
+    "PLAN.md",
+    "README.md",
+    "tools/*.py",
+    "tools/*.json",
+    "tools/*.csv",
+    "tools/EfxBridge/*.cs",
+    "tools/EfxBridge/*.csproj",
+    "tools/EfxBridge/obj/",
+]
