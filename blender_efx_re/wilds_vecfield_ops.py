@@ -17,6 +17,7 @@ from bpy.props import (StringProperty,
                        FloatProperty,
                        IntProperty,
                        IntVectorProperty,
+                       FloatVectorProperty,
                        EnumProperty,
                        PointerProperty,
                        CollectionProperty)
@@ -33,6 +34,35 @@ from .wilds_vecfield_io import (
     WildsTexError,
     VERSION_MHWILDS,
 )
+from . import wilds_vecfield_field_generators as field_generators
+
+
+def _set_bsdf_transmission(bsdf, value):
+    """Blender 4.0 把 Principled BSDF 的 'Transmission' 输入改名成了
+    'Transmission Weight'；两个名字都探测一下，避免在新版本上 KeyError。"""
+    if bsdf is None:
+        return
+    for key in ('Transmission Weight', 'Transmission'):
+        if key in bsdf.inputs:
+            try:
+                bsdf.inputs[key].default_value = value
+            except Exception:
+                pass
+            return
+
+
+def _safe_set_render_type(settings, preferred='HALO'):
+    """粒子 render_type 在不同 Blender 版本可选值不同；探测后再设，避免报错。"""
+    try:
+        prop = settings.bl_rna.properties['render_type']
+        allowed = [e.identifier for e in prop.enum_items]
+        for cand in (preferred, 'OBJECT', 'LINE', 'PATH', 'NONE'):
+            if cand in allowed:
+                settings.render_type = cand
+                return cand
+    except Exception:
+        pass
+    return None
 
 # ===== 属性组和操作符 =====
 class WildsVecFieldProperties(PropertyGroup):
@@ -807,7 +837,7 @@ def create_simple_visualization(context):
     bsdf = nodes.get("Principled BSDF")
     if bsdf:
         bsdf.inputs['Base Color'].default_value = (0.3, 0.3, 0.3, 0.2)
-        bsdf.inputs['Transmission'].default_value = 0.5
+        _set_bsdf_transmission(bsdf, 0.5)
     cube.data.materials.append(mat)
 
 # 清除场数据操作符
@@ -1668,7 +1698,7 @@ class WILDS_VF_OT_particle_system(Operator):
             bsdf = nodes.get("Principled BSDF")
             if bsdf:
                 bsdf.inputs['Base Color'].default_value = (0.3, 0.3, 0.3, 0.1)
-                bsdf.inputs['Transmission'].default_value = 0.8
+                _set_bsdf_transmission(bsdf, 0.8)
             bounds.data.materials.append(mat)
             
             # 移动到集合
@@ -1698,8 +1728,8 @@ class WILDS_VF_OT_particle_system(Operator):
             settings.lifetime = self.particle_lifetime
             settings.lifetime_random = 0.2
             
-            # 使用更简单的渲染类型，提高性能
-            settings.render_type = 'HALO'  # 使用Blender 5.0支持的渲染类型
+            # 使用更简单的渲染类型，提高性能；探测式设置，避免不同 Blender 版本枚举值不一致报错
+            _safe_set_render_type(settings, preferred='HALO')
             settings.particle_size = self.particle_size * 0.8  # 适当减小粒子大小，提高性能
             
             # 优化粒子物理设置，确保更好地响应湍流场力场
@@ -2727,14 +2757,242 @@ class VIEW3D_PT_wilds_vecfield_tools(Panel):
             row.operator("wilds_vecfield.clear_field", text="Clear Field", icon='TRASH')
             row.operator("wilds_vecfield.clear_all_objects", text="Clear All Objects", icon='X')
 
+# 公式生成向量场（移植自 blender_tfa_importer 优化版原型的 field_generators 一套）
+class WildsVecFieldGenProps(PropertyGroup):
+    """公式生成的参数，独立挂在 scene.wilds_vecfield_gen，不干扰 wilds_vecfield_props。"""
+    dim: IntProperty(name="维度 N", default=16, min=4, max=256,
+                     description="立方体边长。必须是 4 的倍数（BC1 按 4x4 像素分块）；语料实测出现过 32/64")
+    field_type: EnumProperty(
+        name="场类型",
+        items=[
+            ('UNIFORM',    "均匀风",      "整个空间朝同一方向吹"),
+            ('VORTEX',     "漩涡/龙卷",   "绕某个轴旋转"),
+            ('RADIAL',     "径向爆发",    "从中心向外(或向内)"),
+            ('CURLNOISE',  "旋度噪声",    "无散度湍流，最像烟雾，粒子不堆积"),
+            ('TURBULENCE', "通用湍流",    "多层噪声，较乱，像官方 turbulance"),
+            ('CURVE',      "沿预设轨迹",  "沿内置轨迹(直线/圆环/螺旋/8字...)流动"),
+            ('SEL_CURVE',  "沿选中曲线",  "沿你在场景里选中的 Blender 曲线流动"),
+            ('BREATHING',  "呼吸径向",    "径向球壳场;配合往复驱动做推出去/吸回来"),
+            ('SWIRL_CONFINED', "波浪紊流", "旋度噪声+回拉;粒子乱飘又被拉回(刀鞘效果)"),
+        ],
+        default='VORTEX')
+    pull: FloatProperty(name="回拉强度", default=0.4, min=0.0, max=1.5,
+                        description="波浪紊流里把飘远粒子拉回来的力;越大越聚拢")
+    shell: FloatProperty(name="球壳半径", default=0.45, min=0.05, max=1.0,
+                         description="呼吸径向场里力最强的半径位置")
+
+    # 这三个后处理开关搬自 .tfa 管线的游戏实机校准；数学上对任何容器格式都适用，
+    # 但 "game_correct_x" 具体这个坐标修正只在 .tfa 消费路径上验证过，本仓写的是原生
+    # .tex（大概率是不同的消费路径），默认关闭，需要用户自己判断要不要开。
+    game_correct_x: BoolProperty(name="校正X轴(仅 .tfa 验证过)", default=False,
+                                 description="镜像位置X轴。这是针对 .tfa 格式在游戏里验证过的坐标修正，"
+                                             "对本仓读写的原生 .tex 向量场未验证，默认关闭")
+    flat_emitter: BoolProperty(name="扁发射器模式(分层复制)", default=False,
+                               description="扁圆盘发射器只采样中间层;开启后把中间层图案复制到所有层,保证完整呈现")
+    make_seamless: BoolProperty(name="二方连续(边界无缝)", default=True,
+                                description="让场在立方体边界循环连续,避免接缝")
+    preset_path: EnumProperty(
+        name="轨迹形状",
+        items=[
+            ('LINE',       "直线",      ""),
+            ('CIRCLE',     "圆环",      ""),
+            ('SPIRAL',     "螺旋",      ""),
+            ('HELIX_TALL', "高螺旋",    ""),
+            ('S_CURVE',    "S 形",      ""),
+            ('FIGURE8',    "8 字",      ""),
+            ('WAVE',       "波浪",      ""),
+            ('TORUS_KNOT', "环面结",    ""),
+        ],
+        default='SPIRAL')
+    curve_radius: FloatProperty(name="影响半径", default=0.35, min=0.05, max=1.5,
+                                description="曲线周围多大范围内有力；越大力覆盖越广")
+    strength: FloatProperty(name="强度", default=1.0, min=-2.0, max=2.0,
+                            description="整体力度；漩涡里是沿轴气流，径向里负值=吸入")
+    direction: FloatVectorProperty(name="方向", default=(0.0, 1.0, 0.0), size=3,
+                                   subtype='DIRECTION')
+    axis: EnumProperty(name="旋转轴",
+                       items=[('X', "X (左右)", ""), ('Y', "Y (上下)", ""), ('Z', "Z (前后)", "")],
+                       default='Y')
+    swirl: FloatProperty(name="切向旋转", default=1.0, min=0.0, max=2.0,
+                         description="绕轴转多快")
+    inward: FloatProperty(name="向心/离心", default=-0.2, min=-1.0, max=1.0,
+                          description="负=向内收束, 正=向外扩散")
+    scale: FloatProperty(name="湍流密度", default=2.5, min=0.5, max=8.0,
+                         description="越大湍流越细碎")
+    seed: IntProperty(name="随机种子", default=7, min=0, max=9999)
+
+    auto_visualize: BoolProperty(name="生成后自动可视化", default=True)
+
+
+def _get_selected_curve_points(context, dim, samples=100):
+    """从选中的 Blender 曲线物体取一串点，归一化到 [-0.85,0.85]（供 make_from_curve）。
+    支持 Curve 物体；也支持用网格物体的顶点顺序当路径。返回 (M,3) 或 None。"""
+    obj = context.active_object
+    if obj is None or obj not in context.selected_objects:
+        obj = next((o for o in context.selected_objects if o.type in ('CURVE', 'MESH')), None)
+    if obj is None:
+        return None
+
+    pts = []
+    if obj.type == 'CURVE':
+        depsgraph = context.evaluated_depsgraph_get()
+        ob_eval = obj.evaluated_get(depsgraph)
+        me = ob_eval.to_mesh()
+        try:
+            if len(me.vertices) >= 2:
+                for v in me.vertices:
+                    pts.append(obj.matrix_world @ v.co)
+        finally:
+            ob_eval.to_mesh_clear()
+        if not pts:
+            for sp in obj.data.splines:
+                for bp in sp.bezier_points:
+                    pts.append(obj.matrix_world @ bp.co)
+                for p in sp.points:
+                    pts.append(obj.matrix_world @ p.co.xyz)
+    else:
+        for v in obj.data.vertices:
+            pts.append(obj.matrix_world @ v.co)
+
+    if len(pts) < 2:
+        return None
+
+    arr = np.array([(p.x, p.y, p.z) for p in pts], dtype=np.float32)
+    center = (arr.max(0) + arr.min(0)) / 2.0
+    arr = arr - center
+    span = np.abs(arr).max()
+    if span > 1e-6:
+        arr = arr / span * 0.85
+    if len(arr) > samples:
+        idx = np.linspace(0, len(arr)-1, samples).astype(int)
+        arr = arr[idx]
+    return arr
+
+
+class WILDS_VF_OT_generate_formula(Operator):
+    bl_idname = "wilds_vecfield.generate_formula"
+    bl_label = "按公式生成场"
+    bl_description = "按当前参数用公式生成向量场，载入为当前场（可再可视化/导出）"
+
+    def execute(self, context):
+        scene = context.scene
+        g = scene.wilds_vecfield_gen
+        dim = g.dim
+        try:
+            ft = g.field_type
+            if ft == 'UNIFORM':
+                v = field_generators.make_uniform(dim, tuple(g.direction), g.strength)
+            elif ft == 'VORTEX':
+                v = field_generators.make_vortex(dim, g.axis, g.strength, g.swirl, g.inward)
+            elif ft == 'RADIAL':
+                v = field_generators.make_radial(dim, g.strength)
+            elif ft == 'CURLNOISE':
+                v = field_generators.make_curl_noise(dim, g.scale, g.strength, g.seed)
+            elif ft == 'TURBULENCE':
+                v = field_generators.make_turbulence(dim, g.scale, g.strength, g.seed)
+            elif ft == 'BREATHING':
+                v = field_generators.make_breathing_radial(dim, strength=g.strength, shell=g.shell)
+            elif ft == 'SWIRL_CONFINED':
+                v = field_generators.make_swirl_noise_confined(dim, scale=g.scale,
+                                                               strength=g.strength, pull=g.pull, seed=g.seed)
+            elif ft == 'CURVE':
+                v = field_generators.make_from_preset(dim, g.preset_path,
+                                                      radius=g.curve_radius, strength=g.strength)
+            else:  # SEL_CURVE：从选中的 Blender 曲线取点
+                pts = _get_selected_curve_points(context, dim)
+                if pts is None:
+                    self.report({'ERROR'}, "请先在场景里选中一条曲线(Curve)物体")
+                    return {'CANCELLED'}
+                v = field_generators.make_from_curve(dim, points=pts,
+                                                     radius=g.curve_radius, strength=g.strength)
+
+            if g.flat_emitter:
+                v = field_generators.flatten_layers(v)
+            if g.make_seamless:
+                v = field_generators.make_periodic(v, blend=2)
+            if g.game_correct_x:
+                v = field_generators.correct_game_axes(v)
+
+            alpha = np.ones((dim, dim, dim), dtype=np.uint8)
+            scene['wilds_vecfield_data'] = {
+                'vectors': v.tolist(),
+                'dimensions': (dim, dim, dim),
+                'version': VERSION_MHWILDS,
+                'detected_size': f"{dim}x{dim}x{dim}",
+                'alpha': alpha.tolist(),
+            }
+            mag = np.linalg.norm(v, axis=3)
+            self.report({'INFO'},
+                        f"已生成 {dim}³ {ft} 场（幅度均值{mag.mean():.2f} 最大{mag.max():.2f}），可直接导出/可视化")
+
+            if g.auto_visualize:
+                try:
+                    bpy.ops.wilds_vecfield.visualize_field()
+                except Exception as e:
+                    print("自动可视化失败(不影响数据):", e)
+        except Exception as e:
+            self.report({'ERROR'}, f"生成失败: {e}")
+            import traceback; traceback.print_exc()
+            return {'CANCELLED'}
+        return {'FINISHED'}
+
+
+class VIEW3D_PT_wilds_vecfield_generate(Panel):
+    bl_label = "公式生成"
+    bl_idname = "VIEW3D_PT_wilds_vecfield_generate"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "MHWilds VecField"
+
+    def draw(self, context):
+        layout = self.layout
+        g = context.scene.wilds_vecfield_gen
+
+        layout.prop(g, "dim")
+        layout.prop(g, "field_type")
+
+        if g.field_type == 'UNIFORM':
+            layout.prop(g, "direction")
+        elif g.field_type == 'VORTEX':
+            layout.prop(g, "axis")
+            layout.prop(g, "swirl")
+            layout.prop(g, "inward")
+        elif g.field_type in ('CURLNOISE', 'TURBULENCE', 'SWIRL_CONFINED'):
+            layout.prop(g, "scale")
+            layout.prop(g, "seed")
+            if g.field_type == 'SWIRL_CONFINED':
+                layout.prop(g, "pull")
+        elif g.field_type == 'BREATHING':
+            layout.prop(g, "shell")
+        elif g.field_type == 'CURVE':
+            layout.prop(g, "preset_path")
+            layout.prop(g, "curve_radius")
+        elif g.field_type == 'SEL_CURVE':
+            layout.prop(g, "curve_radius")
+            layout.label(text="需要先选中一条曲线物体", icon='INFO')
+
+        layout.prop(g, "strength")
+
+        box = layout.box()
+        box.label(text="后处理", icon='MODIFIER')
+        box.prop(g, "flat_emitter")
+        box.prop(g, "make_seamless")
+        box.prop(g, "game_correct_x")
+
+        layout.prop(g, "auto_visualize")
+        layout.operator("wilds_vecfield.generate_formula", icon='PHYSICS')
+
+
 # 场信息面板已移至ui_panels.py
 from . import wilds_vecfield_panels as ui_panels
 
 # 所有类列表
 classes = [
     WildsVecFieldProperties,
+    WildsVecFieldGenProps,
     WILDS_VF_OT_load_tex,
     WILDS_VF_OT_generate_base,
+    WILDS_VF_OT_generate_formula,
     WILDS_VF_OT_save_tex,
     WILDS_VF_OT_visualize_field,
     WILDS_VF_OT_clear_field,
@@ -2750,17 +3008,19 @@ classes = [
     WILDS_VF_OT_apply_vector_preset,  # 添加向量预设工具操作符
     WILDS_VF_OT_exit_vector_edit,  # 添加退出向量编辑模式操作符
     VIEW3D_PT_wilds_vecfield_tools,
+    VIEW3D_PT_wilds_vecfield_generate,
 ]
 
 def register():
     # 注册ui_panels.py中的类
     ui_panels.register()
-    
+
     for cls in classes:
         bpy.utils.register_class(cls)
-    
+
     bpy.types.Scene.wilds_vecfield_props = PointerProperty(type=WildsVecFieldProperties)
-    
+    bpy.types.Scene.wilds_vecfield_gen = PointerProperty(type=WildsVecFieldGenProps)
+
     print("✅ MHWilds VecField registered successfully")
 
 def unregister():
@@ -2768,11 +3028,13 @@ def unregister():
     for scene in bpy.data.scenes:
         if 'wilds_vecfield_data' in scene:
             del scene['wilds_vecfield_data']
-    
+
     # 删除属性
     if hasattr(bpy.types.Scene, 'wilds_vecfield_props'):
         del bpy.types.Scene.wilds_vecfield_props
-    
+    if hasattr(bpy.types.Scene, 'wilds_vecfield_gen'):
+        del bpy.types.Scene.wilds_vecfield_gen
+
     # 注销所有类
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)

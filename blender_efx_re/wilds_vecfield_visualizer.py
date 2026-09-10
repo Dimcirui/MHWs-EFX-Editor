@@ -4,7 +4,22 @@ import numpy as np
 from mathutils import Vector, Color
 import colorsys
 
-def create_visualization(vectors, dimensions, scale_factor=1.0, 
+
+def _set_bsdf_transmission(bsdf, value):
+    """Blender 4.0 把 Principled BSDF 的 'Transmission' 输入改名成了
+    'Transmission Weight'；直接按旧名字取会在新版本 KeyError。探测两个名字都试一下。"""
+    if bsdf is None:
+        return
+    for key in ('Transmission Weight', 'Transmission'):
+        if key in bsdf.inputs:
+            try:
+                bsdf.inputs[key].default_value = value
+            except Exception:
+                pass
+            return
+
+
+def create_visualization(vectors, dimensions, scale_factor=1.0,
                         vector_scale=0.1, resolution=8,
                         show_vectors=True, color_by_magnitude=True,
                         create_vertex_color_mesh=False,
@@ -305,7 +320,7 @@ def create_simple_bounding_box(width, height, depth, scale_factor, collection):
     bsdf = nodes.get("Principled BSDF")
     if bsdf:
         bsdf.inputs['Base Color'].default_value = (0.3, 0.3, 0.3, 0.2)
-        bsdf.inputs['Transmission'].default_value = 0.5
+        _set_bsdf_transmission(bsdf, 0.5)
         bsdf.inputs['Roughness'].default_value = 0.8
     
     cube.data.materials.append(mat)
@@ -630,7 +645,7 @@ def create_field_slice(vectors, dimensions, scale_factor, slice_axis, slice_posi
     
     bsdf = nodes.new(type='ShaderNodeBsdfPrincipled')
     bsdf.inputs['Base Color'].default_value = (0.3, 0.6, 0.9, 0.3)
-    bsdf.inputs['Transmission'].default_value = 0.8
+    _set_bsdf_transmission(bsdf, 0.8)
     bsdf.inputs['Roughness'].default_value = 0.2
     
     output = nodes.new(type='ShaderNodeOutputMaterial')
