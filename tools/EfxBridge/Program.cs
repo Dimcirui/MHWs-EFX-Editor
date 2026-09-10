@@ -53,6 +53,25 @@ using ReeLib;
 using ReeLib.Efx;
 using ReeLib.Efx.Structs.Basic;
 using ReeLib.Efx.Structs.Common;
+using ReeLib.Uvs;
+
+// bridge.py 用 `subprocess.run(..., encoding="utf-8")` 读这个进程的 stdout/stderr，严格按
+// UTF-8 解码。但 .NET 在 stdout 被重定向成管道（而不是真终端）时，Console 的默认输出编码是
+// 当前系统的 ANSI/OEM 代码页（中文 Windows 上是 GBK/936），不是 UTF-8——`Console.WriteLine`
+// 里的中文字符会按 GBK 编码写出字节，Python 那边按 UTF-8 strict 解码，踩到不合法的
+// UTF-8 首字节（比如某个 GBK 汉字的高位字节 0xB9）就在 subprocess 内部的 reader 线程里直接
+// 抛 UnicodeDecodeError——这个线程的异常不会传播回主线程（CPython 的
+// `Popen._readerthread` 没有 try/except），只是把 traceback 打印到控制台，看着像插件崩了，
+// 实际上 JSON 交换走的是文件而不是 stdout，数据本身没坏，但这坨吓人的 traceback 应该消掉。
+// 显式钉死 UTF-8，不依赖系统代码页，从根上避免这个编码错配。
+try
+{
+    Console.OutputEncoding = System.Text.Encoding.UTF8;
+}
+catch
+{
+    // 极少数非交互式重定向场景可能不支持设置输出编码，不能因为这个附带功能就让整个 CLI 崩掉。
+}
 
 static JsonSerializerOptions CreateBridgeJsonOptions()
 {
@@ -78,6 +97,18 @@ if (args.Length >= 1 && args[0] == "load")
 {
     return RunLoad(args);
 }
+if (args.Length >= 1 && args[0] == "uvsdump")
+{
+    return RunUvsDump(args);
+}
+if (args.Length >= 1 && args[0] == "uvsload")
+{
+    return RunUvsLoad(args);
+}
+if (args.Length >= 1 && args[0] == "tex2dds")
+{
+    return RunTex2Dds(args);
+}
 if (args.Length >= 1 && args[0] == "exprcheck")
 {
     return RunExprCheck(args);
@@ -94,6 +125,18 @@ if (args.Length >= 1 && args[0] == "fieldstats")
 {
     return RunFieldStats(args);
 }
+if (args.Length >= 1 && args[0] == "relstats")
+{
+    return RunRelStats(args);
+}
+if (args.Length >= 1 && args[0] == "typefreq")
+{
+    return RunTypeFreq(args);
+}
+if (args.Length >= 1 && args[0] == "fieldstatsbatch")
+{
+    return RunFieldStatsBatch(args);
+}
 
 if (args.Length < 2 || args[0] != "roundtrip")
 {
@@ -101,11 +144,17 @@ if (args.Length < 2 || args[0] != "roundtrip")
     Console.WriteLine("  dotnet <dll> roundtrip <目录或文件路径> [--verbose] [--dump <输出目录>]");
     Console.WriteLine("  dotnet <dll> dump <efx 文件路径> <json 输出路径>");
     Console.WriteLine("  dotnet <dll> load <json 文件路径> <efx 输出路径>");
+    Console.WriteLine("  dotnet <dll> uvsdump <uvs 文件路径> <json 输出路径>");
+    Console.WriteLine("  dotnet <dll> uvsload <json 文件路径> <uvs 输出路径>");
+    Console.WriteLine("  dotnet <dll> tex2dds <tex 文件路径> <dds 输出路径>");
     Console.WriteLine("  dotnet <dll> exprcheck <公式文本>");
     Console.WriteLine("  dotnet <dll> types <json 输出路径> [游戏版本，默认 MHWilds]");
     Console.WriteLine("  dotnet <dll> new attribute <类型名> <json 输出路径> [游戏版本，默认 MHWilds]");
     Console.WriteLine("  dotnet <dll> new entry|action <json 输出路径> [游戏版本，默认 MHWilds]");
     Console.WriteLine("  dotnet <dll> fieldstats <语料目录> <attribute 类型名> <json 输出路径> [每字段保留的不同取值数，默认 40]");
+    Console.WriteLine("  dotnet <dll> relstats <语料目录> <json 输出路径>");
+    Console.WriteLine("  dotnet <dll> typefreq <语料目录> <json 输出路径>");
+    Console.WriteLine("  dotnet <dll> fieldstatsbatch <语料目录> <逗号分隔的类型名列表> <json 输出路径> [每字段保留的不同取值数，默认 40]");
     return 1;
 }
 
@@ -298,7 +347,18 @@ static int RunLoad(string[] args)
         // 本轮不碰，维持原样透传。
         CompileExpressions(efx);
 
+        // Subselect（EffectGroups）组内成员顺序（efxEntryIndexes）快照：`UpdateEffectGroups()`
+        // （EfxFile.cs:1302，vendor 代码，不改）写出时无条件把每个已匹配组的 efxEntryIndexes
+        // 按 Entry 扫描顺序（ascending）重新生成，不管传进来的原始顺序是什么——见 PLAN.md E2。
+        // 数组级顺序（EffectGroups 本身谁在前谁在后）已经靠"不传空数组"绕开了，但组内成员的
+        // 相对顺序这条绕不过去，只能记下 Write() 之前的原始顺序，写完之后原地把这几个 int
+        // 换回去（见 PatchEffectGroupMemberOrder()）。
+        var originalGroupOrder = efx.EffectGroups.ToDictionary(
+            g => g.groupName, g => (int[])(g.efxEntryIndexes ?? Array.Empty<int>()).Clone());
+
         efx.WriteTo(efxOutPath);
+        PatchEffectGroupMemberOrder(efxOutPath, efx, originalGroupOrder);
+
         Console.WriteLine($"OK: {jsonPath} -> {efxOutPath}");
         return 0;
     }
@@ -308,6 +368,42 @@ static int RunLoad(string[] args)
         Console.WriteLine(ex.ToString());
         return 1;
     }
+}
+
+// 把 UpdateEffectGroups() 重新排过的组内成员顺序（efxEntryIndexes）改回"原始相对顺序 +
+// 新成员追加到末尾"——不改变集合内容（还是同一组 entry 下标），只调整这几个 int 在文件里的
+// 排列顺序。定位靠 `EffectGroup.Start`（BaseModel 公开属性，Write() 时记的这个对象在流里的
+// 起始位置，见 Models.cs），不是靠猜整个文件的偏移布局：一个 EffectGroup 的二进制布局固定是
+// hash16(4B) + hash8(4B) + valueCount(4B) + efxEntryIndexes(valueCount * 4B)，见 EfxFile.cs
+// 的字段声明顺序，所以下标数组总是从 `Start + 12` 开始。
+static void PatchEffectGroupMemberOrder(string path, EfxFile efx, Dictionary<string, int[]> originalOrder)
+{
+    byte[]? bytes = null;
+    foreach (var grp in efx.EffectGroups)
+    {
+        // 新增的组（UpdateEffectGroups() 里"unaccounted"分支现造的）在 Write() 之前的快照里
+        // 没有对应项，本来就是 vendor 刚生成的顺序，不需要改。
+        if (!originalOrder.TryGetValue(grp.groupName, out var original)) continue;
+
+        var current = grp.efxEntryIndexes ?? Array.Empty<int>();
+        var finalSet = new HashSet<int>(current);
+        // 原顺序里还在的，保持相对顺序；原顺序里没有的（这次新加入这个组的成员），按升序
+        // 追加到末尾——对应"新增在尾部追加"的要求。
+        var originalSet = new HashSet<int>(original);
+        var desired = original.Where(finalSet.Contains)
+            .Concat(current.Where(v => !originalSet.Contains(v)).OrderBy(v => v))
+            .ToArray();
+
+        if (desired.Length != current.Length || desired.SequenceEqual(current)) continue;
+
+        bytes ??= File.ReadAllBytes(path);
+        var indicesOffset = (int)grp.Start + 12;
+        for (int k = 0; k < desired.Length; k++)
+        {
+            BitConverter.GetBytes(desired[k]).CopyTo(bytes, indicesOffset + k * 4);
+        }
+    }
+    if (bytes != null) File.WriteAllBytes(path, bytes);
 }
 
 static void CompileExpressions(EfxFile file)
@@ -372,6 +468,225 @@ static void CompileExpressions(EfxFile file)
             a.efxrData.parentFile = file;
             CompileExpressions(a.efxrData);
         }
+    }
+}
+
+// ===== uvsdump / uvsload 子命令（Phase 2，PLAN.md "UVS 编辑"）=====
+//
+// .uvs（UV 序列图集）比 .efx 简单得多——不是多态 attribute 树，是一棵固定形状的结构
+// （Header/TextureBlock/SequenceBlock/UvsPattern，见 vendor OtherFiles/UvsFile.cs），
+// 不需要 EfxJsonTypeResolver 那套多态注册，一个普通的 IncludeFields=true 选项就够。
+//
+// 版本号处理和 .efx 是同一个坑，但成因不同：.efx 的版本号存在 Header.Version 字段里（JSON
+// 里看得到），RszConditional 门控查的是这个字段；.uvs 的 Header **没有**持久化 Version 字段，
+// `[RszConditional("handler.FileVersion >= 7")]`（Header.attributes）直接查 handler.FileVersion
+// 本身——而 FileHandler.FileVersion 是"文件名推导 + 可显式覆盖"的（见 FileHandler.cs:24-31，
+// setter 是公开的）。所以 dump 时把读取用的 handler.FileVersion 另外存一个 fileVersion 字段
+// 带出去，load 时显式赋回写入用的 handler.FileVersion，而不是依赖输出路径的文件名——这样
+// Blender 侧不管导出对话框里填了什么文件名，字节都是确定的（同 EFX 那边"写出侧不看输出路径"
+// 的效果，只是这里要靠我们主动赋值而不是内容字段驱动）。
+//
+// Header 的其余字段（textureCount/sequenceCount/patternCount/各种 *Offset）以及
+// SequenceBlock.patternCount/patternTableOffset 全部由 `UvsFile.DoWrite()` 在写出时按当前
+// Textures/Sequences/patterns 的实际内容重新计算（UvsFile.cs:145-182），JSON 里这些字段的
+// 值不影响写出结果，dump 只是如实带出方便查看，load 时完全不读它们。
+//
+// `UvsPattern.cutoutUVCount` 是唯一的例外——DoWrite() 同样会无条件按 `cutoutUVs.Count`
+// 重算它（空列表写 -1），但这个重算结果不总是我们想要的：Blender 侧（uvs_io.export_uvs_
+// root()）在"这一帧显式选择不裁剪"时需要字面 `0`，DoWrite() 只会给出 -1（见 UvsFile.cs:172，
+// 空列表没有产出字面 0 的路径）。所以 `RunUvsLoad()` 在 JSON 里显式带了 `cutoutUVCount` 字段
+// 的 pattern 上，会在 `uvs.Write()` 完成之后再做一次二次字节 patch（`PatchZeroCutoutCounts()`），
+// 把 DoWrite() 算出来的 -1 改回 0——跟 EffectGroups 顺序的 `PatchEffectGroupMemberOrder()`
+// 是同一个套路。
+
+static JsonSerializerOptions CreateUvsJsonOptions()
+{
+    var options = new JsonSerializerOptions
+    {
+        IncludeFields = true,
+        NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals,
+        // UvsPattern.cutoutUVs 是一个没有 setter 的 readonly 字段（`public readonly
+        // List<Vector2> cutoutUVs = new(0);`）——默认反序列化行为下 System.Text.Json 直接跳过
+        // 它（既不能 Replace，也不会自动 Populate），实测会静默丢光全部 cutout 点。这个开关让
+        // 反序列化改成"往已存在的实例里塞元素"（Populate），而不是"换一个新实例"（Replace），
+        // 对只读集合字段是唯一能生效的策略。
+        PreferredObjectCreationHandling = System.Text.Json.Serialization.JsonObjectCreationHandling.Populate,
+    };
+    // 同 CreateBridgeJsonOptions()：UV 矩形坐标全是 0/1 这种整数值浮点，不带小数点写出去的话
+    // Blender 侧会画成整数框。
+    options.Converters.Insert(0, new FloatKeepsDecimalPointConverter());
+    return options;
+}
+
+static int RunUvsDump(string[] args)
+{
+    if (args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> uvsdump <uvs 文件路径> <json 输出路径>");
+        return 1;
+    }
+    var uvsPath = args[1];
+    var jsonOutPath = args[2];
+
+    try
+    {
+        var handler = new FileHandler(uvsPath);
+        var uvs = new UvsFile(handler);
+        uvs.Read();
+
+        var payload = new
+        {
+            fileVersion = handler.FileVersion,
+            header = new { attributes = uvs.Header.attributes },
+            textures = uvs.Textures,
+            sequences = uvs.Sequences,
+        };
+        var json = JsonSerializer.Serialize(payload, CreateUvsJsonOptions());
+        File.WriteAllText(jsonOutPath, json);
+        Console.WriteLine($"OK: {uvsPath} -> {jsonOutPath}");
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ERROR] {uvsPath}");
+        Console.WriteLine(ex.ToString());
+        return 1;
+    }
+}
+
+static int RunUvsLoad(string[] args)
+{
+    if (args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> uvsload <json 文件路径> <uvs 输出路径>");
+        return 1;
+    }
+    var jsonPath = args[1];
+    var uvsOutPath = args[2];
+
+    try
+    {
+        var json = File.ReadAllText(jsonPath);
+        var payload = JsonSerializer.Deserialize<UvsBridgePayload>(json, CreateUvsJsonOptions())
+            ?? throw new Exception("反序列化结果为 null");
+
+        // 不用 `using var outStream`——PatchZeroCutoutCounts() 需要在这个函数结束前就重新
+        // 用 File.ReadAllBytes()/WriteAllBytes() 打开同一个路径，`using` 拖到函数末尾才释放
+        // 的话，文件还被这里的 FileStream 独占着，会报"进程正在使用中"。改成写完/Save()
+        // 之后显式 Dispose，再做二次 patch。
+        var outStream = File.Create(uvsOutPath);
+        // 显式赋值 FileVersion（见本节头部说明），不依赖 uvsOutPath 这个参数本身的文件名——
+        // Blender 侧的版本号后缀校验是独立的一层保险（同 .efx 的 _ensure_version_suffix()），
+        // 这里只保证字节内容本身永远正确。
+        var writeHandler = new FileHandler(outStream, uvsOutPath) { FileVersion = payload.fileVersion };
+        var uvs = new UvsFile(writeHandler);
+        uvs.Header.attributes = payload.header?.attributes ?? 0;
+        uvs.Textures = payload.textures ?? new List<TextureBlock>();
+        uvs.Sequences = payload.sequences ?? new List<SequenceBlock>();
+
+        // Python 侧（uvs_io.export_uvs_root()）只在"文件级 cutout_related 开着、但这一帧
+        // 选择不裁剪"时才显式带上 `"cutoutUVCount": 0` 这个字段（其它情况一律不带，让 vendor
+        // 的 DoWrite() 按 cutoutUVs 的实际内容重新计算）。这里不能直接读反序列化后的
+        // `pattern.cutoutUVCount` 来判断"JSON 是不是显式带了这个字段"——JSON 缺省时 int
+        // 字段的 C# 默认值同样是 0，两者从数值上分不出来。所以额外拿 JsonDocument 摊平检查
+        // 原始 JSON 里每个 pattern 是不是真的带了这个 key（而不是看值），按数组下标对应到
+        // 反序列化出来的 UvsPattern 对象——找出所有需要在写出后二次 patch 回字面 0 的 pattern。
+        var zeroCutoutPatterns = new List<UvsPattern>();
+        using (var doc = JsonDocument.Parse(json))
+        {
+            if (doc.RootElement.TryGetProperty("sequences", out var seqArrayEl))
+            {
+                var sequences = uvs.Sequences;
+                var seqCount = Math.Min(seqArrayEl.GetArrayLength(), sequences.Count);
+                for (int i = 0; i < seqCount; i++)
+                {
+                    if (!seqArrayEl[i].TryGetProperty("patterns", out var patArrayEl)) continue;
+                    var patterns = sequences[i].patterns;
+                    var patCount = Math.Min(patArrayEl.GetArrayLength(), patterns.Count);
+                    for (int j = 0; j < patCount; j++)
+                    {
+                        // 光看这个 key 存不存在不够——uvsdump 的原始输出对每个 pattern 都会
+                        // 带上 cutoutUVCount（不管值是 -1/0/8），如果有调用方把 dump 出来的
+                        // JSON 原样喂回 uvsload（比如 roundtrip 测试脚本的"纯 CLI 基准对照"
+                        // 那条路径，不经过 Blender/uvs_io.export_uvs_root()），每个 pattern
+                        // 都会命中"key 存在"，把本该是 8 的也强行 patch 成 0——2026-09-10 加这个
+                        // patch 时马上被 verify_blender_uvs_roundtrip.py 测出来过。必须连值一起
+                        // 判断：只有字面量精确是 0 才需要二次 patch，8/-1 让 vendor 按
+                        // cutoutUVs.Count 正常重算就好。
+                        if (patArrayEl[j].TryGetProperty("cutoutUVCount", out var countEl)
+                            && countEl.ValueKind == JsonValueKind.Number
+                            && countEl.GetInt32() == 0)
+                        {
+                            zeroCutoutPatterns.Add(patterns[j]);
+                        }
+                    }
+                }
+            }
+        }
+
+        uvs.Write();
+        writeHandler.Save();
+        outStream.Dispose();
+
+        if (zeroCutoutPatterns.Count > 0)
+            PatchZeroCutoutCounts(uvsOutPath, zeroCutoutPatterns);
+
+        Console.WriteLine($"OK: {jsonPath} -> {uvsOutPath}");
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ERROR] {jsonPath}");
+        Console.WriteLine(ex.ToString());
+        return 1;
+    }
+}
+
+// 把 vendor DoWrite() 算出来的 cutoutUVCount（空列表一律写 -1，见 UvsFile.cs:172）改回字面
+// 0——这些 pattern 是真实、活跃使用的游戏特效数据（2026-09-10 交叉核对过引用它们的 EFX
+// 语料，见 PLAN.md "Phase 2" 一节），不是可以丢弃的编辑器残留。定位靠 `UvsPattern.Start`
+// （BaseModel 公开属性，Write() 时记的这个对象在流里的起始位置，同 EFX 侧
+// PatchEffectGroupMemberOrder() 的思路）——一个 UvsPattern 的二进制布局固定是
+// flags(8B) + left/top/right/bottom(4B×4=16B) + textureIndex(4B) + cutoutUVCount(4B)
+// （见 UvsFile.cs 的字段声明顺序），所以这个字段总是从 `Start + 28` 开始。
+static void PatchZeroCutoutCounts(string path, List<UvsPattern> patterns)
+{
+    var bytes = File.ReadAllBytes(path);
+    foreach (var pat in patterns)
+    {
+        var offset = (int)pat.Start + 28;
+        BitConverter.GetBytes(0).CopyTo(bytes, offset);
+    }
+    File.WriteAllBytes(path, bytes);
+}
+
+// tex2dds 子命令：PLAN.md Phase 2 Step 4"贴图预览"——把游戏的 .tex 转成 Blender 原生能读的
+// .dds，供 UVS 图形编辑界面把 pattern 矩形画在真实贴图上（而不是让用户对着空白方框editing）。
+// vendor 自带现成转换器（`TexFile.SaveAsDDS()`），不需要我们自己解 GPU 压缩格式。
+static int RunTex2Dds(string[] args)
+{
+    if (args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> tex2dds <tex 文件路径> <dds 输出路径>");
+        return 1;
+    }
+    var texPath = args[1];
+    var ddsOutPath = args[2];
+
+    try
+    {
+        var handler = new FileHandler(texPath);
+        var tex = new TexFile(handler);
+        tex.Read();
+        tex.SaveAsDDS(ddsOutPath);
+        Console.WriteLine($"OK: {texPath} -> {ddsOutPath}");
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ERROR] {texPath}");
+        Console.WriteLine(ex.ToString());
+        return 1;
     }
 }
 
@@ -613,6 +928,390 @@ static int RunFieldStats(string[] args)
     return 0;
 }
 
+// fieldstatsbatch 子命令：一次扫描里同时给一批 attribute 类型做 fieldstats。
+//
+// 单独调 fieldstats N 次会把语料重新解析 N 遍（解析耗时跟"要不要过滤这个类型"无关，
+// 过滤只影响要不要 Tally，不影响读文件本身），N=40 就是 40 倍的 IO/反序列化开销。
+// 这里把 fieldstats 的 Tally/Bump 逻辑原样搬过来，只是按类型分桶，一遍扫描出全部结果。
+//
+//   fieldstatsbatch <语料目录> <逗号分隔的类型名列表> <json 输出路径> [每字段保留的不同取值数，默认 40]
+//
+// 输出结构：{ "<类型名>": { instances, fields: {...} }, ... }，跟单个 fieldstats 的
+// "fields" 部分同构，方便复用现有的众数提取代码。
+static int RunFieldStatsBatch(string[] args)
+{
+    if (args.Length < 4)
+    {
+        Console.WriteLine("用法: dotnet <dll> fieldstatsbatch <语料目录> <逗号分隔的类型名列表> <json 输出路径> [每字段保留的不同取值数，默认 40]");
+        return 1;
+    }
+    var dir = args[1];
+    var typeNames = args[2].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    var jsonOutPath = args[3];
+    var maxDistinct = args.Length >= 5 && int.TryParse(args[4], out var md) ? md : 40;
+
+    if (!Directory.Exists(dir))
+    {
+        Console.WriteLine($"目录不存在: {dir}");
+        return 1;
+    }
+
+    var wanted = new Dictionary<EfxAttributeType, string>();
+    foreach (var typeName in typeNames)
+    {
+        if (!Enum.TryParse<EfxAttributeType>(typeName, true, out var t))
+        {
+            Console.WriteLine($"[ERROR] 未知的 attribute 类型名: {typeName}");
+            return 1;
+        }
+        wanted[t] = typeName;
+    }
+
+    var options = CreateBridgeJsonOptions();
+    var files = Directory.EnumerateFiles(dir, "*.efx.*", SearchOption.AllDirectories).ToList();
+    // 每个类型独立一份直方图集合，key 是字段路径
+    var histograms = new Dictionary<EfxAttributeType, Dictionary<string, Dictionary<string, int>>>();
+    var instances = new Dictionary<EfxAttributeType, int>();
+    foreach (var t in wanted.Keys)
+    {
+        histograms[t] = new Dictionary<string, Dictionary<string, int>>();
+        instances[t] = 0;
+    }
+    int scanned = 0, failed = 0, totalAttrInstances = 0;
+
+    void Tally(Dictionary<string, Dictionary<string, int>> hist, System.Text.Json.Nodes.JsonNode? node, string path)
+    {
+        switch (node)
+        {
+            case System.Text.Json.Nodes.JsonObject obj:
+                foreach (var (key, child) in obj)
+                {
+                    if (key == "$type") continue;
+                    Tally(hist, child, path.Length == 0 ? key : path + "." + key);
+                }
+                break;
+            case System.Text.Json.Nodes.JsonArray arr:
+                Bump(hist, path + "[].length", arr.Count.ToString());
+                break;
+            case null:
+                Bump(hist, path, "null");
+                break;
+            default:
+                Bump(hist, path, node.ToJsonString());
+                break;
+        }
+    }
+
+    void Bump(Dictionary<string, Dictionary<string, int>> hist, string path, string value)
+    {
+        if (!hist.TryGetValue(path, out var h))
+            hist[path] = h = new Dictionary<string, int>();
+        h[value] = h.GetValueOrDefault(value) + 1;
+    }
+
+    void Visit(EFXEntryBase container)
+    {
+        foreach (var attr in container.Attributes)
+        {
+            totalAttrInstances++;  // 全部类型都计数，用来算下面的 instancePercent
+            if (wanted.ContainsKey(attr.type))
+            {
+                instances[attr.type]++;
+                var json = JsonSerializer.Serialize(attr, typeof(EFXAttribute), options);
+                Tally(histograms[attr.type], System.Text.Json.Nodes.JsonNode.Parse(json), "");
+            }
+            if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
+            {
+                foreach (var e in pe.efxrData.Entries) Visit(e);
+                foreach (var a in pe.efxrData.Actions) Visit(a);
+            }
+        }
+    }
+
+    foreach (var path in files)
+    {
+        try
+        {
+            var efx = new EfxFile(new FileHandler(path));
+            efx.Read();
+            scanned++;
+            foreach (var e in efx.Entries) Visit(e);
+            foreach (var a in efx.Actions) Visit(a);
+        }
+        catch (Exception)
+        {
+            failed++;  // 语料里本来就有一批读不了的，见 KNOWN_UPSTREAM_ISSUES
+        }
+    }
+
+    // 频率排名按本次批次内部（这批 instances 降序）来算——如果传的就是 typefreq 的
+    // 前 N 名，这个 rank 天然就是全语料排名；传别的子集时它只是"这批里的相对排名"。
+    var rankOf = wanted.Keys
+        .OrderByDescending(t => instances[t])
+        .Select((t, i) => (t, rank: i + 1))
+        .ToDictionary(x => x.t, x => x.rank);
+
+    var payload = wanted.ToDictionary(
+        kv => kv.Value,
+        kv => new
+        {
+            instances = instances[kv.Key],
+            // 出现频率：占本次扫描到的全部 attribute 实例（不限于这批类型）的百分比，
+            // 跟 typefreq 输出的 counts 是同一套分母，可以直接对照。
+            instancePercent = totalAttrInstances > 0
+                ? Math.Round(instances[kv.Key] * 100.0 / totalAttrInstances, 4)
+                : 0.0,
+            rank = rankOf[kv.Key],
+            fields = histograms[kv.Key].ToDictionary(
+                h => h.Key,
+                h => new
+                {
+                    distinct = h.Value.Count,
+                    top = h.Value.OrderByDescending(x => x.Value).Take(maxDistinct)
+                            .ToDictionary(x => x.Key, x => x.Value),
+                }),
+        });
+    var envelope = new
+    {
+        filesTotal = files.Count,
+        filesScanned = scanned,
+        filesFailed = failed,
+        totalAttrInstances,
+        types = payload,
+    };
+    File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine($"OK: {wanted.Count} 种类型（扫描 {scanned}/{files.Count} 个文件，失败 {failed}）-> {jsonOutPath}");
+    return 0;
+}
+
+// relstats 子命令：在整个语料上普查"两个数凑一对"的字段（`via.Int2` 的 x/y、`via.Range{I}`
+// 的 s/r），按 (attribute 类型.字段路径) 分组，统计每一对数值之间的关系——不是看单个字段的
+// 取值分布（fieldstats 已经干这个），是看**同一个实例里两个字段互相之间**的大小关系：
+//   x/y 那一对：x 是不是恒 <= y（min/max 假说）
+//   s/r 那一对：r 是不是经常 < 0、s 是不是恒 <= r（如果恒 <= r，s/r 也可能其实是 min/max，
+//   不是"静态值+随机抖动"）
+//
+//   relstats <语料目录> <json 输出路径>
+//
+// 复用 fieldstats 同一套单进程扫全部文件的遍历（含 PlayEmitter.efxrData 递归），不按
+// attribute 类型过滤——这两种"双值字段"横跨了几十种 attribute 类型。
+static int RunRelStats(string[] args)
+{
+    if (args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> relstats <语料目录> <json 输出路径>");
+        return 1;
+    }
+    var dir = args[1];
+    var jsonOutPath = args[2];
+
+    if (!Directory.Exists(dir))
+    {
+        Console.WriteLine($"目录不存在: {dir}");
+        return 1;
+    }
+
+    var options = CreateBridgeJsonOptions();
+    var files = Directory.EnumerateFiles(dir, "*.efx.*", SearchOption.AllDirectories).ToList();
+
+    var xyStats = new Dictionary<string, (int total, int violations, List<double[]> examples)>();
+    var srStats = new Dictionary<string, (int total, int rNegative, int sGreaterR, List<double[]> examples, Dictionary<string, int> diffHist)>();
+
+    static bool TryNumber(System.Text.Json.Nodes.JsonNode? node, out double value)
+    {
+        value = 0;
+        return node is System.Text.Json.Nodes.JsonValue v
+            && double.TryParse(v.ToJsonString(), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out value);
+    }
+
+    void VisitNode(System.Text.Json.Nodes.JsonNode? node, string path)
+    {
+        if (node is System.Text.Json.Nodes.JsonObject obj)
+        {
+            var keys = new HashSet<string>(obj.Select(kv => kv.Key).Where(k => k != "$type"));
+
+            // 小写 x/y 是 via.Int2 的字段名；大写 X/Y 是 via.Vector2（System.Numerics.Vector2
+            // 的公有字段）——两种大小写都可能是"看着像普通二维量、实际是 min/max"的候选，
+            // 用户明确问了"其它 attr 有没有 X/Y 组合也这样"，所以两种大小写都查，不只查 Int2
+            // 那三个已确认的字段。
+            string? xKey = keys.Contains("x") && keys.Contains("y") ? "x"
+                : keys.Contains("X") && keys.Contains("Y") ? "X" : null;
+            if (keys.Count == 2 && xKey != null)
+            {
+                var yKey = xKey == "x" ? "y" : "Y";
+                if (TryNumber(obj[xKey], out var xd) && TryNumber(obj[yKey], out var yd))
+                {
+                    if (!xyStats.TryGetValue(path, out var st)) st = (0, 0, new List<double[]>());
+                    st.total++;
+                    if (xd > yd)
+                    {
+                        st.violations++;
+                        if (st.examples.Count < 5) st.examples.Add(new[] { xd, yd });
+                    }
+                    xyStats[path] = st;
+                    return;
+                }
+            }
+            if (keys.Count == 2 && keys.Contains("s") && keys.Contains("r")
+                && TryNumber(obj["s"], out var sd) && TryNumber(obj["r"], out var rd))
+            {
+                if (!srStats.TryGetValue(path, out var st)) st = (0, 0, 0, new List<double[]>(), new Dictionary<string, int>());
+                st.total++;
+                if (rd < 0) st.rNegative++;
+                if (sd > rd) st.sGreaterR++;
+                if (st.examples.Count < 5) st.examples.Add(new[] { sd, rd });
+                var diffKey = Math.Round(sd - rd, 6).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                st.diffHist[diffKey] = st.diffHist.GetValueOrDefault(diffKey) + 1;
+                srStats[path] = st;
+                return;
+            }
+
+            foreach (var (key, child) in obj)
+            {
+                if (key == "$type") continue;
+                VisitNode(child, path.Length == 0 ? key : path + "." + key);
+            }
+        }
+        else if (node is System.Text.Json.Nodes.JsonArray arr)
+        {
+            foreach (var item in arr) VisitNode(item, path + "[]");
+        }
+    }
+
+    int scanned = 0, failed = 0, attrInstances = 0;
+
+    void Visit(EFXEntryBase container)
+    {
+        foreach (var attr in container.Attributes)
+        {
+            attrInstances++;
+            var json = JsonSerializer.Serialize(attr, typeof(EFXAttribute), options);
+            VisitNode(System.Text.Json.Nodes.JsonNode.Parse(json), attr.type.ToString());
+            if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
+            {
+                foreach (var e in pe.efxrData.Entries) Visit(e);
+                foreach (var a in pe.efxrData.Actions) Visit(a);
+            }
+        }
+    }
+
+    foreach (var path in files)
+    {
+        try
+        {
+            var efx = new EfxFile(new FileHandler(path));
+            efx.Read();
+            scanned++;
+            foreach (var e in efx.Entries) Visit(e);
+            foreach (var a in efx.Actions) Visit(a);
+        }
+        catch (Exception)
+        {
+            failed++;
+        }
+    }
+
+    var payload = new
+    {
+        filesTotal = files.Count,
+        filesScanned = scanned,
+        filesFailed = failed,
+        attrInstances,
+        xyFields = xyStats.ToDictionary(
+            kv => kv.Key,
+            kv => new { total = kv.Value.total, violations = kv.Value.violations, examples = kv.Value.examples }),
+        srFields = srStats.ToDictionary(
+            kv => kv.Key,
+            kv => new {
+                total = kv.Value.total, rNegative = kv.Value.rNegative, sGreaterR = kv.Value.sGreaterR,
+                examples = kv.Value.examples,
+                diffTop = kv.Value.diffHist.OrderByDescending(x => x.Value).Take(15)
+                    .ToDictionary(x => x.Key, x => x.Value),
+            }),
+    };
+    File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine(
+        $"OK: 扫描 {scanned}/{files.Count} 个文件（失败 {failed}），{attrInstances} 个 attribute 实例，"
+        + $"{xyStats.Count} 种 x/y 字段，{srStats.Count} 种 s/r 字段 -> {jsonOutPath}");
+    return 0;
+}
+
+// typefreq 子命令：在整个语料上数每种 attribute 类型（EfxAttributeType）出现了多少次，
+// 按次数降序输出。用途：给"新建 attribute 默认值"这件事排优先级——先弄语料里最常见的
+// 那些类型，长尾类型（可能全语料就出现几次）往后放。
+//
+//   typefreq <语料目录> <json 输出路径>
+//
+// 复用 fieldstats/relstats 同一套遍历（含 PlayEmitter.efxrData 递归）。
+static int RunTypeFreq(string[] args)
+{
+    if (args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> typefreq <语料目录> <json 输出路径>");
+        return 1;
+    }
+    var dir = args[1];
+    var jsonOutPath = args[2];
+
+    if (!Directory.Exists(dir))
+    {
+        Console.WriteLine($"目录不存在: {dir}");
+        return 1;
+    }
+
+    var files = Directory.EnumerateFiles(dir, "*.efx.*", SearchOption.AllDirectories).ToList();
+    var counts = new Dictionary<string, int>();
+    int scanned = 0, failed = 0, attrInstances = 0;
+
+    void Visit(EFXEntryBase container)
+    {
+        foreach (var attr in container.Attributes)
+        {
+            attrInstances++;
+            var key = attr.type.ToString();
+            counts[key] = counts.GetValueOrDefault(key) + 1;
+            if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
+            {
+                foreach (var e in pe.efxrData.Entries) Visit(e);
+                foreach (var a in pe.efxrData.Actions) Visit(a);
+            }
+        }
+    }
+
+    foreach (var path in files)
+    {
+        try
+        {
+            var efx = new EfxFile(new FileHandler(path));
+            efx.Read();
+            scanned++;
+            foreach (var e in efx.Entries) Visit(e);
+            foreach (var a in efx.Actions) Visit(a);
+        }
+        catch (Exception)
+        {
+            failed++;  // 语料里本来就有一批读不了的，见 KNOWN_UPSTREAM_ISSUES
+        }
+    }
+
+    var payload = new
+    {
+        filesTotal = files.Count,
+        filesScanned = scanned,
+        filesFailed = failed,
+        attrInstances,
+        typesSeen = counts.Count,
+        counts = counts.OrderByDescending(x => x.Value)
+            .ToDictionary(x => x.Key, x => x.Value),
+    };
+    File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine(
+        $"OK: 扫描 {scanned}/{files.Count} 个文件（失败 {failed}），{attrInstances} 个 attribute 实例，"
+        + $"{counts.Count} 种类型 -> {jsonOutPath}");
+    return 0;
+}
+
 static int RunNew(string[] args)
 {
     if (args.Length < 3)
@@ -774,6 +1473,19 @@ static int RunExprCheck(string[] args)
 //
 // EFX 结构里没有 double 字段（`grep 'public double' OtherFiles/EFX` 只有一个转换方法），
 // 所以只处理 float。
+sealed class UvsHeaderPayload
+{
+    public int attributes { get; set; }
+}
+
+sealed class UvsBridgePayload
+{
+    public int fileVersion { get; set; }
+    public UvsHeaderPayload header { get; set; } = new();
+    public List<TextureBlock> textures { get; set; } = new();
+    public List<SequenceBlock> sequences { get; set; } = new();
+}
+
 sealed class FloatKeepsDecimalPointConverter : System.Text.Json.Serialization.JsonConverter<float>
 {
     public override float Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)

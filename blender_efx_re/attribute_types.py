@@ -171,9 +171,3 @@ def enum_items(self, context):
             cached = [("", "（该分类下没有可新建的类型）", "")]
         _enum_items_cache[category] = cached
     return cached
-
-
-def first_type_in(category: str) -> str:
-    """某个分类下的第一个类型名，切换分类时用来把类型选择重置到合法值。"""
-    items = readable_types(category)
-    return items[0]["name"] if items else ""

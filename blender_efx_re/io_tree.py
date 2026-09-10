@@ -4,7 +4,10 @@ blender_efx_re/io_tree.py —— ~TYPE 对象树 ↔ EfxFile JSON dict 互转
 对齐姊妹项目 EFX-Editor 的 io_tree.py 角色：Entry/Attribute 是独立 Blender Object，Attribute 靠
 parent 关系挂在 Entry/Action 下（不是 PropertyGroup 集合）。
 
-**EFX_ROOT 是 Collection 本身，不是 Empty 对象**（同姊妹项目 `root_col["~TYPE"]="EFX_ROOT"`）：
+**EFX_ROOT 是 Collection 本身，不是 Empty 对象**（结构上对齐姊妹项目的
+`root_col["~TYPE"]="EFX_ROOT"`，但取值改成了 `model.TYPE_ROOT`="EFX_RE_ROOT"——两个插件的
+`"~TYPE"` key 相同，取值如果也相同，同装两个插件时选中对方建的对象会被误判成自己的，
+见 model.py 里 TYPE_ROOT 的说明）：
 文件级数据挂在集合上，Entry/Action 的归属靠"在哪个 `*_Entries` / `*_Actions` 子集合里"表达，
 它们没有父对象。Collection 没有 parent 属性、挂不到 Object 下面，所以 PlayEmitter 内嵌的那个
 完整 EfxFile 反过来由 attribute 上的 `efx_nested_root` 指针指向，见 model.py 的说明。命名跟随
@@ -18,10 +21,10 @@ Body——同一层概念，两个项目各自的命名习惯不同。与 EFX-Ed
    build_root_from_efxfile 本身，建一个嵌套的子 EFX_ROOT。
 
 顶层字段（Header/Strings/Bones/BoneRelations/FieldParameterValues/ExpressionParameters/
-UvarGroups）以及 Entry/Action 里没有单独建 UI 的字段（name/nameHash/index/entryAssignment/
-Version/actionUnkn0 等），一律原样存进 model.save_opaque()/load_opaque() 管理的文本块——当前阶段
-只对 Groups（Subselect 标签）和 Attribute 内容字段建了编辑 UI，其余的"不碰"就是最安全的处理
-（决策 9 的精神：没能力/没打算编辑的东西，原样透传好过自作主张改写）。
+UvarGroups）以及 Entry/Action 里没有单独建 UI 的字段（name/nameHash/index/Version/actionUnkn0
+等），一律原样存进 model.save_opaque()/load_opaque() 管理的文本块——当前阶段只对
+Groups（EffectGroups 标签）、entryAssignment 和 Attribute 内容字段建了编辑 UI，其余的
+"不碰"就是最安全的处理（决策 9 的精神：没能力/没打算编辑的东西，原样透传好过自作主张改写）。
 
 Attribute 对象名带 `[父对象名]` 前缀（如 `[Emitter] Life`）：同一个 Entry/Action 下常有多个
 同类型 attribute（不同 Entry 也大量共享同一批常见 attribute 类型，比如几乎每个 Entry 都有
@@ -48,12 +51,10 @@ def _new_empty(name: str, collection: Collection) -> Object:
     return obj
 
 
-def short_attr_name(attr_type: str) -> str:
-    """`ReeLib.Efx.Structs.Main.EFXAttributeUnitCulling` -> `UnitCulling`（纯展示用，不影响导出）。"""
-    short = attr_type.rsplit(".", 1)[-1]
-    if short.startswith("EFXAttribute"):
-        short = short[len("EFXAttribute"):]
-    return short or attr_type
+# 重导出：定义已搬到 model.py（`_sync_object_name()`/`entry_display_suffix()` 也要用它，
+# 而 model.py 是 io_tree.py 的依赖方向上游，不能反过来 import io_tree），这里留一个别名，
+# panels.py 里现成的 `io_tree.short_attr_name(...)` 调用不用跟着改。
+short_attr_name = model.short_attr_name
 
 
 # ---------------------------------------------------------------------------
@@ -140,18 +141,17 @@ def _populate_expression_attribute(obj: Object, attr_dict: dict) -> None:
         curve.formula = entry.get("expression", "0") or "0"
 
 
-def build_attribute_object(attr_dict: dict, index: int, parent_obj: Object, collection: Collection) -> Object:
-    attr_type = attr_dict.get("$type", "")
-    obj = _new_empty(f"[{parent_obj.name}] {short_attr_name(attr_type)}", collection)
-    obj.parent = parent_obj
-    obj["~TYPE"] = model.TYPE_ATTRIBUTE
-    obj.efx_index = index
-    obj.efx_attr_type = attr_type
-    obj.efx_unique_id = attr_dict.get("UniqueID", 0)
-    obj.efx_version = attr_dict.get("Version", 0)
-    obj.efx_type_id = attr_dict.get("type", 0)
-    obj.efx_is_type_attribute = bool(attr_dict.get("IsTypeAttribute", False))
+def apply_attribute_content(obj: Object, attr_dict: dict) -> None:
+    """把 attr_dict 的"内容"字段（Fields 通用树 + Clip/Expression 曲线）套到 obj 上。
 
+    只碰内容，不碰身份（$type/UniqueID/Version/type/IsTypeAttribute/efx_index/parent）和嵌套
+    efxrData 子树——后者是独立的子对象图（PlayEmitter 内嵌完整 EfxFile），不算"属性"，调用方
+    若要建全新对象请在这个函数之外自己处理（见 build_attribute_object()）。
+
+    只 `add()`，不 `clear()`：对一个已经有内容的现有对象重复调用（如
+    `EFX_RE_OT_properties_paste`）之前，调用方必须自己先清空
+    `obj.efx_fields`/`efx_clip_curves`/`efx_expression_curves`。
+    """
     content = {
         key: value for key, value in attr_dict.items()
         if key not in model.ATTRIBUTE_BOOKKEEPING_KEYS
@@ -193,6 +193,21 @@ def build_attribute_object(attr_dict: dict, index: int, parent_obj: Object, coll
         _populate_expression_attribute(obj, attr_dict)
     model.populate_dict_as_children(obj.efx_fields, content)
 
+
+def build_attribute_object(attr_dict: dict, index: int, parent_obj: Object, collection: Collection) -> Object:
+    attr_type = attr_dict.get("$type", "")
+    obj = _new_empty(f"[{parent_obj.name}] {short_attr_name(attr_type)}", collection)
+    obj.parent = parent_obj
+    obj["~TYPE"] = model.TYPE_ATTRIBUTE
+    obj.efx_index = index
+    obj.efx_attr_type = attr_type
+    obj.efx_unique_id = attr_dict.get("UniqueID", 0)
+    obj.efx_version = attr_dict.get("Version", 0)
+    obj.efx_type_id = attr_dict.get("type", 0)
+    obj.efx_is_type_attribute = bool(attr_dict.get("IsTypeAttribute", False))
+
+    apply_attribute_content(obj, attr_dict)
+
     leftover = {key: attr_dict[key] for key in ("efxrSize",) if key in attr_dict}
     if leftover:
         model.save_opaque(obj, leftover)
@@ -203,23 +218,49 @@ def build_attribute_object(attr_dict: dict, index: int, parent_obj: Object, coll
     return obj
 
 
-def build_entry_object(entry_dict: dict, index: int, collection: Collection) -> Object:
-    """Entry 不再 parent 到任何对象——EFX_ROOT 是集合，归属靠"在哪个 *_Entries 集合里"表达。"""
-    display_name = entry_dict.get("name") or f"Entry_{index}"
-    obj = _new_empty(display_name, collection)
-    obj["~TYPE"] = model.TYPE_ENTRY
-    obj.efx_index = index
-    obj.efx_name = entry_dict.get("name") or ""
+def apply_entry_content(obj: Object, entry_dict: dict) -> None:
+    """把 entry_dict 的"内容"字段（Groups/entryAssignment/未建 UI 的 opaque 字段）套到 obj 上。
 
+    只碰内容，不碰身份（name/efx_index/子 Attribute 对象）——`entry_dict` 就算是从
+    `export_entry_object()` 原样拿来的完整字典也没关系，`name`/`Attributes` 键会被
+    ENTRY_STRUCTURAL_KEYS 过滤掉，这个函数根本不会碰它们。
+
+    会先 `obj.efx_groups.clear()` 再重建——对全新对象是空操作，对已有内容的现有对象（如
+    `EFX_RE_OT_properties_paste`）则是必须的，否则标签会不断累积重复项。
+    """
+    obj.efx_groups.clear()
     for group_name in entry_dict.get("Groups", []) or []:
         tag = obj.efx_groups.add()
         tag.name = group_name
+    obj.efx_entry_assignment = str(int(entry_dict.get("entryAssignment", 0) or 0))
 
     leftover = {k: v for k, v in entry_dict.items() if k not in model.ENTRY_STRUCTURAL_KEYS}
     model.save_opaque(obj, leftover)
 
+
+def build_entry_object(entry_dict: dict, index: int, collection: Collection) -> Object:
+    """Entry 不再 parent 到任何对象——EFX_ROOT 是集合，归属靠"在哪个 *_Entries 集合里"表达。"""
+    # 这里给的只是个临时占位名（在 obj.efx_index/efx_name 都赋值完之前，Blender 对象总得先有
+    # 个名字）——函数末尾会调 model.refresh_entry_display_name() 按序号+名字重算一次真正的
+    # 显示名，两种情况（有名字/没名字）都覆盖，这里不用费心拼对格式。
+    obj = _new_empty(entry_dict.get("name") or f"Entry_{index}", collection)
+    obj["~TYPE"] = model.TYPE_ENTRY
+    obj.efx_index = index
+
+    apply_entry_content(obj, entry_dict)
+
     for attr_index, attr_dict in enumerate(entry_dict.get("Attributes", []) or []):
         build_attribute_object(attr_dict, attr_index, obj, collection)
+
+    # efx_name 故意放在 attribute 建完之后才赋值：它的 update 回调 model._sync_object_name()
+    # 会顺带算上 entry_display_suffix()（TypeAttribute/PtLife/PtColliderAction 那个后缀，
+    # " (Mesh, PtLife)" 这种），而那个回调是现场扫 `~TYPE == EFX_ATTRIBUTE` 子对象算的——提前
+    # 赋值的话子对象还没建出来，算出来的后缀永远是空的（实测踩过：display_name 里手动拼好的
+    # 后缀，会被这行赋值触发的回调用"当时还没有子对象"算出的空后缀覆盖掉）。
+    obj.efx_name = entry_dict.get("name") or ""
+    # `efx_name` 的 update 回调只在非空时才会重算显示名（见 model._sync_object_name()）——
+    # 没名字的 entry 需要这里补一刀，把占位名换成带 `[{efx_index:03d}] ` 前缀的正式格式。
+    model.refresh_entry_display_name(obj)
 
     return obj
 
@@ -249,8 +290,10 @@ def build_root_from_efxfile(
 ) -> Collection:
     """把一个 EfxFile JSON dict 建成一棵 ~TYPE 对象树，返回 **EFX_ROOT 集合**。
 
-    EFX_ROOT 就是这个紫色集合本身，没有根 Empty——对齐姊妹项目 EFX-Editor 的做法
-    （`root_col["~TYPE"] = "EFX_ROOT"`，见其 root_collection.py）。文件级数据
+    EFX_ROOT 就是这个紫色集合本身，没有根 Empty——结构上对齐姊妹项目 EFX-Editor 的做法
+    （`root_col["~TYPE"] = "EFX_ROOT"`，见其 root_collection.py），但 `"~TYPE"` 的取值用的是
+    `model.TYPE_ROOT`（"EFX_RE_ROOT"），不是裸的 "EFX_ROOT"——避免同装两个插件时把姊妹项目
+    建的 Collection 误判成自己的（见 model.py 里 TYPE_ROOT 的说明）。文件级数据
     （Bones / FieldParameterValues / UvarGroups / ExpressionParameters / 剩余 opaque）
     全部挂在集合上，见 model.py 的属性注册。
 
@@ -333,6 +376,13 @@ def build_root_from_efxfile(
 # ---------------------------------------------------------------------------
 # Export：~TYPE 对象树 -> EfxFile dict
 # ---------------------------------------------------------------------------
+
+def next_sibling_index(siblings) -> int:
+    """"新对象该排第几"的统一算法：当前同类型兄弟对象里 efx_index 最大值 + 1（没有兄弟就是
+    0）——不影响原有对象的顺序，新对象永远排在最后。copy_paste.py 的 Paste Object、
+    entry_presets.py 的"从预设新建 Entry"共用这条逻辑。"""
+    return max((o.efx_index for o in siblings), default=-1) + 1
+
 
 def typed_children(obj: Object, type_tag: str) -> list[Object]:
     """obj 的直接子对象里 ~TYPE 等于 type_tag 的那些，按 efx_index 排序（见 model.py 里的说明，
@@ -574,6 +624,7 @@ def export_entry_object(obj: Object) -> dict:
     entry_dict = model.load_opaque(obj)  # index 已随其余 opaque 字段原样透传，见 model.py 说明。
     _apply_name(entry_dict, obj)
     entry_dict["Groups"] = [tag.name for tag in obj.efx_groups]
+    entry_dict["entryAssignment"] = int(obj.efx_entry_assignment)
     entry_dict["Attributes"] = [
         export_attribute_object(attr_obj) for attr_obj in typed_children(obj, model.TYPE_ATTRIBUTE)
     ]
@@ -589,15 +640,28 @@ def export_action_object(obj: Object) -> dict:
     return action_dict
 
 
-def export_root_to_efxfile(root_col: Collection) -> dict:
+def export_root_to_efxfile(root_col: Collection, reorder_effect_groups: bool = False) -> dict:
+    """`reorder_effect_groups`：`EffectGroups` 数组的顺序处理方式。
+
+    默认 False——保留导入时的原始顺序（`model.load_opaque()` 已经把它当普通字段带出来了）。
+    C# 后端 `DoWrite()` 里的 `UpdateEffectGroups()`（EfxFile.cs:1302）仍然会按当前
+    Entry.Groups 标签更新每个已匹配组的 `efxEntryIndexes`、把新增的组追加到末尾、把不再被
+    引用的组清空成员但保留原位置——这些都是"数组顺序不变、内容跟着当前状态更新"，安全。
+
+    True——传空数组，让 `UpdateEffectGroups()` 从 Entry 下标扫描顺序整个重新生成数组本身
+    （老行为）。**2026-09-09 游戏内实测证实这个顺序对游戏有意义**（武器动作表大概率按数组
+    下标而不是按名字/哈希引用 EffectGroups 组），默认关掉；只有明确需要把 EffectGroups 组
+    重新排列时才勾 `EFX_RE_OT_export.reorder_effect_groups`。见 model.ROOT_STRUCTURAL_KEYS
+    的说明。
+    """
     root_obj = root_col  # 下面沿用旧名字，承载体是集合
     efxfile_dict = model.load_opaque(root_obj)
     efxfile_dict["Entries"] = [export_entry_object(obj) for obj in root_entries(root_col)]
     efxfile_dict["Actions"] = [export_action_object(obj) for obj in root_actions(root_col)]
-    # EffectGroups 整体不透传：C# 后端 DoWrite() 里的 UpdateEffectGroups() 会在写入前从
-    # 每个 Entry 的 Groups 反向重建 efxEntryIndexes + 两个哈希字段，传空数组即可，
-    # 见 PLAN.md 验证记录（读 vendor EfxFile.cs:893 UpdateEffectGroups() 的结论）。
-    efxfile_dict["EffectGroups"] = []
+    if reorder_effect_groups:
+        efxfile_dict["EffectGroups"] = []
+    else:
+        efxfile_dict.setdefault("EffectGroups", [])
     efxfile_dict["Bones"] = [
         {"name": item.name, "value": int(item.value or "0")} for item in root_obj.efx_bones
     ]

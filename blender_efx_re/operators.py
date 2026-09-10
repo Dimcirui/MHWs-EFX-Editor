@@ -28,7 +28,7 @@ import os
 import re
 
 import bpy
-from bpy.props import StringProperty
+from bpy.props import BoolProperty, StringProperty
 from bpy.types import Operator
 from bpy_extras.io_utils import ExportHelper, ImportHelper
 
@@ -103,6 +103,7 @@ class EFX_RE_OT_import(Operator, ImportHelper):
 
     bl_idname = "efx_re.import"
     bl_label = "Import EFX"
+    bl_description = "读取一个或多个 .efx 文件，在场景里建成可编辑的对象树"
     bl_options = {"REGISTER", "UNDO"}
 
     filename_ext = ".efx"
@@ -217,6 +218,7 @@ class EFX_RE_OT_export(Operator, ExportHelper):
 
     bl_idname = "efx_re.export"
     bl_label = "Export EFX"
+    bl_description = "从当前 EFX 树导出为 .efx。优先用活动对象所在的树，没有就用面板上的「当前 EFX」"
     bl_options = {"REGISTER"}
 
     filename_ext = ".efx"
@@ -225,9 +227,24 @@ class EFX_RE_OT_export(Operator, ExportHelper):
     # 见模块头部说明。None 表示"什么都别做"（io_utils.py:`if check_extension is not None`）。
     check_extension = None
 
+    # 默认关闭：2026-09-09 游戏内实测证实 EffectGroups 数组本身的顺序对游戏有意义（武器动作
+    # 表大概率按数组下标而不是名字/哈希引用），默认保留导入时的原始顺序。勾上这个才会传空
+    # 数组给 C# 后端，让 UpdateEffectGroups() 按 Entry 下标扫描顺序重新生成整个数组——只有
+    # 明确需要重排 EffectGroups 时才用得上，见 io_tree.export_root_to_efxfile() 的说明。
+    reorder_effect_groups: BoolProperty(
+        name="Reorder EffectGroups",
+        description="重新排列 EffectGroups 的顺序（按 Entry 下标扫描顺序重新生成）。默认关闭"
+                    "以保留导入时的原始顺序——顺序打乱会导致游戏内效果表现异常，只有明确"
+                    "需要重排时才勾选",
+        default=False,
+    )
+
     @classmethod
     def poll(cls, context):
         return io_tree.resolve_root(context) is not None
+
+    def draw(self, context):
+        self.layout.prop(self, "reorder_effect_groups")
 
     def invoke(self, context, event):
         # 默认文件名沿用导入时的原始文件名（连版本号后缀一起），让最常见的"导入→改→导出"
@@ -252,7 +269,7 @@ class EFX_RE_OT_export(Operator, ExportHelper):
             self.report({"ERROR"}, str(ex))
             return {"CANCELLED"}
 
-        data = io_tree.export_root_to_efxfile(root_col)
+        data = io_tree.export_root_to_efxfile(root_col, reorder_effect_groups=self.reorder_effect_groups)
         out_path, notice, fatal = _ensure_version_suffix(self.filepath, data)
         if fatal:
             # 补不出合法后缀：拒绝导出，别留一个注定读不回来的文件。
@@ -281,6 +298,7 @@ class EFX_RE_OT_validate(Operator):
 
     bl_idname = "efx_re.validate"
     bl_label = "Validate"
+    bl_description = "把导出前的三项校验主动跑一遍，不导出任何文件"
     bl_options = {"REGISTER"}
 
     @classmethod

@@ -65,6 +65,14 @@ def _run(*args: str) -> str:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        # 防御性兜底：EfxBridge 现在显式钉死 Console.OutputEncoding = UTF8（见
+        # Program.cs 顶部说明），正常情况下不会再触发这个分支。但 stdout/stderr 是纯日志/
+        # 报错文本，不是 JSON 数据交换通道（那条路走的是临时文件），这里从严解码没有任何
+        # 好处，反而在极端情况下会在 subprocess 内部的 reader 线程里炸出 UnicodeDecodeError
+        # ——那个线程没有 try/except，异常不会传回主线程，只会把吓人的 traceback 打印到控制台，
+        # 看着像插件崩了。改成 replace，容忍不了的字节显示成 “?” 就行，不为了日志文本的完整性
+        # 冒着崩线程的风险。
+        errors="replace",
     )
     if result.returncode != 0:
         raise BridgeError((result.stdout or "") + (result.stderr or ""))
@@ -89,6 +97,38 @@ def load_efx(data: dict, efx_out_path: str | Path) -> None:
         _run("load", str(json_path), str(efx_out_path))
 
 
+def dump_uvs(uvs_path: str | Path) -> dict:
+    """读取一个 .uvs 文件，返回 UvsFile 对象图的 JSON 中间表示（dict）。
+
+    形状是 `{fileVersion, header: {attributes}, textures: [...], sequences: [...]}`——
+    `fileVersion` 是读取时 `FileHandler.FileVersion`（从文件名 `.uvs.8` 的版本号段解析出来的），
+    UVS 的版本号处理方式和 EFX 不同（UVS Header 本身不存 Version 字段，门控直接查
+    `handler.FileVersion`），见 tools/EfxBridge/Program.cs "uvsdump / uvsload 子命令"一节。
+    `load_uvs()` 需要原样带回这个值，不能指望从输出路径的文件名重新解析。
+    """
+    with tempfile.TemporaryDirectory(prefix="mhws_uvs_dump_") as tmpdir:
+        json_path = Path(tmpdir) / "dump.json"
+        _run("uvsdump", str(uvs_path), str(json_path))
+        with open(json_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+
+def load_uvs(data: dict, uvs_out_path: str | Path) -> None:
+    """把 JSON 中间表示（dict，形状同 dump_uvs()）写回一个 .uvs 文件。"""
+    with tempfile.TemporaryDirectory(prefix="mhws_uvs_load_") as tmpdir:
+        json_path = Path(tmpdir) / "load.json"
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        _run("uvsload", str(json_path), str(uvs_out_path))
+
+
+def convert_tex_to_dds(tex_path: str | Path, dds_out_path: str | Path) -> None:
+    """把一个 .tex 文件转成 Blender 原生能读的 .dds，供 UVS 图形编辑界面把 pattern 矩形画在
+    真实贴图上（PLAN.md Phase 2 Step 4）。vendor 自带 `TexFile.SaveAsDDS()`，不需要我们自己
+    解压/转换 GPU 纹理格式。"""
+    _run("tex2dds", str(tex_path), str(dds_out_path))
+
+
 def check_expression(formula: str) -> str | None:
     """校验一条 Expression 公式文本（`EfxExpressionStringParser.Parse` 的语法），合法返回
     None，否则返回错误信息。给 panels.py 的"Validate"按钮用，让用户不用跑一次完整导出就能
@@ -108,9 +148,11 @@ def new_attribute(type_name: str) -> dict:
     一份带默认值的实例，序列化规则和 dump 完全一致，直接喂给 io_tree.build_attribute_object()
     即可。姊妹项目 EFX-Editor 要靠人工攒预设字节，是因为它没有这层类型化对象模型。
 
-    注意默认值就是 C# 的字段默认值（数值全 0），不是"游戏里好看的默认值"——比如 Transform3D
-    新建出来 LocalScale 是 (0,0,0) 而不是 (1,1,1)。这是有意的：我们没有依据去替 Capcom 定
-    "合理默认值"，与其猜一个，不如让用户看到真实的零值自己填。
+    这里吐出来的默认值就是 C# 的字段默认值（数值全 0），不是"游戏里好看的默认值"——比如
+    Transform3D 新建出来 LocalScale 是 (0,0,0) 而不是 (1,1,1)。这是有意的：本函数只做
+    "调 CLI、原样转发"，不解释字段含义（本文件开头的架构约束）。全语料统计出来的"合理默认值"
+    （置信度不够的字段仍然留着这份零值）在上一层合并进来，见
+    `structure_ops.add_attribute()` / `semantics.get_attribute_defaults()`。
     """
     return _run_json("new", "attribute", type_name)
 

@@ -4,7 +4,7 @@ blender_efx_re/panels.py —— 面板层
 面板划分对齐姊妹项目 EFX-Editor（见其 CLAUDE.md §4「UI / 命名约定」）：
 
 1. **工具功能 vs 属性数据**：导入/导出/校验/复制粘贴这类"对对象做操作"的东西放 N 面板；
-   "对象自身解析出来的数据"（Root 的骨骼表/参数表、Entry 的 Subselect 组、Attribute 的
+   "对象自身解析出来的数据"（Root 的骨骼表/参数表、Entry 的 EffectGroups 标签、Attribute 的
    字段/Clip/Expression）既放 N 面板也镜像进属性编辑器的 Object Data 标签。两处**共用同一个
    `_draw_*_content()` 函数**，绝不让绘制逻辑分叉——分叉之后两边迟早不一致。
 2. **一个关注点一个 Panel**，靠 `poll()` 按 `~TYPE` 显隐，而不是在一个巨型面板里
@@ -32,9 +32,9 @@ import json
 
 import bpy
 from bpy.props import BoolProperty, EnumProperty, PointerProperty, StringProperty
-from bpy.types import Panel, UIList
+from bpy.types import Menu, Panel, UIList
 
-from . import attribute_types, bitfield, bridge, i18n, io_tree, model, semantics, structure_ops
+from . import attribute_types, bitfield, bridge, copy_paste, i18n, io_tree, model, semantics, structure_ops
 from .i18n import T
 
 # 取活动对象一律用 `getattr(context, "object", None)` 而不是 `context.object`：脚本/后台
@@ -81,7 +81,7 @@ def _field_tooltip(entry: dict | None) -> str:
 
     只取 `label_*`/`tooltip_*`。表里的 `confidence`/`evidence`/`tester`/`date` **不进界面**：
     这几项是给我们自己排查用的元数据，使用者需要知道的是"这个字段干什么"，不是"这条结论谁验的、
-    验没验过"（同姊妹项目 CLAUDE.md §4.1）。
+    验没验过"（CLAUDE.md 第 23 条，姊妹项目 EFX-Editor 的同一条规则是其 CLAUDE.md §4.1）。
     """
     if entry is None:
         return ""
@@ -90,21 +90,45 @@ def _field_tooltip(entry: dict | None) -> str:
     return entry.get("tooltip_zh") or ""
 
 
-def _draw_label(layout, text: str, entry: dict | None) -> None:
-    """画一个字段的标签：查到知识表条目就用 operator 按钮承载 tooltip，查不到就是普通 label。
+def _draw_label(layout, text: str) -> None:
+    """画一个字段的标签：纯 label()，天然左对齐，不用再操心跟按钮抢对齐方式。
 
-    两处都传 translate=False：这里的 text 要么是原始 JSON 键名（如 "Saturation"），要么是
-    知识表里已经写好的中文——都不该再被 Blender 自带的界面翻译表拦截替换。默认
-    translate=True 时，只要这段文字碰巧和 Blender 内置词条完全相同（"Saturation" 这种常见
-    颜色管理术语就撞上了），界面语言选中文时会被静默换成"饱和度"，看起来像是我们知识表标注的
-    结果，实际上跟内容语义无关——在 Blender 5.1 中文界面下实测复现过。
+    translate=False：这里的 text 要么是原始 JSON 键名（如 "Saturation"），要么是知识表里
+    已经写好的中文——都不该再被 Blender 自带的界面翻译表拦截替换。默认 translate=True 时，
+    只要这段文字碰巧和 Blender 内置词条完全相同（"Saturation" 这种常见颜色管理术语就撞上了），
+    界面语言选中文时会被静默换成"饱和度"，看起来像是我们知识表标注的结果，实际上跟内容语义
+    无关——在 Blender 5.1 中文界面下实测复现过。
+
+    tooltip 不在这里画，见 `_draw_field_help_icon()`——早先版本把整个字段名做成
+    operator() 按钮来借用它的动态 tooltip，踩了两个坑：(1) 按钮默认居中画文字，跟
+    label() 的左对齐不一致，得再套一层 alignment='LEFT' 的子 row 才能纠正；(2) 纠正
+    对齐的同时按钮会收缩到只剩文字本身那么宽，鼠标必须精确停在文字上才触发，稍微偏一点
+    落在原本按钮占的空白区域就完全没反应——用户反馈"tooltip 完全看不见"，实际是命中率
+    问题不是真的没画。改成对齐姊妹项目 EFX-Editor 的 ⓘ 图标机制（`_draw_field_row_buttons`）
+    以后，图标本身多大鼠标命中区就多大，不存在这个问题。
     """
+    layout.label(text=text, translate=False)
+
+
+def _draw_field_help_icon(row, entry: dict | None) -> None:
+    """字段行末尾追加一个 ⓘ 图标，只有这个字段在知识表里有 tooltip 才画，悬停即显示说明。
+    对齐姊妹项目 EFX-Editor 的做法（见其 `_draw_field_row_buttons()`）：tooltip 交给一个
+    独立的小图标承载，不跟字段名文字本身混在一起。"""
     tooltip = _field_tooltip(entry)
     if not tooltip:
-        layout.label(text=text, translate=False)
         return
-    op = layout.operator("efx_re.field_info", text=text, translate=False, emboss=False)
+    op = row.operator("efx_re.field_info", text="", icon="INFO", emboss=False)
     op.tooltip_text = tooltip
+
+
+# 字段树里"标签 | 值"这类行必须统一用 split(factor=...) 而不是"先画 label 再另起一个
+# row() 分列表格"：在 Blender 5.1 实测确认过，同一个 column(align=True) 里如果相邻几行的
+# 标签宽度不一致（label()/operator() 按文字长度自适应宽度，"LoopNum" 和 "EmitterDelayFrame"
+# 长度差很多），行与行之间的对齐合并会把某一行值区的第二个及以后的控件整个吞掉——不报错、
+# Python 侧该调的 prop() 也都调了，纯粹是 Blender 内部按钮合并算法按错位的列边界瞎配对
+# 导致的静默丢画。用固定 factor 的 split() 保证所有行的标签列宽度完全一致，问题消失（同一份
+# 数据、同一套子字段形状，split() 版本和 row() 版本对照验证过）。
+_FIELD_SPLIT_FACTOR = 0.32
 
 
 # data_type -> 对应存储标量值的 Object 属性名（NULL 没有对应 slot，单独处理）。
@@ -134,8 +158,9 @@ def _draw_scalar_prop(layout, node, text: str = "", prop_name: str | None = None
 
 
 def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_owner=None) -> None:
-    """递归绘制一个 EFXValueNode：标量画一行 prop()，OBJECT/ARRAY 画一个可折叠 box 递归绘制
-    children。ui_expand 只影响面板显示，不参与导出——见 model.py 里 EFXValueNode 的说明。
+    """递归绘制一个 EFXValueNode：标量画一行 prop()，OBJECT/ARRAY 如果只有 1~3 个标量子项就
+    并排画在同一行（不值得折叠），否则画一个可折叠 box 递归绘制 children。ui_expand 只影响
+    面板显示，不参与导出——见 model.py 里 EFXValueNode 的说明。
 
     attr_type 只在最外层调用（`_draw_fields_content()`）传入，用来查知识表；递归到子字段时传
     None——Vector 类型的 x/y/z 这类子字段名字本身已经够自解释，知识表不索引这一层。
@@ -154,8 +179,10 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
         # 更不容易手滑打错字；导出前 io_tree.check_bone_references() 还会再校验一遍防止
         # 引用了列表外的名字（那种情况 C# 后端会静默丢弃绑定，不报错）。
         row = layout.row(align=True)
-        _draw_label(row, label_text, entry)
-        row.prop_search(node, "string_value", root_obj, "efx_bones", text="", icon="BONE_DATA")
+        split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
+        _draw_label(split, label_text)
+        split.prop_search(node, "string_value", root_obj, "efx_bones", text="", icon="BONE_DATA")
+        _draw_field_help_icon(row, entry)
         return
 
     segs = bitfield.segments(entry)
@@ -168,7 +195,15 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
                      "items": [[v, n, n] for v, n in members]}]
 
     if segs and dtype in ("INT", "BIGINT"):
-        # 位域：画一个显示解码摘要的按钮，点开弹窗逐段选（见 bitfield.py）。
+        if len(segs) == 1 and segs[0]["mask"] == 0xFFFFFFFF:
+            # 只有一段、且这一段占满整个字段：本质就是一个单选枚举（RotationOrder、
+            # "持续开关"这类"退化成单选项的位域"），不值得为了一个选项弹窗多点一次——
+            # 直接内联画下拉（对齐姊妹项目 EFX-Editor 的做法：真正的多值位域才弹窗，
+            # 见 bitfield.py 顶部说明）。真正的多段位域（`UVSequence.Flags` 那种）
+            # mask 不会占满整个字段，仍然走下面的弹窗。
+            _draw_single_enum_row(layout, node, label_text, entry, segs[0])
+            return
+        # 多段位域：画一个显示解码摘要的按钮，点开弹窗逐段选（见 bitfield.py）。
         # 不再画裸数字——`UVSequence.Flags` 的众数是 41，谁看得出那是"循环+水平随机翻+
         # 垂直随机翻+正向"。
         _draw_bitfield_row(layout, node, label_text, entry, segs, attr_owner)
@@ -179,8 +214,10 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
         # 独立字段（C# 端 R/G/B/A 是 [JsonIgnore] 计算属性，不落盘）——见 model.py 的说明。
         # 画成颜色轮而不是"1 items 折叠框 + 一个巨大整数"，get/set 直接读写那个 rgba 子节点。
         row = layout.row(align=True)
-        _draw_label(row, label_text, entry)
-        row.prop(node, "color_value", text="")
+        split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
+        _draw_label(split, label_text)
+        split.prop(node, "color_value", text="")
+        _draw_field_help_icon(row, entry)
         return
 
     xyz_order = model.xyz_child_order(node) if dtype == "OBJECT" else None
@@ -188,9 +225,16 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
         # Vector3 类形状画成三列并排（对齐姊妹项目 EFX-Editor 的 XYZ 展示风格），不画成
         # "3 items" 折叠框——X/Y/Z 分量本身已经够自解释，不需要再单独折叠/查知识表。
         row = layout.row(align=True)
-        _draw_label(row, label_text, entry)
+        split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
+        _draw_label(split, label_text)
         by_key = {c.key: c for c in node.children}
-        cols = row.row(align=True)
+        cols = split.row(align=True)
+        # 属性编辑器（Object Data 标签）默认 use_property_split=True，会把带 text= 的 prop()
+        # 画成"标签独占一列 + 冒号 + 数值另起一列"——数字滑条控件不受这个影响（label 是画在
+        # 按钮内部的，天生紧凑），但下拉框（enum_proxy）会被拆成"X: [很宽的下拉]"，X 和冒号
+        # 之间还带着列对齐的空隙，比原来的裸数字滑条明显松散。关掉它，X/Y/Z 标签自己用
+        # label() 画（见下面的 axis_enum_items 分支），不依赖 prop() 的隐式标签列。
+        cols.use_property_split = False
         # 弧度制角度字段（知识表 unit == "angle_radians"，目前只标注了 Transform3D.
         # LocalRotation）+ Scene.efx_re_angle_degrees 开关同时命中时，X/Y/Z 分量改画
         # degrees_value（Blender ANGLE 子类型代理属性，按度显示/输入，内部仍存弧度，见
@@ -199,10 +243,76 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
             entry is not None and entry.get("unit") == "angle_radians"
             and getattr(bpy.context.scene, "efx_re_angle_degrees", False)
         )
+        # 分轴枚举（`ParentOptions.RelationPos/RelationRot/RelationScl` 这类"X/Y/Z 每个分量
+        # 各自是同一张选项表里的单选枚举"）：知识表按字段整体标注一张共享的 axis_enum_items，
+        # 三个分量各画一个内联下拉，不再画裸数字——0-3 的编号谁也记不住哪个是哪个。
+        axis_enum_items = entry.get("axis_enum_items") if entry else None
         for key in xyz_order:
             child = by_key[key]
+            if axis_enum_items and child.data_type in ("INT", "BIGINT"):
+                # 下拉框自己画标签（不借 prop() 的 text=）：对齐姊妹项目 EFX-Editor 画
+                # EnumVec3 的方式（`r.label(text=axis); r.prop(item, prop, text="")`），
+                # 不留冒号。裸 label() 在 row() 里默认还是会按"剩余空间平分"占一份宽度，
+                # 不是按文字宽度收紧——必须显式 ui_units_x 卡死宽度才不会在 X 和下拉框之间
+                # 留一整块空白。
+                label_col = cols.row(align=True)
+                label_col.ui_units_x = 1.1
+                label_col.label(text=key.upper(), translate=False)
+                model.set_inline_enum_items(child, axis_enum_items)
+                cols.prop(child, "enum_proxy", text="")
+                continue
             prop_name = "degrees_value" if show_degrees and child.data_type == "FLOAT" else None
             _draw_scalar_prop(cols, child, text=key, prop_name=prop_name)
+        _draw_field_help_icon(row, entry)
+        return
+
+    if dtype == "OBJECT" and model.is_min_max_node(node):
+        # SpawnNum/IntervalFrame/EmitterDelayFrame：序列化形状跟普通二维向量一样是 {x, y}，
+        # 但实测语义是 min/max（见 model.is_min_max_node() 的说明）。画成 Min/Max 两列，
+        # 顺手在 max < min 时给红字提示——这个组合会让游戏崩溃，不是普通的数值校验问题。
+        row = layout.row(align=True)
+        split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
+        _draw_label(split, label_text)
+        by_key = {c.key: c for c in node.children}
+        cols = split.row(align=True)
+        _draw_scalar_prop(cols, by_key["x"], text="Min")
+        _draw_scalar_prop(cols, by_key["y"], text="Max")
+        _draw_field_help_icon(row, entry)
+        if model.node_scalar(by_key["y"]) < model.node_scalar(by_key["x"]):
+            warn = layout.row()
+            warn.alert = True
+            warn.label(text=T("attribute.min_max_crash_warning"), icon="ERROR", translate=False)
+        return
+
+    if dtype == "OBJECT" and model.is_sr_index_node(node):
+        # SequenceNo：形状和 static/random 一样是 {s,r}，但实测 s 恒等于 r+1(或+4)、随机只在
+        # [0,r] 里选——画成 UnknIndex(s)/Index(r)，不是 Static/Random（见 model.py 的说明）。
+        row = layout.row(align=True)
+        split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
+        _draw_label(split, label_text)
+        by_key = {c.key: c for c in node.children}
+        cols = split.row(align=True)
+        _draw_scalar_prop(cols, by_key["r"], text="Index")
+        _draw_scalar_prop(cols, by_key["s"], text="UnknIndex")
+        _draw_field_help_icon(row, entry)
+        return
+
+    if dtype == "OBJECT" and model.is_sr_min_max_node(node):
+        # PatternNo/PlaySpeed：形状和 static/random 一样是 {s,r}，但实测是 min/max 范围。
+        # PatternNo 是 s=Max/r=Min（顺序和 is_min_max_node 的 x/y 相反），PlaySpeed 是
+        # s=Min/r=Max（顺序本来就对）——按字段名分别决定哪个是 Min 哪个是 Max。
+        row = layout.row(align=True)
+        split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
+        _draw_label(split, label_text)
+        by_key = {c.key: c for c in node.children}
+        cols = split.row(align=True)
+        if node.key == "PatternNo":
+            min_child, max_child = by_key["r"], by_key["s"]
+        else:
+            min_child, max_child = by_key["s"], by_key["r"]
+        _draw_scalar_prop(cols, min_child, text="Min")
+        _draw_scalar_prop(cols, max_child, text="Max")
+        _draw_field_help_icon(row, entry)
         return
 
     if dtype == "OBJECT" and model.is_static_random_node(node):
@@ -210,46 +320,85 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
         # REE 惯例命名而不是 MHWI 社区惯用的 Value/Jitter——这套命名以后计划回哺到 EFX-Editor，
         # 两边统一用 REE 这边的说法（不是反过来）。
         row = layout.row(align=True)
-        _draw_label(row, label_text, entry)
+        split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
+        _draw_label(split, label_text)
         by_key = {c.key: c for c in node.children}
-        cols = row.row(align=True)
+        cols = split.row(align=True)
         _draw_scalar_prop(cols, by_key["s"], text="Static")
         _draw_scalar_prop(cols, by_key["r"], text="Random")
+        _draw_field_help_icon(row, entry)
         return
 
     if dtype == "OBJECT" or dtype == "ARRAY":
+        small_list = (
+            1 <= len(node.children) <= 3
+            and not any(c.data_type in ("OBJECT", "ARRAY") for c in node.children)
+        )
+        if small_list:
+            # 1~3 个标量子项：不值得再套一层可折叠 box——直接并排画（对齐 xyz/static-random
+            # 那两种特化形状已经在用的展示风格），子项的 key 本身就是够用的短标签。
+            row = layout.row(align=True)
+            split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
+            _draw_label(split, label_text)
+            cols = split.row(align=True)
+            for child in node.children:
+                _draw_scalar_prop(cols, child, text=child.key)
+            _draw_field_help_icon(row, entry)
+            return
         header = layout.row(align=True)
         icon = "TRIA_DOWN" if node.ui_expand else "TRIA_RIGHT"
         header.prop(node, "ui_expand", icon=icon, icon_only=True, emboss=False)
-        _draw_label(header, f"{label_text}  ({len(node.children)} {T('common.items_suffix')})", entry)
+        _draw_label(header, f"{label_text}  ({len(node.children)} {T('common.items_suffix')})")
+        _draw_field_help_icon(header, entry)
         if node.ui_expand:
             box = layout.box()
+            # MdfProperty（TypeMesh 系列 attribute 的 properties 数组元素）子字段用合成类型名
+            # "MdfProperty" 查知识表——这批字段在所有引用它的 attribute 类型间物理布局相同，
+            # 不按外层 attr_type 区分。见 model.is_mdf_property_node() 的说明。
+            child_attr_type = "MdfProperty" if model.is_mdf_property_node(node) else None
             for child in node.children:
-                draw_node(box, child, attr_owner=attr_owner)
+                draw_node(box, child, attr_type=child_attr_type, attr_owner=attr_owner)
         return
 
     row = layout.row(align=True)
-    _draw_label(row, label_text, entry)
-    _draw_scalar_prop(row, node)
-    _draw_hash_name(row, node)
+    split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
+    _draw_label(split, label_text)
+    value_row = split.row(align=True)
+    _draw_scalar_prop(value_row, node)
+    _draw_hash_name(value_row, node)
+    _draw_field_help_icon(row, entry)
 
 
 def _draw_bitfield_row(layout, node, label_text, entry, segs, attr_owner) -> None:
     """位域字段：标签 + 一个显示解码摘要的按钮。点开是 bitfield 弹窗。"""
     row = layout.row(align=True)
-    _draw_label(row, label_text, entry)
+    split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
+    _draw_label(split, label_text)
+    value_row = split.row(align=True)
     packed = bitfield.read_packed(node)
     if packed is None or attr_owner is None:
         # 拿不到值或不知道字段挂在哪个 attribute 上（比如 Root 的 FieldParameter 树），
         # 退回普通数字框，总比画不出来强。
-        _draw_scalar_prop(row, node)
+        _draw_scalar_prop(value_row, node)
+        _draw_field_help_icon(row, entry)
         return
-    op = row.operator("efx_re.edit_bitfield",
+    op = value_row.operator("efx_re.edit_bitfield",
                       text=bitfield.summary(packed, segs), icon="OPTIONS", translate=False)
     op.node_path = bitfield.node_path(attr_owner.efx_fields, node)
     op.spec_json = json.dumps(segs, ensure_ascii=False)
     op.current_value = packed
     op.field_label = label_text
+    _draw_field_help_icon(row, entry)
+
+
+def _draw_single_enum_row(layout, node, label_text, entry, seg) -> None:
+    """单段位域（本质就是一个枚举）：标签 + 内联下拉，不弹窗——见 draw_node() 里的说明。"""
+    row = layout.row(align=True)
+    split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
+    _draw_label(split, label_text)
+    model.set_inline_enum_items(node, seg.get("items", []))
+    split.prop(node, "enum_proxy", text="")
+    _draw_field_help_icon(row, entry)
 
 
 def _hash_name(node) -> str | None:
@@ -691,6 +840,7 @@ class EFX_RE_OT_expression_formula_check(bpy.types.Operator):
 
     bl_idname = "efx_re.expression_formula_check"
     bl_label = "Validate Formula"
+    bl_description = "校验当前公式的语法，不用跑一次完整导出就能知道写错没有"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -802,14 +952,22 @@ def _draw_name_row(layout, obj) -> None:
 
 
 def _draw_entry_content(layout, context, obj) -> None:
-    """EFX_ENTRY 的数据：名称 + Subselect 组标签。"""
+    """EFX_ENTRY 的数据：名称 + Entry Assignment + EffectGroups 标签。"""
     _draw_name_row(layout, obj)
     layout.separator(factor=0.5)
-    layout.label(text=T("entry.subselect_groups"), translate=False)
+    layout.prop(obj, "efx_entry_assignment")
+    layout.label(text=T("entry.effect_groups"), translate=False)
     _draw_uilist_row(
         layout, "EFX_RE_UL_groups", obj, "efx_groups", "efx_groups_active_index",
         "efx_re.group_add", "efx_re.group_remove",
     )
+    # entryAssignment == NoAssignment（"2"）时 Groups 标签不生效，是 2026-09-10 才确认的
+    # 真实 bug 模式——复制/粘贴出来的 Entry 容易带着这个错误值，Groups 标签看着挂对了但
+    # 游戏里不生效，界面上不提示的话完全看不出问题在哪。
+    if len(obj.efx_groups) > 0 and obj.efx_entry_assignment == "2":
+        warn = layout.row()
+        warn.alert = True
+        warn.label(text=T("entry.no_assignment_warning"), icon="ERROR", translate=False)
 
 
 def _attr_type_label(attr_type: str) -> str:
@@ -906,6 +1064,78 @@ def _draw_expression_content(layout, context, obj) -> None:
         box.label(text=curve.formula_error, icon="ERROR", translate=False)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 虚拟轴向分组：部分 attribute 类型把同一个概念的 X/Y/(Z) 分量存成独立的 via.Range 字段
+# （不是真正的 Vector3 复合类型），逐个画成整行的话，"X 轴旋转"/"Y 轴旋转"/"Z 轴旋转"
+# 三行各自重复一遍完整的 Static/Random 表头，认知负担大。这里在展示层把它们重新拼成跟
+# 真正 XYZ 复合字段（draw_node 里的 xyz_order 分支）一致的"标题行 + 逐轴行"——纯展示层
+# 分组，不改字段树结构，导出仍按各自原字段写出。对齐姊妹项目 EFX-Editor 的 AXIS_GROUPS
+# （blender_efx/layout_model.py）。
+#
+# type_name -> [ (label_zh, label_en, [(axis_label, base_field_name), ...]), ... ]
+_AXIS_GROUPS: dict = {
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeEmitterShape3D": [
+        ("范围", "Range", [("X", "RangeX"), ("Y", "RangeY"), ("Z", "RangeZ")]),
+    ],
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeMeshV2": [
+        ("旋转", "Rotation", [("X", "RotationX"), ("Y", "RotationY"), ("Z", "RotationZ")]),
+        ("缩放", "Scale", [("X", "ScaleX"), ("Y", "ScaleY"), ("Z", "ScaleZ")]),
+    ],
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeBillboard3D": [
+        ("大小", "Size", [("X", "SizeX"), ("Y", "SizeY")]),
+    ],
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeVelocity3D": [
+        ("运动方向", "Direction", [("X", "DirectionVectorX"), ("Y", "DirectionVectorY"), ("Z", "DirectionVectorZ")]),
+    ],
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeRotateAnim": [
+        ("旋转速度", "Rotation Speed", [("X", "RotationAddX"), ("Y", "RotationAddY"), ("Z", "RotationAddZ")]),
+        ("旋转加速度", "Rotation Accel", [("X", "RotationCoefX"), ("Y", "RotationCoefY"), ("Z", "RotationCoefZ")]),
+    ],
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeScaleAnim": [
+        ("缩放变化速率", "Size Change Rate", [("X", "SizeXAdd"), ("Y", "SizeYAdd"), ("Z", "SizeZAdd")]),
+        ("缩放变化加速度", "Size Change Accel", [("X", "SizeXAddCoef"), ("Y", "SizeYAddCoef"), ("Z", "SizeZAddCoef")]),
+    ],
+}
+
+
+def _resolve_axis_groups(attr_type: str | None, node_by_key: dict):
+    """把 `_AXIS_GROUPS` 里该类型的分组规格解析成可绘制的形式；缺字段（版本裁剪掉的变体
+    没有全部轴）的分组整体跳过，退回逐字段正常显示。返回 (组首字段名 -> 分组规格 字典，
+    被该分组消费掉的全部字段名 set)。"""
+    group_at: dict = {}
+    consumed: set = set()
+    if not attr_type:
+        return group_at, consumed
+    for label_zh, label_en, axes in _AXIS_GROUPS.get(attr_type, []):
+        names = [base for _axis, base in axes]
+        if not all(n in node_by_key for n in names):
+            continue
+        group_at[names[0]] = (label_zh, label_en, axes)
+        consumed.update(names)
+    return group_at, consumed
+
+
+def _draw_axis_group(layout, attr_type: str, label_zh: str, label_en: str, axes, node_by_key: dict) -> None:
+    """绘制一个虚拟轴向分组：标题行 + 逐轴行。每根轴按字段实际形状画（目前全部是
+    via.Range，Static/Random 并排；留了标量分支给以后可能出现的非 Range 轴字段）。"""
+    title = label_en if i18n.get_lang() == "EN" else label_zh
+    layout.row(align=True).label(text=title, icon="ORIENTATION_GLOBAL", translate=False)
+    for axis_label, base in axes:
+        node = node_by_key[base]
+        entry = semantics.get_field_entry(attr_type, base)
+        row = layout.row(align=True)
+        split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
+        _draw_label(split, axis_label)
+        cols = split.row(align=True)
+        if model.is_static_random_node(node):
+            by_key = {c.key: c for c in node.children}
+            _draw_scalar_prop(cols, by_key["s"], text="Static")
+            _draw_scalar_prop(cols, by_key["r"], text="Random")
+        else:
+            _draw_scalar_prop(cols, node, text="")
+        _draw_field_help_icon(row, entry)
+
+
 def _draw_fields_content(layout, context, obj) -> None:
     """EFX_ATTRIBUTE 的内容字段树。包在 box + column(align=True) 里（姊妹项目的字段区风格），
     比上一版直接往面板根上平铺更容易看出"这一坨是一个整体"。"""
@@ -915,7 +1145,15 @@ def _draw_fields_content(layout, context, obj) -> None:
     root_obj = io_tree.find_root(obj)
     box = layout.box()
     col = box.column(align=True)
+    node_by_key = {n.key: n for n in obj.efx_fields}
+    group_at, consumed = _resolve_axis_groups(obj.efx_attr_type, node_by_key)
     for node in obj.efx_fields:
+        if node.key in group_at:
+            label_zh, label_en, axes = group_at[node.key]
+            _draw_axis_group(col, obj.efx_attr_type, label_zh, label_en, axes, node_by_key)
+            continue
+        if node.key in consumed:
+            continue
         draw_node(col, node, attr_type=obj.efx_attr_type, root_obj=root_obj, attr_owner=obj)
 
 
@@ -968,7 +1206,7 @@ class EFX_RE_PT_edit(Panel):
     （姊妹项目 CLAUDE.md §4 的分工判据）。"""
 
     bl_idname = "EFX_RE_PT_edit"
-    bl_label = "Edit"
+    bl_label = "Copy & Paste"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = _CATEGORY
@@ -982,25 +1220,117 @@ class EFX_RE_PT_edit(Panel):
 
     def draw(self, context):
         layout = self.layout
+
         row = layout.row(align=True)
-        row.operator("efx_re.entry_copy", text=T("edit.copy_entry"), icon="COPYDOWN", translate=False)
-        row.operator("efx_re.entry_paste", text=T("edit.paste_entry"), icon="PASTEDOWN", translate=False)
-        row = layout.row(align=True)
-        row.operator("efx_re.attribute_copy", text=T("edit.copy_attribute"), icon="COPYDOWN", translate=False)
-        row.operator("efx_re.attribute_paste", text=T("edit.paste_attribute"), icon="PASTEDOWN", translate=False)
+        row.operator("efx_re.object_copy", text=T("edit.copy_object"), icon="COPYDOWN", translate=False)
+        row.operator("efx_re.object_paste", text=T("edit.paste_object"), icon="PASTEDOWN", translate=False)
+        hint = layout.row()
+        hint.enabled = False
+        clip_label = copy_paste.describe_object_clipboard()
+        hint.label(
+            text=T("edit.clipboard_prefix") + (clip_label or T("edit.clipboard_empty")),
+            translate=False,
+        )
 
         layout.separator()
-        layout.operator("efx_re.delete", text=T("edit.delete"), icon="TRASH", translate=False)
-        sub = layout.row()
-        sub.enabled = False
-        sub.label(text=T("edit.delete_root_hint"), translate=False)
+
+        row = layout.row(align=True)
+        row.operator("efx_re.properties_copy", text=T("edit.copy_properties"), icon="COPYDOWN", translate=False)
+        row.operator("efx_re.properties_paste", text=T("edit.paste_properties"), icon="PASTEDOWN", translate=False)
+        hint = layout.row()
+        hint.enabled = False
+        clip_label = copy_paste.describe_properties_clipboard()
+        hint.label(
+            text=T("edit.clipboard_prefix") + (clip_label or T("edit.clipboard_empty")),
+            translate=False,
+        )
+
+        # efx_re.delete 暂时隐藏：原生 Blender 删除（X / Delete 键）已经能覆盖这个场景，
+        # 保留算子本体（structure_ops.py）不动，只是不在这里画出来。
+
+
+def _draw_add_entry_tab(layout, context) -> None:
+    """Entry 标签页：只有预设系统——原来的"空白 Entry"按钮已经内置成一个不可删除的预设
+    （entry_presets.BUILTIN_NAME），跟用户自己攒的预设混在同一个下拉框里，对齐姊妹项目
+    EFX-Editor 的 Entry 预设面板布局（`__archetypes__/` 内置预设 + 用户预设合并一个下拉，
+    下拉框 + 独立 Add 按钮的两步流程，不是点了就立刻建）。"""
+    wm = context.window_manager
+
+    row = layout.row(align=True)
+    row.prop(wm, "efx_re_entry_preset", text="")
+    row.operator("efx_re.entry_preset_delete", text="", icon="REMOVE")
+    layout.operator("efx_re.entry_preset_new", text=T("add.entry_from_preset"), icon="ADD", translate=False)
+
+    layout.separator(factor=0.5)
+
+    obj = context.object
+    save_target = obj if obj is not None and obj.get("~TYPE") == model.TYPE_ENTRY else None
+    hint = layout.row()
+    hint.enabled = False
+    if save_target is None:
+        hint.label(text=T("add.save_preset_no_target"), icon="INFO", translate=False)
+    else:
+        hint.label(
+            text=T("add.save_preset_prefix") + (save_target.efx_name or save_target.name),
+            icon="FILE_TICK", translate=False,
+        )
+    layout.operator("efx_re.entry_preset_save", text=T("add.save_entry_preset"), icon="FILE_TICK", translate=False)
+
+
+def _draw_add_action_tab(layout, context) -> None:
+    """Action 标签页：目前只有一种新建方式，没有预设系统这一说，就一个按钮。"""
+    layout.operator("efx_re.action_add", text=T("add.action"), icon="PLAY", translate=False)
+
+
+def _draw_add_attribute_tab(layout, context) -> None:
+    """Attribute 标签页：分类下拉 + 点了就立刻新增的类型菜单，不再需要单独的"确认新增"按钮
+    ——对齐姊妹项目 EFX-Editor 的 attribute 选择器交互（`EFX_MT_attribute_preset_picker`：
+    点预设行直接新增）。这里能这样简化，是因为同一个 Entry 一般不会连续加好几个同类型
+    attribute、也不会来回给几个不同 Entry 反复加同一个类型——"选中类型再点确认"这个中间态
+    在实际操作习惯里就是多余的一次点击。"""
+    target = structure_ops._resolve_attribute_parent(context)
+    row = layout.row()
+    if target is None:
+        row.enabled = False
+        row.label(text=T("add.target_prefix") + T("add.no_target"), icon="INFO", translate=False)
+    else:
+        row.label(text=T("add.target_prefix") + target.name, icon="PLUS", translate=False)
+
+    wm = context.window_manager
+    layout.prop(wm, "efx_re_attr_category", text=T("add.category"))
+    layout.menu("EFX_RE_MT_attribute_type_picker", text=T("add.attribute"), icon="ADD")
+
+    sub = layout.row()
+    sub.enabled = False
+    sub.label(text=T("add.order_hint"), translate=False)
+
+
+class EFX_RE_MT_attribute_type_picker(Menu):
+    """点一行直接新增对应类型的 attribute，不经过"先选中、再点 Add 确认"的中间态——
+    `attribute_types.readable_types()` 按当前分类过滤，跟原来给 `efx_re_attr_type` 下拉喂
+    条目的是同一份数据源，只是这里换成点击即触发。"""
+
+    bl_idname = "EFX_RE_MT_attribute_type_picker"
+    bl_label = "Attribute Type"
+
+    def draw(self, context):
+        layout = self.layout
+        category = getattr(context.window_manager, "efx_re_attr_category", "ALL")
+        items = attribute_types.readable_types(category)
+        if not items:
+            layout.label(text=T("add.no_types_in_category"), translate=False)
+            return
+        for item in items:
+            label = _attr_type_label(item["type"]) if item.get("type") else item["name"]
+            op = layout.operator("efx_re.attribute_add", text=label, translate=False)
+            op.attr_type = item["name"]
 
 
 class EFX_RE_PT_add(Panel):
-    """工具面板：新增 Entry / Action / Attribute。
-
-    Attribute 的排列顺序被 itemTypeId 定死（见 structure_ops 的说明），所以这里只有"新增"，
-    **没有上移/下移**——那种交互在这个格式里不成立。
+    """工具面板：新增 Entry / Action / Attribute，用一个类似语言切换的三段式标签页
+    （`efx_re_add_tab`）在同一个面板里切换，而不是三个各自可折叠的子面板——三者是互斥的
+    "我现在想加哪一种东西"，同时只会看其中一种，标签页比"同时摆着、各自折叠"更贴近这个
+    互斥关系，也少一层嵌套折叠。
     """
 
     bl_idname = "EFX_RE_PT_add"
@@ -1017,39 +1347,17 @@ class EFX_RE_PT_add(Panel):
 
     def draw(self, context):
         layout = self.layout
-        row = layout.row(align=True)
-        row.operator("efx_re.entry_add", text=T("add.entry"), icon="ADD", translate=False)
-        row.operator("efx_re.action_add", text=T("add.action"), icon="PLAY", translate=False)
-
+        wm = context.window_manager
+        layout.prop(wm, "efx_re_add_tab", expand=True)
         layout.separator()
 
-        # 新 attribute 挂到哪：和算子用同一套解析（选中 Attribute 时也算它的父级），
-        # 免得面板说的和实际落点不一致
-        target = structure_ops._resolve_attribute_parent(context)
-        row = layout.row()
-        if target is None:
-            row.enabled = False
-            row.label(text=T("add.target_prefix") + T("add.no_target"), icon="INFO", translate=False)
+        tab = wm.efx_re_add_tab
+        if tab == "ENTRY":
+            _draw_add_entry_tab(layout, context)
+        elif tab == "ACTION":
+            _draw_add_action_tab(layout, context)
         else:
-            row.label(text=T("add.target_prefix") + target.name, icon="PLUS", translate=False)
-
-        wm = context.window_manager
-        layout.prop(wm, "efx_re_attr_category", text=T("add.category"))
-        layout.prop(wm, "efx_re_attr_type", text=T("add.attr_type"))
-        # 选中类型的中文名（分类下拉里只有英文类型名，那是权威检索词；中文名放这儿）
-        info = attribute_types.by_name(wm.efx_re_attr_type)
-        if info is not None and info.get("type"):
-            label = _attr_type_label(info["type"])
-            if label != io_tree.short_attr_name(info["type"]):
-                sub = layout.row()
-                sub.enabled = False
-                sub.label(text=label, translate=False)
-        op = layout.operator("efx_re.attribute_add", text=T("add.attribute"), icon="ADD", translate=False)
-        op.attr_type = wm.efx_re_attr_type
-
-        sub = layout.row()
-        sub.enabled = False
-        sub.label(text=T("add.order_hint"), translate=False)
+            _draw_add_attribute_tab(layout, context)
 
 
 def _poll_type(type_tag: str):
@@ -1093,11 +1401,15 @@ def _poll_expression(cls, context):
 #   "object"     -> context.object，属性编辑器 Object Data 标签（bl_context="data"）
 #   "collection" -> 当前 EFX_ROOT 集合，属性编辑器 Collection 标签（bl_context="collection"）
 # EFX_ROOT 是集合不是对象，所以它这一行是 "collection"。
+# Entry/Attribute 的 bl_order 是 1（EFX_RE_PT_add=-2、EFX_RE_PT_edit=-1 之后）——这两个是内容
+# 最重的数据面板，排到 Add / Copy & Paste 这两个工具面板下面：construction 顺序是先用工具面板
+# "造"出东西，再往下滚看/改造出来那个对象的实际内容，这个先后关系值得让面板顺序体现出来。
+# Root/Action 内容单薄（Root 是文件级参数表，Action 目前只有个名字），留在原来靠前的位置。
 _DATA_PANELS = (
     ("root",       "EFX File",   _draw_root_content,       _poll_root,                       None,        -3, False, "collection"),
-    ("entry",      "Entry",      _draw_entry_content,      _poll_type(model.TYPE_ENTRY),     None,        -3, False, "object"),
+    ("entry",      "Entry",      _draw_entry_content,      _poll_type(model.TYPE_ENTRY),     None,         1, False, "object"),
     ("action",     "Action",     _draw_action_content,     _poll_type(model.TYPE_ACTION),    None,        -3, False, "object"),
-    ("attribute",  "Attribute",  _draw_attribute_content,  _poll_type(model.TYPE_ATTRIBUTE), None,        -3, False, "object"),
+    ("attribute",  "Attribute",  _draw_attribute_content,  _poll_type(model.TYPE_ATTRIBUTE), None,         2, False, "object"),
     # Clip / Expression 默认折叠：只有一部分 attribute 类型有，而且属于"要动动画曲线时才展开"
     # 的深水区；字段树是选中一个 attribute 后最常看的东西，默认展开。
     ("clip",       "Clip",       _draw_clip_content,       _poll_clip,                       "attribute",  0, True,  "object"),
@@ -1188,21 +1500,10 @@ _CLASSES = (
     EFX_RE_OT_expression_formula_check,
     EFX_RE_PT_main,
     *_GENERATED_PANELS,
+    EFX_RE_MT_attribute_type_picker,
     EFX_RE_PT_add,
     EFX_RE_PT_edit,
 )
-
-
-def _on_category_change(self, context) -> None:
-    """切分类后把类型选择重置到新分类的第一项。
-
-    动态 items 的 EnumProperty 内部按**下标**存值，items 换了之后原下标指向的东西就变了——
-    不显式重置的话，界面上会显示成新分类里恰好排在同一位置的另一个类型，用户以为自己选的还是
-    原来那个。
-    """
-    first = attribute_types.first_type_in(self.efx_re_attr_category)
-    if first:
-        self.efx_re_attr_type = first
 
 
 def _active_root_poll(self, col):
@@ -1225,18 +1526,27 @@ def register():
     )
     # "当前 EFX"：活动对象不属于任何 EFX 树时，导出/粘贴退到这里指定的根，见
     # io_tree.resolve_root()。导入时自动指向刚建好的那棵树。
-    # "新增 Attribute" 的类型选择器。放 WindowManager 而不是 Scene：这是纯粹的界面临时状态，
-    # 不该被存进 .blend 文件跟着场景走。
+    # "新增 Attribute" 的分类过滤器。放 WindowManager 而不是 Scene：这是纯粹的界面临时状态，
+    # 不该被存进 .blend 文件跟着场景走。选中类型不再单独存一份属性——点 EFX_RE_MT_attribute_
+    # type_picker 菜单里的一行就直接新增，不经过"先选中、再确认"的中间态，所以不需要
+    # efx_re_attr_type 这种"当前选了哪个"的持久状态，也不需要切分类时重置它的 update 回调。
     bpy.types.WindowManager.efx_re_attr_category = EnumProperty(
         name="Category",
-        description="按 vendor 自己的源文件分组过滤 attribute 类型",
+        description="按来源文件分组过滤 attribute 类型",
         items=attribute_types.category_items,
-        update=_on_category_change,
     )
-    bpy.types.WindowManager.efx_re_attr_type = EnumProperty(
-        name="Attribute Type",
-        description="要新增的 attribute 类型（只列 vendor 有读写实现类的那些）",
-        items=attribute_types.enum_items,
+    # "新增"面板的三段式标签页（Entry/Action/Attribute），三者互斥、同时只看一种，用 EnumProperty
+    # 的 expand=True 画成横排切换按钮（同 i18n.draw_language_toggle() 的视觉效果），不用三个各自
+    # 折叠的子面板——那样会多一层嵌套，也不如标签页贴近"互斥选择"这个语义。
+    bpy.types.WindowManager.efx_re_add_tab = EnumProperty(
+        name="Add",
+        description="切换新增面板要看哪一类",
+        items=[
+            ("ENTRY", "Entry", "从预设新建 Entry，或把当前选中的 Entry 另存为新预设"),
+            ("ACTION", "Action", "新增一个空 Action"),
+            ("ATTRIBUTE", "Attribute", "给当前 Entry/Action 新增一个指定类型的 Attribute"),
+        ],
+        default="ENTRY",
     )
     # EFX_ROOT 是集合，所以这里指向 Collection 而不是 Object。
     bpy.types.Scene.efx_re_active_root = PointerProperty(
@@ -1254,7 +1564,7 @@ def unregister():
             delattr(bpy.types.Scene, prop)
         except AttributeError:
             pass
-    for prop in ("efx_re_attr_type", "efx_re_attr_category"):
+    for prop in ("efx_re_add_tab", "efx_re_attr_category"):
         try:
             delattr(bpy.types.WindowManager, prop)
         except AttributeError:

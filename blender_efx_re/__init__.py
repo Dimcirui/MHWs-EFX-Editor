@@ -18,11 +18,18 @@ from . import transform3d_view
 from . import operators
 from . import copy_paste
 from . import structure_ops
+from . import entry_presets
 from . import panels
+from . import uvs_model
+from . import uvs_io
+from . import uvs_operators
+from . import uvs_panels
+from . import uvs_image_editor
 
 __all__ = [
     "bridge", "i18n", "semantics", "model", "coords", "io_tree", "transform3d_view",
-    "attribute_types", "bitfield", "operators", "copy_paste", "structure_ops", "panels",
+    "attribute_types", "bitfield", "operators", "copy_paste", "structure_ops", "entry_presets",
+    "panels", "uvs_model", "uvs_io", "uvs_operators", "uvs_panels", "uvs_image_editor",
 ]
 
 
@@ -36,11 +43,23 @@ def register():
     operators.register()
     copy_paste.register()
     structure_ops.register()
+    entry_presets.register()
     panels.register()
+    # UVS（Phase 2，PLAN.md）：独立的数据模型 + 侧栏标签页，不依赖上面的 EFX ~TYPE 对象树，
+    # 但共用同一个 bridge.py（EfxBridge.dll 同时桥接 .efx 和 .uvs 两种格式）。
+    uvs_model.register()
+    uvs_operators.register()
+    uvs_panels.register()
+    uvs_image_editor.register()
 
 
 def unregister():
+    uvs_image_editor.unregister()
+    uvs_panels.unregister()
+    uvs_operators.unregister()
+    uvs_model.unregister()
     panels.unregister()
+    entry_presets.unregister()
     structure_ops.unregister()
     copy_paste.unregister()
     operators.unregister()

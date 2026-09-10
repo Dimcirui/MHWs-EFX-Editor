@@ -125,7 +125,11 @@ _STRINGS: dict[str, dict[str, str]] = {
     "root.expression_parameters": {"EN": "Expression Parameters", "ZH": "Expression 参数"},
 
     # Entry
-    "entry.subselect_groups": {"EN": "Subselect Groups",    "ZH": "Subselect 组"},
+    "entry.effect_groups": {"EN": "EffectGroups",    "ZH": "EffectGroups"},
+    "entry.no_assignment_warning": {
+        "EN": "Entry Assignment is NoAssignment — Groups tags above won't take effect in-game",
+        "ZH": "Entry Assignment 是 NoAssignment——上面挂的 Groups 标签游戏里不会生效",
+    },
 
     # Attribute
     # 注意：Clip / Expression / Fields 是**面板标题**（bl_label，注册期固定，不可运行时改），
@@ -136,18 +140,27 @@ _STRINGS: dict[str, dict[str, str]] = {
     "attribute.keyframes":    {"EN": "Keyframes",           "ZH": "关键帧"},
     "attribute.no_fields":    {"EN": "This attribute has no editable fields.",
                                "ZH": "这个 attribute 没有可编辑字段。"},
+    "attribute.min_max_crash_warning": {
+        "EN": "Max is less than Min — this crashes the game",
+        "ZH": "Max 小于 Min ——这个组合会让游戏崩溃",
+    },
 
     # Add（新增结构）
-    "add.entry":              {"EN": "Add Entry",           "ZH": "新增 Entry"},
     "add.action":             {"EN": "Add Action",          "ZH": "新增 Action"},
     "add.attribute":          {"EN": "Add Attribute",       "ZH": "新增 Attribute"},
-    "add.attr_type":          {"EN": "Type",                "ZH": "类型"},
     "add.category":           {"EN": "Category",            "ZH": "分类"},
     "add.target_prefix":      {"EN": "Add to: ",            "ZH": "加到："},
     "add.no_target":          {"EN": "(select an Entry or Action)",
                                "ZH": "（先选中一个 Entry 或 Action）"},
     "add.order_hint":         {"EN": "Order is fixed by itemTypeId.",
                                "ZH": "排列顺序由 itemTypeId 定死，不可手动调整。"},
+    "add.no_types_in_category": {"EN": "(no addable types in this category)",
+                               "ZH": "（该分类下没有可新建的类型）"},
+    "add.entry_from_preset":  {"EN": "New Entry from Preset", "ZH": "从预设新建 Entry"},
+    "add.save_entry_preset":  {"EN": "Save Entry as Preset",  "ZH": "另存为预设"},
+    "add.save_preset_no_target": {"EN": "(select an Entry first)",
+                               "ZH": "（先选中一个 Entry）"},
+    "add.save_preset_prefix": {"EN": "Save from: ",           "ZH": "另存自："},
 
     # Attribute 分类。id 由 tools/gen_attribute_catalogue.py 按 vendor 的源文件分组打上，
     # 这里只负责文案。漏词条时 T() 会原样返回 "category.xxx"，界面上一眼能看见。
@@ -175,16 +188,41 @@ _STRINGS: dict[str, dict[str, str]] = {
     "name.hint":              {"EN": "Written to the EFX string table; nameHash follows automatically.",
                                "ZH": "写进 EFX 字符串表，nameHash 会自动跟着重算。"},
 
-    # Edit（复制/粘贴、删除这类工具操作）
-    "edit.copy_entry":        {"EN": "Copy Entry",          "ZH": "复制 Entry"},
-    "edit.paste_entry":       {"EN": "Paste Entry",         "ZH": "粘贴 Entry"},
-    "edit.copy_attribute":    {"EN": "Copy Attribute",      "ZH": "复制 Attribute"},
-    "edit.paste_attribute":   {"EN": "Paste Attribute",     "ZH": "粘贴 Attribute"},
+    # Edit（复制/粘贴这类工具操作）
+    "edit.copy_object":       {"EN": "Copy Object",         "ZH": "复制对象"},
+    "edit.paste_object":      {"EN": "Paste Object",        "ZH": "粘贴对象"},
+    "edit.copy_properties":   {"EN": "Copy Properties",     "ZH": "复制属性"},
+    "edit.paste_properties":  {"EN": "Paste Properties",    "ZH": "粘贴属性"},
+    "edit.clipboard_prefix":  {"EN": "Clipboard: ",         "ZH": "剪贴板："},
+    "edit.clipboard_empty":   {"EN": "(empty)",             "ZH": "（空）"},
 
     # 校验
     "validate.ok":            {"EN": "No problems found.",  "ZH": "没有发现问题。"},
     "validate.no_root":       {"EN": "No active EFX. Import a file or pick one in Active EFX.",
                                "ZH": "没有当前 EFX——先导入一个文件，或在「当前 EFX」里选一个。"},
+
+    # MHWilds UVS 标签页
+    "uvs.import":             {"EN": "Import UVS",          "ZH": "导入 UVS"},
+    "uvs.export":              {"EN": "Export UVS",          "ZH": "导出 UVS"},
+    "uvs.active_uvs":          {"EN": "Active UVS",          "ZH": "当前 UVS"},
+    "uvs.patterns":            {"EN": "Patterns",            "ZH": "Pattern 列表"},
+    "uvs.generate_grid":       {"EN": "Generate Grid",       "ZH": "生成网格"},
+    "uvs.texture_index_out_of_range": {
+        "EN": "Texture index out of range", "ZH": "贴图下标越界",
+    },
+    "uvs.texture_handles_hint": {
+        "EN": "Runtime handles, unknown meaning, preserved as-is",
+        "ZH": "运行时句柄，语义未知，原样保留",
+    },
+    "uvs.advanced_edit":       {"EN": "Advanced Edit",       "ZH": "进阶编辑"},
+    "uvs.advanced_edit_hint":  {
+        "EN": "border visualization and cutout editing are in Advanced Edit",
+        "ZH": "边框可视化和裁剪编辑需要在「进阶编辑」里设置",
+    },
+    "uvs.exit_advanced_edit":  {"EN": "Exit Advanced Edit",  "ZH": "退出进阶编辑"},
+    "uvs.sequences":           {"EN": "Sequences",           "ZH": "Sequence 列表"},
+    "uvs.textures":            {"EN": "Textures",            "ZH": "贴图列表"},
+    "uvs.flags":               {"EN": "Flags",               "ZH": "标志位"},
 }
 
 

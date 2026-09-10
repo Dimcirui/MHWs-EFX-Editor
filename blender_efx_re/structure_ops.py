@@ -5,9 +5,14 @@ blender_efx_re/structure_ops.py —— 新增 / 删除 Entry、Action、Attribut
 Entry"都做不到。
 
 空白对象不是我们攒的模板，是 C# 侧 `new` 出来的真实实例（见 bridge.new_*）——每个 attribute
-类型在 vendor 里都是一个具体的 C# 类，new 出来就带正确的默认值和字段结构，序列化规则和 dump
-完全一致，直接喂给现成的 `io_tree.build_*_object()` 就行。姊妹项目 EFX-Editor 需要一整套预设
-文件来做同一件事，是因为它没有类型化对象模型。
+类型在 vendor 里都是一个具体的 C# 类，new 出来就带正确的字段结构，序列化规则和 dump 完全一致，
+直接喂给现成的 `io_tree.build_*_object()` 就行。姊妹项目 EFX-Editor 需要一整套预设文件来做
+同一件事，是因为它没有类型化对象模型。
+
+`add_attribute()` 在 `bridge.new_attribute()` 的零值结构上再合并一层 `semantics.
+get_attribute_defaults()`——全语料众数统计出来的"合理默认值"（`tools/build_attr_defaults.py`），
+只覆盖置信度够高的字段，目前覆盖语料里最常见的 40 种 attribute 类型（见
+`tools/typefreq_report.json`）。没覆盖到的类型/字段照样是 vendor 零值。
 
 两条硬约束：
 
@@ -27,17 +32,30 @@ import bpy
 from bpy.props import EnumProperty
 from bpy.types import Object, Operator
 
-from . import attribute_types, bridge, io_tree, model
+from . import attribute_types, bridge, io_tree, model, semantics
 
 # 能承载 attribute 的父类型
 _ATTRIBUTE_PARENTS = (model.TYPE_ENTRY, model.TYPE_ACTION)
 
+# 新 Entry 该有的基本骨架，写死在代码里的唯一一份——vendor 格式本身不要求任何 attribute 组合
+# （EFXEntryBase.AddAttribute 只挡重复 Type*/孤儿 Expression 这类局部约束，不检查"entry 必须有
+# 什么"），这纯粹是"空白 Entry 在实践里几乎总要手动补这四个，干脆新建时就带上"的经验性约定。
+# 只有 EFX_RE_OT_entry_add 用，不提供"给已存在 Entry 补齐"的入口——那属于用户自定义预设系统
+# （entry_presets.py）的地盘，不在这个写死列表的范围内。
+ENTRY_BASIC_PRESET_ATTRS = ("Transform3D", "Spawn", "Life", "ParentOptions")
+
 
 def _renumber(siblings: list[Object]) -> None:
     """按当前列表顺序把 efx_index 重排成 0..n-1。导出顺序只看 efx_index，不看 Blender 自己的
-    children 迭代顺序（见 io_tree.typed_children）。"""
+    children 迭代顺序（见 io_tree.typed_children）。
+
+    顺手对 Entry 刷新一遍显示名（`refresh_entry_display_name()` 对非 Entry 直接 no-op，不用
+    先判断 `siblings` 装的是哪种类型）——序号一变，名字里那个 `[{efx_index:03d}] ` 前缀就跟着
+    过时了，不刷新的话 Outliner 顺序会跟真实的 efx_index 对不上，等于白加了这个前缀。
+    """
     for i, obj in enumerate(siblings):
         obj.efx_index = i
+        model.refresh_entry_display_name(obj)
 
 
 def sorted_insert_index(parent_obj: Object, item_type_id: int) -> int:
@@ -97,11 +115,61 @@ def _activate(context, obj: Object) -> None:
     context.view_layer.objects.active = obj
 
 
+def _merge_suggested_defaults(base: dict, overlay: dict) -> None:
+    """把语料众数默认值（overlay）原地合并进 `bridge.new_attribute()` 吐出来的零值结构（base）。
+
+    只覆盖 overlay 里实际出现的叶子字段——overlay 本来就已经把置信度不够的字段剔掉了
+    （见 tools/build_attr_defaults.py），没出现的字段照样保留 vendor 的零值，不是这份表
+    没考虑到，是统计上没有把握替 Capcom 猜。
+    """
+    for key, value in overlay.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _merge_suggested_defaults(base[key], value)
+        else:
+            base[key] = value
+
+
+def add_attribute(parent_obj: Object, attr_name: str) -> Object:
+    """给 parent_obj（Entry/Action）新增一个 attr_name 类型的 attribute，插到 itemTypeId 排序
+    位，返回新建的 Object。`EFX_RE_OT_attribute_add`、`EFX_RE_OT_entry_add` 的自动套预设、
+    `EFX_RE_OT_apply_basic_preset` 共用这份逻辑，不各写一份。
+
+    类型清单里没有 `attr_name` 时抛 `KeyError`；C# 侧新建失败时抛 `bridge.BridgeError`——两种
+    都不在这里 catch，调用方各自决定怎么报错（单独新增一个 vs 批量套预设时某一个失败要不要
+    影响其它几个）。
+    """
+    info = attribute_types.by_name(attr_name)
+    if info is None:
+        raise KeyError(f"类型清单里没有 '{attr_name}'")
+
+    data = bridge.new_attribute(attr_name)
+    defaults = semantics.get_attribute_defaults(attr_name)
+    if defaults:
+        _merge_suggested_defaults(data, defaults)
+
+    siblings = io_tree.typed_children(parent_obj, model.TYPE_ATTRIBUTE)
+    insert_at = sorted_insert_index(parent_obj, info["itemTypeId"])
+    collection = parent_obj.users_collection[0]
+    # 先按末位建出来，再挪到排序位上重排 efx_index——build_attribute_object 只认
+    # "建在哪个 collection、挂在哪个 parent"，插入位置是我们这边的事。
+    new_obj = io_tree.build_attribute_object(data, len(siblings), parent_obj, collection)
+    ordered = siblings[:insert_at] + [new_obj] + siblings[insert_at:]
+    _renumber(ordered)
+    # 新增的这个 attribute 如果是 TypeAttribute 或 PtLife/PtColliderAction，父 Entry 的显示名
+    # 后缀要跟着更新——no-op（对 Action 或没起名的 Entry）由函数自己判断，调用方不用先分辨。
+    model.refresh_entry_display_name(parent_obj)
+    return new_obj
+
+
 class EFX_RE_OT_entry_add(Operator):
-    """在当前 EFX 树里新增一个空 Entry（追加到末尾）"""
+    """在当前 EFX 树里新增一个 Entry（追加到末尾），自动带上基础预设
+    （`ENTRY_BASIC_PRESET_ATTRS`：Transform3D + Spawn + Life + ParentOptions）——空白 Entry
+    没有任何 attribute 没法用，让用户每次手动补这四个纯粹是重复劳动。
+    """
 
     bl_idname = "efx_re.entry_add"
     bl_label = "Add Entry"
+    bl_description = "在当前 EFX 树末尾新增一个 Entry，自动带上 Transform3D / Spawn / Life / ParentOptions 四个基础 attribute"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -124,8 +192,22 @@ class EFX_RE_OT_entry_add(Operator):
         data["name"] = f"Entry_{len(siblings)}"
         new_obj = io_tree.build_entry_object(data, len(siblings), entries_collection)
         _renumber(siblings + [new_obj])
+
+        failed = []
+        for attr_name in ENTRY_BASIC_PRESET_ATTRS:
+            try:
+                add_attribute(new_obj, attr_name)
+            except (bridge.BridgeError, KeyError):
+                failed.append(attr_name)
+
         _activate(context, new_obj)
-        self.report({"INFO"}, f"已新增 Entry '{new_obj.name}'")
+        if failed:
+            self.report(
+                {"WARNING"},
+                f"已新增 Entry '{new_obj.name}'，但基础预设里的 {failed} 没加上",
+            )
+        else:
+            self.report({"INFO"}, f"已新增 Entry '{new_obj.name}'（已带基础预设）")
         return {"FINISHED"}
 
 
@@ -166,6 +248,7 @@ class EFX_RE_OT_attribute_add(Operator):
 
     bl_idname = "efx_re.attribute_add"
     bl_label = "Add Attribute"
+    bl_description = "给当前 Entry/Action 新增一个指定类型的空 Attribute，按类型顺序插入"
     bl_options = {"REGISTER", "UNDO"}
 
     attr_type: EnumProperty(
@@ -190,24 +273,13 @@ class EFX_RE_OT_attribute_add(Operator):
             return {"CANCELLED"}
 
         try:
-            data = bridge.new_attribute(self.attr_type)
+            new_obj = add_attribute(parent_obj, self.attr_type)
         except bridge.BridgeError as ex:
             self.report({"ERROR"}, f"新建 Attribute 失败：\n{ex}")
             return {"CANCELLED"}
 
-        siblings = io_tree.typed_children(parent_obj, model.TYPE_ATTRIBUTE)
-        insert_at = sorted_insert_index(parent_obj, info["itemTypeId"])
-        collection = parent_obj.users_collection[0]
-        # 先按末位建出来，再挪到排序位上重排 efx_index——build_attribute_object 只认
-        # "建在哪个 collection、挂在哪个 parent"，插入位置是我们这边的事。
-        new_obj = io_tree.build_attribute_object(data, len(siblings), parent_obj, collection)
-        ordered = siblings[:insert_at] + [new_obj] + siblings[insert_at:]
-        _renumber(ordered)
         _activate(context, new_obj)
-        self.report(
-            {"INFO"},
-            f"已新增 {self.attr_type}（插在第 {insert_at} 位，itemTypeId {info['itemTypeId']}）",
-        )
+        self.report({"INFO"}, f"已新增 {self.attr_type}（itemTypeId {info['itemTypeId']}）")
         return {"FINISHED"}
 
 
@@ -268,6 +340,9 @@ class EFX_RE_OT_delete(Operator):
         # 靠所在的 *_Entries / *_Actions 集合找。
         if tag == model.TYPE_ATTRIBUTE and parent_obj is not None:
             _renumber(io_tree.typed_children(parent_obj, tag))
+            # 删掉的可能正是撑起父 Entry 显示名后缀的那个 TypeAttribute/PtLife/PtColliderAction，
+            # 删完要重新算一遍——no-op（对 Action）由函数自己判断。
+            model.refresh_entry_display_name(parent_obj)
             _activate(context, parent_obj)
         elif root_col is not None:
             _renumber(io_tree.root_entries(root_col) if tag == model.TYPE_ENTRY

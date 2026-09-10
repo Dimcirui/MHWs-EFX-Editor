@@ -38,14 +38,108 @@ from bpy.props import (
 )
 from bpy.types import Collection, Object, PropertyGroup
 
+from . import i18n
+
 # ---------------------------------------------------------------------------
 # ~TYPE 常量
 # ---------------------------------------------------------------------------
 
-TYPE_ROOT = "EFX_ROOT"
-TYPE_ENTRY = "EFX_ENTRY"
-TYPE_ACTION = "EFX_ACTION"
-TYPE_ATTRIBUTE = "EFX_ATTRIBUTE"
+# 带 `EFX_RE_` 前缀，不能再叫裸的 "EFX_ROOT"/"EFX_ENTRY"/...——`"~TYPE"` 是 Blender 的裸
+# ID-property key，不按插件分命名空间，姊妹项目 EFX-Editor（MHWI）用的就是这几个一模一样的
+# 裸字符串（`root_collection.py`/`io_tree.py` 等）。两个插件同时装着时，选中姊妹项目建的对象，
+# 这边的 `obj.get("~TYPE") == model.TYPE_ENTRY` 之类判断会因为值刚好相等而误判成自己的对象
+# （2026-09-10 用户实测复现）。加前缀是唯一花小代价就能修的办法——所有调用点都经过这几个
+# 常量（没有裸写字面量的），改这里就够。故意不改 `"~TYPE"` 这个 key 本身：两个插件的 `"~TYPE"`
+# key 相同但值不同之后就不会再撞，键名再加前缀是锦上添花，不是必须。
+TYPE_ROOT = "EFX_RE_ROOT"
+TYPE_ENTRY = "EFX_RE_ENTRY"
+TYPE_ACTION = "EFX_RE_ACTION"
+TYPE_ATTRIBUTE = "EFX_RE_ATTRIBUTE"
+
+
+def short_attr_name(attr_type: str) -> str:
+    """`ReeLib.Efx.Structs.Main.EFXAttributeUnitCulling` -> `UnitCulling`（纯展示用，不影响
+    导出）。定义在这里（不是 io_tree.py）是因为 `_sync_object_name()` 也要用它——model.py 是
+    io_tree.py 的依赖方向上游，不能反过来 import io_tree。"""
+    short = attr_type.rsplit(".", 1)[-1]
+    if short.startswith("EFXAttribute"):
+        short = short[len("EFXAttribute"):]
+    return short or attr_type
+
+
+# ---------------------------------------------------------------------------
+# Entry 显示名后缀——对齐姊妹项目 EFX-Editor 的 renderer_suffix()（其 efx_format/
+# categories.py），"不展开子对象即可看出 entry 的表现风格"，如 " (Mesh)" / " (Mesh, PtLife)"。
+#
+# 和姊妹项目的关键差异：MHWI 没有类型化对象模型，只能手工维护一份 SUFFIX_DISPLAY_TYPES 白名单
+# （渲染 Body 的具体类型名逐个列出来）。MHWs 这边 vendor 自己算出了 `IsTypeAttribute`
+# （`EFXAttribute.IsTypeAttribute => type.ToString().StartsWith("Type") && 不是 Clip/Expression
+# 变体`，见 EfxFile.cs:181，一个 Entry 至多一个），已经原样存在 `Object.efx_is_type_attribute`
+# 上（见下方 register()），suffix 的"渲染主体"那部分直接读这个字段就行，不需要重新维护一份类型名
+# 白名单。
+#
+# PtLife/PtColliderAction 是"触发类" attribute（对应姊妹项目 SUFFIX_DISPLAY_TYPES 里的
+# "Action Trigger" 分组：PTCOLLISION/PTLIFE），本轮只加这两个——MHWs vendor 下同族还有
+# PtCollision/PtLightningColliderAction/PtBehavior 等，语义/取舍未逐一核实，先按需加，不为了
+# "看齐姊妹项目"就把整个 Pt* 家族一次性搬过来。
+ENTRY_SUFFIX_PT_TYPES = frozenset({"PtLife", "PtColliderAction"})
+
+
+def entry_display_suffix(attrs) -> str:
+    """`attrs`：按 entry 内原始顺序排列的 `(short_type_name, is_type_attribute)` 二元组序列
+    （`short_type_name` 已经过 `short_attr_name()` 处理）。返回形如 `" (Mesh, PtLife)"` 的后缀，
+    一个都不命中时返回空串。
+
+    `is_type_attribute` 命中时去掉字面量前缀 `"Type"`（`"TypeMesh"` -> `"Mesh"`），因为这个前缀
+    只是 vendor 用来标记"这是类型判定属性"的命名约定，不是要展示给用户看的类型名本身
+    （姊妹项目对应显示的也是 `"Mesh"`，不是 `"TypeMesh"`）。
+    """
+    names = []
+    for short_name, is_type_attr in attrs:
+        if is_type_attr:
+            names.append(short_name[len("Type"):] if short_name.startswith("Type") else short_name)
+        elif short_name in ENTRY_SUFFIX_PT_TYPES:
+            names.append(short_name)
+    return " (%s)" % ", ".join(names) if names else ""
+
+
+def _entry_attribute_suffix_pairs(entry_obj: Object):
+    """从一个 EFX_ENTRY 对象现存的 EFX_ATTRIBUTE 子对象里，按 `efx_index` 排序读出
+    `entry_display_suffix()` 要的 `(short_type_name, is_type_attribute)` 序列。供
+    `refresh_entry_display_name()`/`_sync_object_name()` 在结构编辑（增删 attribute）或改名后
+    重新计算后缀用——不能像 io_tree.build_entry_object() 那样直接读 JSON dict（那时子对象还没
+    建出来，或者已经不是刚导入时的那一批了），只能改成扫当前场景里真实存在的子对象。"""
+    children = [o for o in entry_obj.children if o.get("~TYPE") == TYPE_ATTRIBUTE]
+    children.sort(key=lambda o: o.efx_index)
+    return [(short_attr_name(o.efx_attr_type), o.efx_is_type_attribute) for o in children]
+
+
+def refresh_entry_display_name(entry_obj: Object | None) -> None:
+    """按 `entry_obj` 当前的 `efx_index`/`efx_name`/attribute 子对象重新计算并写回它的显示名：
+    `[三位序号] {efx_name}{后缀}`（未命名 entry 就是 `[三位序号] Entry`，不算后缀——后缀本来
+    就是给"看得出类型"用的，没名字的占位 entry 强调类型意义不大）。方括号而不是下划线拼接，
+    是为了不让人误以为序号是 `efx_name` 本身的一部分（2026-09-10 改）。
+
+    只对 `~TYPE == EFX_ENTRY` 生效，其余类型（包括 None）直接跳过——调用方（structure_ops.py/
+    copy_paste.py 的增删/粘贴 attribute 算子、`_renumber()`）不需要先判断父对象是 Entry 还是
+    Action 再决定要不要调用这个函数。
+
+    序号前缀是 2026-09-10 加的：Blender Outliner 按对象名字母序排列，不看 `efx_index`，Entry
+    一多、或者用户自己把某个 entry 改了名字，Outliner 里看到的顺序就跟真实导出顺序（只认
+    `efx_index`）对不上，容易让人误以为"entry 顺序乱了"。固定宽度数字前缀 + `_renumber()`
+    每次重排后都调这个函数刷新，保证 Outliner 顺序始终等于真实顺序——不管 entry 叫什么名字、
+    有没有名字。
+    """
+    if entry_obj is None or entry_obj.get("~TYPE") != TYPE_ENTRY:
+        return
+    prefix = f"[{entry_obj.efx_index:03d}] "
+    if entry_obj.efx_name:
+        target = f"{prefix}{entry_obj.efx_name}{entry_display_suffix(_entry_attribute_suffix_pairs(entry_obj))}"
+    else:
+        target = f"{prefix}Entry"
+    if entry_obj.name != target:
+        entry_obj.name = target
+
 
 # EFXAttribute 字典里，不进入通用 EFXValueNode 树、而是映射到 Object 具名属性的键。
 # efxrData/efxrSize 是 PlayEmitter 类内嵌完整 EfxFile 的特殊情况，靠"字典里有没有 efxrData 键"
@@ -64,8 +158,9 @@ ATTRIBUTE_NESTED_ROOT_KEYS = frozenset({"efxrData", "efxrSize"})
 # IMaterialClipAttribute 实现类走通用树时，也不需要在树里看到这三个键的重复内容）。
 ATTRIBUTE_CLIP_VIEW_KEYS = frozenset({"Clip", "ClipBits", "MaterialClip"})
 
-# EFXEntry 字典里，Attributes 单独按子对象处理，Groups 单独做成可编辑标签列表，其余键原样存进
-# efx_opaque_text，不建编辑 UI（当前阶段的结构骨架不覆盖）。
+# EFXEntry 字典里，Attributes 单独按子对象处理，Groups 单独做成可编辑标签列表，entryAssignment
+# 单独做成下拉框（见下方 ENTRY_ASSIGNMENT_ITEMS），其余键原样存进 efx_opaque_text，不建编辑 UI
+# （当前阶段的结构骨架不覆盖）。
 # index 曾经单独排除、导出时按数组位置重新赋值，理由是"EFXEntry.DoWrite() 原样写字段值，
 # 不像 EffectGroups 那样反推重算，删除 Entry 后会错位"——这个假设已用真实 MHWs 样本证伪
 # （2026-07-03，Blender 5.1 实测）：11_guide_110 的 11 个顶层 Entries，index 字段值是
@@ -74,20 +169,49 @@ ATTRIBUTE_CLIP_VIEW_KEYS = frozenset({"Clip", "ClipBits", "MaterialClip"})
 # 标识（推测是权威制作工具的创建序号，语义未知），按数组位置强行重算反而会在完全没有编辑的
 # 往返里就篡改这个字段。按决策 9"不确定就别自作主张改写"的精神，改为和其余未知字段一样原样
 # 透传，不在导出时重算。删除 Entry 后 index 是否需要重新分配，等确认其真实语义后再决定。
-ENTRY_STRUCTURAL_KEYS = frozenset({"Attributes", "Groups", "name"})
+ENTRY_STRUCTURAL_KEYS = frozenset({"Attributes", "Groups", "entryAssignment", "name"})
 ACTION_STRUCTURAL_KEYS = frozenset({"Attributes", "name"})
 
-# EfxFile 顶层字典里，Entries/Actions 单独按子对象处理，EffectGroups 整体不透传
-# （导出时固定输出空数组，靠 C# 后端 UpdateEffectGroups() 从各 Entry 的 Groups 反向重建，
-# 见 PLAN.md 验证记录），Bones 建成 EFX_ROOT.efx_bones 列表 UI，BoneRelations 和
-# EffectGroups 一样整体不透传（导出时固定输出空数组，靠 C# 后端从每个 attribute 的
+# EfxEntryEnum（EfxFile.cs:169-174）——2026-09-10 实测确认这是"Groups 标签能不能生效"的真正
+# 开关：一个真实样本（11_it11_030.efx.5571972）里，用户手动新建/复制出来的 3 个 Entry 虽然
+# `Groups` 标签和 `EffectGroups[].efxEntryIndexes` 都正确指向它们，但 `entryAssignment` 是
+# `NoAssignment`（2）——跟同组里所有正常生效的兄弟 Entry（清一色 `AssignToCollisionEffect`，
+# 0）不一样，游戏侧大概率是靠这个字段决定"这个 Entry 到底要不要参与 EffectGroups 分组逻辑"，
+# 单纯挂 Groups 标签不够。这个字段之前完全没有编辑 UI（落在 opaque 透传里，用户在面板上根本
+# 看不见、改不了），是真正的产品缺陷，不只是"语义未知不建 UI"那种保守策略——3 个取值都有
+# vendor 自己给的明确名字，不是靠猜的，值得建成下拉框。`bridge.new_entry()` 造出来的空白
+# Entry 默认就是 0（AssignToCollisionEffect），跟其它能正常生效的 Entry 一致，不用改
+# EFX_RE_OT_entry_add；这个下拉框主要是给"通过复制/粘贴得到、又不小心继承了错误值"的 Entry
+# 一个能看见、能改回来的地方。
+ENTRY_ASSIGNMENT_ITEMS = (
+    ("0", "AssignToCollisionEffect", "参与 EffectGroups/Groups 逻辑——正常生效的 Entry 都是这个值"),
+    ("1", "Root", "根 Entry（文件里通常只有一个）"),
+    ("2", "NoAssignment", "不参与任何分组逻辑——即使挂了 Groups 标签也不会生效"),
+)
+
+# EfxFile 顶层字典里，Entries/Actions 单独按子对象处理，Bones 建成 EFX_ROOT.efx_bones 列表
+# UI，BoneRelations 整体不透传（导出时固定输出空数组，靠 C# 后端从每个 attribute 的
 # ParentBone + Bones 表反向重建下标，见 docs/TOPLEVEL_STRUCTURE.md "Bones / BoneRelations
 # 结构调研"），FieldParameterValues 建成 EFX_ROOT.efx_field_parameters 列表 UI（见
 # EFXFieldParameterItem 的说明），UvarGroups 建成 EFX_ROOT.efx_uvar_groups 列表 UI（见
 # EFXUvarGroupItem 的说明），ExpressionParameters 建成 EFX_ROOT.efx_expression_parameters
 # 列表 UI（见 EFXExpressionParamItem 的说明），其余键原样存进 EFX_ROOT 的 efx_opaque_text。
+#
+# **EffectGroups 不在这个排除集合里**——2026-09-09 实测证伪了"整体不透传、导出时传空数组让
+# C# 后端从 Entry.Groups 反向全量重建"这个此前的既定做法：`UpdateEffectGroups()`
+# （EfxFile.cs:1302）按 Entry 下标扫描顺序重建 EffectGroups 数组，这个顺序和原文件里的存储
+# 顺序未必一致（原作者的排列顺序看起来和 Entry 下标无关），而游戏内实测证实**这个数组的
+# 顺序本身是有意义的**——武器动作表大概率按数组下标（不是按名字/哈希）引用 EffectGroups，
+# 顺序一变引用就指错。所以 EffectGroups 现在放行到 leftover，跟着走 `save_opaque()` 原样
+# 存一份"导入时的原始顺序"；导出时 io_tree.export_root_to_efxfile() 默认保留这个原始顺序，
+# 只靠 C# 后端更新每个已匹配组的 efxEntryIndexes 内容（这部分是无序的成员集合，重排安全，
+# 已有先例——Phase 0 验证过 CollisionEffect.efxEntryIndex[] 同类重排语义等价），新增的组
+# 追加在末尾，删空的组保留原位置但 efxEntryIndexes 清空——都是 C# 后端 UpdateEffectGroups()
+# 自己已有的行为，我们只是不再用空数组去触发它的"全量重建顺序"分支。
+# `EFX_RE_OT_export.reorder_effect_groups`（默认关闭）是逃生舱：万一以后真的需要恢复"按
+# Entry 下标重新排列"这个老行为，勾上它、导出时传空数组即可，不用改代码。
 ROOT_STRUCTURAL_KEYS = frozenset({
-    "Entries", "Actions", "EffectGroups", "Bones", "BoneRelations", "FieldParameterValues",
+    "Entries", "Actions", "Bones", "BoneRelations", "FieldParameterValues",
     "UvarGroups", "ExpressionParameters",
 })
 
@@ -150,6 +274,84 @@ def _set_rgba_color(self, value) -> None:
         child.int_value = raw
 
 
+def _read_packed_int(node: "EFXValueNode") -> int:
+    """INT/BIGINT 节点当前的无符号整数值。BIGINT 存在 `uint_str`（十进制字符串），INT 存在
+    `int_value`（有符号）——统一换算成无符号读出，供 `enum_proxy` 和位域弹窗（bitfield.py）
+    共用，两边不重复写一份同样的换算逻辑。"""
+    if node.data_type == "BIGINT":
+        raw = node.uint_str
+    else:
+        raw = node.int_value
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = 0
+    return value + (1 << 32) if value < 0 else value
+
+
+def _write_packed_int(node: "EFXValueNode", value: int) -> None:
+    if node.data_type == "BIGINT":
+        node.uint_str = str(value)
+    else:
+        node.int_value = value
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# enum_proxy —— "整个字段就是一个单选枚举"的内联下拉代理
+#
+# RotationOrder、`EFXAttributeLife.Flags`（持续开关）这类字段本质上是"退化成单选项的位域"
+# （整个 32 位就是一段，见 bitfield.py 的说明），比起弹窗多一次点击，直接内联画一个下拉更省事
+# 也更显眼——对齐姊妹项目 EFX-Editor 的做法（真正的多值位域才弹窗，见 bitfield.py 顶部说明）。
+#
+# EnumProperty 的 items 需要是回调（每个字段的选项表都不一样），但 EFXValueNode 是所有字段共用
+# 的通用节点类型，没法在类体里为每个具体字段单独声明一个 EnumProperty。做法：draw_node() 在画
+# 这一行之前，把这个节点这一次该用的选项表存进 `_INLINE_ENUM_CONTEXT`（键是
+# `(node.id_data, node.path_from_id())`，同一次 draw 调用栈内 items 回调同步读出）——不写节点
+# 自身的任何数据槽，不产生撤销栈记录、不标记文件已改动。
+# ─────────────────────────────────────────────────────────────────────────────
+
+_INLINE_ENUM_CONTEXT: dict = {}
+# EnumProperty 动态 items 必须被 Python 侧持有（Blender 只存指向字符串的指针，不复制内容，
+# 回调返回的临时元组被回收后界面就是乱码，官方文档明写的坑，bitfield.py 也有同样的缓存）。
+# 按"选项表内容 + 语言"缓存，不需要按节点区分——同样的选项表无论挂在哪个节点上，构造出来的
+# EnumProperty items 都完全一样。
+_INLINE_ENUM_ITEMS_CACHE: dict = {}
+
+
+def set_inline_enum_items(node: "EFXValueNode", items: list) -> None:
+    """供 panels.py 在画一个内联枚举下拉前调用：`items` 形如 `[[值, 中文, 英文], ...]`。"""
+    _INLINE_ENUM_CONTEXT[(node.id_data, node.path_from_id())] = items
+
+
+def _enum_proxy_items(self, context):
+    items = _INLINE_ENUM_CONTEXT.get((self.id_data, self.path_from_id())) or []
+    current = _read_packed_int(self)
+    cache_key = (tuple(tuple(it) for it in items), i18n.get_lang(), current)
+    cached = _INLINE_ENUM_ITEMS_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    lang_en = i18n.get_lang() == "EN"
+    built = []
+    seen = set()
+    for it in items:
+        value = it[0]
+        zh = it[1] if len(it) > 1 else str(value)
+        en = it[2] if len(it) > 2 else ""
+        label = (en or zh) if lang_en else zh
+        # 下拉里带上原始数值（"1 跟随玩家移动"）——转成下拉之后裸数字不再直接可见了，
+        # 但导出的还是这个数字，社区文档/010 模板对照的也是这个数字，不能让它彻底消失。
+        built.append((str(value), f"{value} {label}", "", value))
+        seen.add(value)
+    if current not in seen:
+        # 当前值不在列举范围内（语料里没见过的组合）：临时插一条"原值"，绝不静默改掉它
+        # ——和 bitfield.py 弹窗里同样的兜底。
+        built.append((str(current), f"{current}（原值）", "语料里没见过这个取值，原样保留", current))
+    if not built:
+        built = [("0", "-", "", 0)]
+    _INLINE_ENUM_ITEMS_CACHE[cache_key] = built
+    return built
+
+
 class EFXValueNode(PropertyGroup):
     """一个 JSON 值的通用容器：标量存对应类型的 slot，OBJECT/ARRAY 递归存 children。"""
 
@@ -191,6 +393,17 @@ class EFXValueNode(PropertyGroup):
         set=lambda self, value: setattr(self, "float_value", value),
     )
 
+    # 只在这个节点是"单选枚举"（RotationOrder、持续开关这类退化成单段的位域，或 C# 侧
+    # 声明成枚举的 INT/BIGINT 字段）时才有意义——draw_node()/panels.py 画之前用
+    # `set_inline_enum_items()` 把这次要用的选项表存进 `_INLINE_ENUM_CONTEXT`，
+    # `_enum_proxy_items()` 在同一次 draw 调用栈内读出。get/set 直接读写 int_value/uint_str
+    # 本身（原始存储值不变），"number" 字段就是原始整数值，不是数组下标——见本文件上面
+    # enum_proxy 相关函数的说明。
+    enum_proxy: EnumProperty(
+        name="Value", items=_enum_proxy_items,
+        get=_read_packed_int, set=_write_packed_int,
+    )
+
 
 # Blender 递归 PropertyGroup 的标准写法：CollectionProperty(type=...) 需要引用一个已存在的类，
 # 不能在类体内自引用，所以先定义类本身，再把递归属性补进去，最后统一注册。必须写进
@@ -229,8 +442,48 @@ def is_static_random_node(node: EFXValueNode) -> bool:
     """一个 OBJECT 节点如果恰好是 `via.Range{s,r}` 的序列化形状（vendor `RszValueType.cs`），
     返回 True。`s`=Static（静态值）、`r`=Random（随机值）——用 REE 惯例命名，不是姊妹项目
     EFX-Editor（MHWI）社区习惯用的 Value/Jitter（这套 REE 命名以后计划回哺到 EFX-Editor，
-    是两边统一的方向）。供 panels.py 画成两列并排，不画成"2 items"折叠框。"""
+    是两边统一的方向）。供 panels.py 画成两列并排，不画成"2 items"折叠框。
+
+    `SequenceNo`/`PatternNo` 走 `is_sr_index_node()`/`is_sr_min_max_node()`，不算在这里——
+    见那两个函数的说明。"""
     if node.data_type != "OBJECT" or len(node.children) != 2:
+        return False
+    if node.key in _SR_INDEX_FIELD_NAMES or node.key in _SR_MIN_MAX_FIELD_NAMES:
+        return False
+    return {c.key for c in node.children} == {"s", "r"}
+
+
+# 2026-09-10 用户实机测试 + EfxBridge relstats 全语料复核（详细证据见
+# mhws_field_labels.json 里这两个字段各自的 evidence）：`SequenceNo`/`PatternNo` 序列化形状
+# 跟 `via.Range{s,r}` 一样，但都不是 static/random 语义。
+# - `SequenceNo`：全语料 66146 例 s 恒等于 r+1（或 r+4，4 例），随机实际只在 [0,r] 里选，
+#   s 疑似只是配套的计数字段——画成 Index(r)/UnknIndex(s)，不是 Static/Random。
+# - `PatternNo`：全语料 s>r 恒成立但差值自由变化（不像 SequenceNo 钉死在 1），是真正的
+#   min/max 范围，只是 s/r 顺序和 `is_min_max_node()` 的 x/y 相反——画成 Max(s)/Min(r)。
+# `PlaySpeed` 反过来 s<=r 恒成立、顺序跟 x/y 一致，画成 Min(s)/Max(r)。
+_SR_INDEX_FIELD_NAMES = frozenset({"SequenceNo"})
+_SR_MIN_MAX_FIELD_NAMES = frozenset({"PatternNo", "PlaySpeed"})
+
+
+def is_sr_index_node(node: EFXValueNode) -> bool:
+    """`SequenceNo` 专用：形状和 `is_static_random_node()` 一样是 `{s,r}`，但 s/r 不是
+    静态/随机，是"配套计数(s)/实际生效的随机上限索引(r)"。供 panels.py 画成
+    UnknIndex(s)/Index(r) 两列。"""
+    if node.data_type != "OBJECT" or len(node.children) != 2:
+        return False
+    if node.key not in _SR_INDEX_FIELD_NAMES:
+        return False
+    return {c.key for c in node.children} == {"s", "r"}
+
+
+def is_sr_min_max_node(node: EFXValueNode) -> bool:
+    """`PatternNo`/`PlaySpeed` 专用：形状和 `is_static_random_node()` 一样是 `{s,r}`，但实测
+    是 min/max 范围而不是静态/随机。`PatternNo` 是 s=Max/r=Min（顺序和 `is_min_max_node()`
+    的 x/y 相反），`PlaySpeed` 是 s=Min/r=Max（顺序本来就对）——具体顺序在 panels.py 按字段名
+    分别处理，这个函数只负责结构判定。"""
+    if node.data_type != "OBJECT" or len(node.children) != 2:
+        return False
+    if node.key not in _SR_MIN_MAX_FIELD_NAMES:
         return False
     return {c.key for c in node.children} == {"s", "r"}
 
@@ -250,7 +503,7 @@ def is_bone_reference_field(node: EFXValueNode, attr_type: str | None) -> bool:
     return attr_type is not None and node.key == "ParentBone" and node.data_type == "STRING"
 
 
-def _node_scalar(node: EFXValueNode) -> float:
+def node_scalar(node: EFXValueNode) -> float:
     if node.data_type == "FLOAT":
         return node.float_value
     if node.data_type == "INT":
@@ -265,7 +518,48 @@ def read_xyz_node(node: EFXValueNode):
     if order is None:
         return None
     by_key = {c.key: c for c in node.children}
-    return tuple(_node_scalar(by_key[k]) for k in order)
+    return tuple(node_scalar(by_key[k]) for k in order)
+
+
+# `EFXAttributeSpawn`（vendor EfxBasics.cs）里三个 `via.Int2`（序列化形状跟普通二维向量
+# 一模一样，都是 {x, y}）字段——2026-09-10 用户实测确认：这几个字段的第二个值（max）比第
+# 一个值（min）小时游戏会崩溃，是 min/max 范围，不是随便的二维数值对。结构上跟"普通二维
+# 向量"完全没区别，唯一能分辨的只有字段名本身，所以按名单硬判断（同 is_bone_reference_field()
+# 的做法），不是结构判定。EFXAttributeLife 的计时字段已经是正经的 `via.RangeI`（S/R 那一套），
+# 不在这个问题里；vendor 里其它 Vector2 字段（EmitterShape 的尺寸、UV 偏移等）看起来是正经
+# 二维量，没有跟这三个一样的"min/max"证据，先不动它们，避免瞎猜挂错标签。
+_MIN_MAX_FIELD_NAMES = frozenset({"SpawnNum", "IntervalFrame", "EmitterDelayFrame"})
+
+
+def is_min_max_node(node: EFXValueNode) -> bool:
+    """一个 OBJECT 节点如果恰好是 `_MIN_MAX_FIELD_NAMES` 里那几个字段的 `{x, y}` 形状，
+    返回 True。供 panels.py 画成 Min/Max 两列（而不是通用的 x/y），并在 max < min 时给出
+    崩溃风险提示。"""
+    if node.data_type != "OBJECT" or len(node.children) != 2:
+        return False
+    if {c.key for c in node.children} != {"x", "y"}:
+        return False
+    return node.key in _MIN_MAX_FIELD_NAMES
+
+
+# vendor EfxCommon.cs 的 `MdfProperty`（TypeMesh/TypeMeshExpression 等结构体 `properties`
+# 数组的元素类型：材质贴图/数值属性表）。不是多态的 `EFXAttribute` 子类，JSON 里没有 `$type`
+# 判别字段，只能按子键集合的形状识别——这三个键是所有版本都稳定存在的子集：
+# `mdfPropertyIndex` 有版本门控、`value` 的子键形状随 `parameterType`（Texture/Range/...）
+# 变化，都不能当判据。
+_MDF_PROPERTY_KEYS = frozenset({"PropertyNameUTF8Hash", "parameterType", "flags"})
+
+
+def is_mdf_property_node(node: EFXValueNode) -> bool:
+    """一个 OBJECT 节点如果是材质属性数组（TypeMesh 系列 attribute 的 `properties` 字段）里的
+    单个元素，返回 True。供 panels.py 递归绘制它的子字段（`PropertyNameUTF8Hash`/
+    `mdfPropertyIndex`/`parameterType` 等）时，把知识表查询的 `attr_type` 换成合成类型名
+    `"MdfProperty"`——这个名字不对应任何真实 C# `$type` 字符串，只是知识表里复用的一个键，
+    因为这批字段在所有引用 `MdfProperty` 的 attribute 类型间是完全相同的物理布局，不需要
+    按外层 attribute 类型分别标注。"""
+    if node.data_type != "OBJECT":
+        return False
+    return _MDF_PROPERTY_KEYS <= {c.key for c in node.children}
 
 
 def find_field(fields, key: str):
@@ -383,6 +677,28 @@ def _json_scalar_data_type(value) -> str:
     raise TypeError(f"不是标量 JSON 值: {value!r}")
 
 
+def _normalize_path_separators(value: str) -> str:
+    """RE Engine 的资源路径哈希（`MurMur3HashUtils.GetPakFilepathHash`，vendor
+    `Common/MurMur3HashUtils.cs:52`）只对大小写做归一化，**不处理路径分隔符**——`\\` 和 `/`
+    会算出两个完全不同的哈希。而 EFX 里但凡是路径形状的字符串字段（`UVSequence.UVSPath` 这种，
+    实测过官方语料清一色 `/`），游戏引擎按这个哈希去资源表里查，一旦某个字段被写成反斜杠
+    （常见于 Windows 资源管理器复制路径、外部工具误用 `os.path.join` 之类的产物），哈希对不上
+    实际打包路径，引用直接失效——真实命中过一次：某 mod 的 `UVSPath` 写成
+    `Art\\VFX\\UVS\\Dimcirui\\ak.uvs`，游戏内报"Invalid"，而这个 .uvs 文件本身完好、
+    EfxBridge 往返也完全干净，唯一的异常就是这一个字段的分隔符方向。
+
+    这里在**导入时**统一改成正斜杠（`EFXValueNode` 通用内容字段树是唯一会经手这类路径字符串的
+    地方，见 populate_dict_as_children 的两处调用——attribute 内容字段 + FieldParameterValues.
+    filePath），对绝大多数官方文件是无操作（本来就是正斜杠），只对这种拼写错误生效。不在导出时
+    才处理：这样用户在 Blender 里编辑时看到的就已经是纠正后的路径，不会出现"面板里看着是对的、
+    导出后又被悄悄改写"的困惑。
+
+    不作用于 entry/action/bone 名字等其它字符串字段——那些走各自专属的 `StringProperty`
+    （`efx_name`/`EFXBoneItem.name` 等），根本不经过这个函数，这个规整只覆盖资源路径可能出现
+    的通用内容字段树。"""
+    return value.replace("\\", "/") if "\\" in value else value
+
+
 def populate_node(node: EFXValueNode, key: str, value) -> None:
     """把一个 JSON 值填进一个已经 add() 出来的 EFXValueNode 实例（递归处理 dict/list）。"""
     node.key = key
@@ -408,7 +724,7 @@ def populate_node(node: EFXValueNode, key: str, value) -> None:
         elif dtype == "BOOL":
             node.bool_value = value
         elif dtype == "STRING":
-            node.string_value = value
+            node.string_value = _normalize_path_separators(value)
         # NULL 不需要任何 slot。
 
 
@@ -451,7 +767,7 @@ def children_to_dict(collection) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# EFXGroupTag —— Entry 的 Subselect 标签列表
+# EFXGroupTag —— Entry 的 EffectGroups 标签列表
 # ---------------------------------------------------------------------------
 
 class EFXGroupTag(PropertyGroup):
@@ -794,12 +1110,21 @@ def _sync_object_name(self, context) -> None:
     对象名撞名时 Blender 会自己加 `.001`，那只影响显示、不影响导出（导出走 efx_name 和
     parent 链，不看对象名）。子 attribute 的对象名带着父级名前缀（`[Entry] Life`），这里
     **不**跟着重命名——那只是导入时生成的一次性显示名，跟着改反而会让正在看的列表跳来跳去。
+
+    `~TYPE == EFX_ENTRY` 时目标名还要带上 `entry_display_suffix()` 那个后缀（" (Mesh, PtLife)"
+    这种）以及 `[{efx_index:03d}] ` 序号前缀（见 `refresh_entry_display_name()` 的说明：Outliner
+    按字母序排、不看 `efx_index`，前缀保证显示顺序永远等于真实顺序）——不然用户一改名字，
+    刚导入时带着的后缀/前缀就被这里悄悄抹掉了，比"从来没有"更容易让人以为是 bug。Action 没有
+    这个概念（同姊妹项目："action/extern 无渲染主体概念"），照旧只用 efx_name 本身。
     """
     if not self.efx_name:
         return
     try:
-        if self.name != self.efx_name:
-            self.name = self.efx_name
+        target = self.efx_name
+        if self.get("~TYPE") == TYPE_ENTRY:
+            target = f"[{self.efx_index:03d}] {target}{entry_display_suffix(_entry_attribute_suffix_pairs(self))}"
+        if self.name != target:
+            self.name = target
     except Exception:  # 对象正被删除等边缘情况，改名失败不该拖垮属性赋值
         pass
 
@@ -853,9 +1178,18 @@ def register():
 
     Object.efx_index = IntProperty(name="Original Index")
 
-    # EFX_ENTRY 专属：Subselect 标签（对应 EFXEntry.Groups）。
+    # EFX_ENTRY 专属：EffectGroups 标签（对应 EFXEntry.Groups）。
     Object.efx_groups = CollectionProperty(type=EFXGroupTag)
     Object.efx_groups_active_index = IntProperty()
+
+    # EFX_ENTRY 专属：EfxEntryEnum（见 ENTRY_ASSIGNMENT_ITEMS 的说明）——决定这个 Entry 的
+    # Groups 标签是否真的生效，2026-09-10 之前完全没有编辑 UI，是复制/粘贴出来的 Entry
+    # 悄悄带着错误值、EffectGroups 不生效却查不出原因的根源。
+    Object.efx_entry_assignment = EnumProperty(
+        name="Entry Assignment", items=ENTRY_ASSIGNMENT_ITEMS, default="0",
+        description="决定 Groups 标签会不会生效，不是纯展示字段——新建 Entry 默认就是"
+                    "正确值，只有从别处复制/粘贴来的 Entry 才可能需要手动改这个",
+    )
 
     # EFX_ROOT 专属：import 时的原始文件名（含 `.efx.5571972` 版本号后缀）。RE Engine 的
     # 格式版本号只存在于文件名里，不在文件内容里，导出时必须带上，否则谁都读不回来——见
@@ -938,6 +1272,8 @@ def register():
 
 
 def unregister():
+    _INLINE_ENUM_CONTEXT.clear()
+    _INLINE_ENUM_ITEMS_CACHE.clear()
     del Object.efx_expression_curves_active_index
     del Object.efx_expression_curves
     del Object.efx_expression_bit_count
@@ -963,6 +1299,7 @@ def unregister():
     del Collection.efx_bones
     del Object.efx_source_filename
     del Collection.efx_source_filename
+    del Object.efx_entry_assignment
     del Object.efx_groups_active_index
     del Object.efx_groups
     del Object.efx_index

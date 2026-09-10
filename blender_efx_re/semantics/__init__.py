@@ -32,6 +32,7 @@ blender_efx_re/semantics/__init__.py —— 字段语义知识表加载器
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from typing import Optional
@@ -41,6 +42,7 @@ import bpy
 _MINED_JSON = Path(__file__).resolve().parent / "mhws_field_labels_mined.json"
 _HASHES_JSON = Path(__file__).resolve().parent / "mhws_name_hashes.json"
 _FACTORY_JSON = Path(__file__).resolve().parent / "mhws_field_labels.json"
+_ATTR_DEFAULTS_JSON = Path(__file__).resolve().parent / "mhws_attribute_defaults.json"
 
 
 def _user_json_path() -> Path:
@@ -110,12 +112,37 @@ def lookup_name_hash(value: int) -> Optional[str]:
     return _hash_table().get(str(value))
 
 
+_attr_defaults_cache: Optional[dict] = None
+
+
+def _attr_defaults_table() -> dict:
+    global _attr_defaults_cache
+    if _attr_defaults_cache is None:
+        data = _load_table(_ATTR_DEFAULTS_JSON)
+        _attr_defaults_cache = data.get("defaults") or {}
+    return _attr_defaults_cache
+
+
+def get_attribute_defaults(type_name: str) -> Optional[dict]:
+    """查一个 EfxAttributeType 枚举短名（`bridge.new_attribute()` 用的那个名字）对应的
+    "建议默认值"——语料众数统计出来的，只覆盖置信度够高的字段，见 tools/build_attr_defaults.py。
+    查不到返回 None（这批分析目前只覆盖了语料里最常见的 40 种类型，见 tools/typefreq_report.json）。
+
+    返回的是深拷贝：调用方（`structure_ops.add_attribute()`）要把这份默认值原地合并进
+    `bridge.new_attribute()` 吐出来的结构里，不能直接改到缓存的字典上，否则下一次新建同类型
+    attribute 会读到被前一次调用改坏的表。
+    """
+    entry = _attr_defaults_table().get(type_name)
+    return copy.deepcopy(entry) if entry is not None else None
+
+
 def reload_tables() -> None:
     """清空缓存，下次查询时重新读盘。插件 register() 时调用一次，供未来"Reload semantics"
     operator 复用。"""
-    global _cache, _hash_cache
+    global _cache, _hash_cache, _attr_defaults_cache
     _cache = None
     _hash_cache = None
+    _attr_defaults_cache = None
 
 
 def get_field_entry(attr_type: str, field_key: str) -> Optional[dict]:

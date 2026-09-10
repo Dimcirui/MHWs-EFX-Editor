@@ -2,34 +2,159 @@
   "game": "MHWS",
   "global_fields": {},
   "fields": {
+    "ReeLib.Efx.Structs.Basic.EFXAttributeLife": {
+      "Flags": {
+        "label_zh": "持续开关",
+        "tooltip_zh": "0=关闭，1=特效变为持续性；罕见情况取值为 2（语义未知）。",
+        "confidence": "confirmed",
+        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 对应结构体 ContinuesSwitch 字段注释 \"0关闭1特效变为持续性\"（另两处同名字段注释 \"改1变持续\"）；EfxBridge relstats/fieldstats 全语料扫描（9168/9221 个文件解析成功，91105 个 EFXAttributeLife 实例）交叉验证取值分布 0:76116 1:14323 2:666，未出现 3",
+        "bits": [
+          {
+            "mask": 4294967295,
+            "label_zh": "持续开关",
+            "label_en": "Continuous Switch",
+            "items": [
+              [
+                0,
+                "关闭",
+                "Off"
+              ],
+              [
+                1,
+                "持续",
+                "Continuous"
+              ],
+              [
+                2,
+                "Type2",
+                "Type2"
+              ]
+            ]
+          }
+        ]
+      },
+      "AppearFrame": {
+        "label_zh": "渐入帧数",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "KeepFrame": {
+        "label_zh": "持续帧数",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "VanishFrame": {
+        "label_zh": "消亡帧数",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "KeepHoldFrame": {
+        "confidence": "unknown",
+        "evidence": "机器挖掘表（mhws_field_labels_mined.json）对应字段注释本身带问号（\"保持帧数？\"），且与同结构体内独立存在的 KeepFrame 容易混淆——显式留空以盖掉挖掘表的猜测，不采信，等真实样本。",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
     "ReeLib.Efx.Structs.Basic.EFXAttributeParentOptions": {
       "RelationPos": {
         "label_zh": "位置跟随模式（分轴）",
-        "tooltip_zh": "X/Y/Z 每个分量各自取值 0-3：0=完全跟踪地图中心，1=跟随物体，2=不跟随，3=忽略变化。",
-        "confidence": "guess",
-        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释；该结构体本身标记为 //unconfirmed，未经游戏内实测验证",
-        "tester": "community (NSACloud/RE-Engine-EFX-Template fork)",
-        "date": "2026-07-04"
+        "tooltip_zh": "X/Y/Z 分量各自独立设置跟随模式。",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释确认了 0-3 四档取值、该结构体本身标记为 //unconfirmed；具体每档的中/英文短标签借用姊妹项目 EFX-Editor（MHWI）的 ENUM_TRACKING_POS（efx_format/schema/enums.py），两边引擎同构但未逐一验证 MHWs 是否完全一致",
+        "tester": "community (NSACloud/RE-Engine-EFX-Template fork) + EFX-Editor (MHWI)",
+        "date": "2026-09-10",
+        "axis_enum_items": [
+          [
+            0,
+            "绝对追踪地图中心",
+            "Track Map Center Absolutely"
+          ],
+          [
+            1,
+            "追踪玩家移动",
+            "Track Player Movement"
+          ],
+          [
+            2,
+            "不再追踪后续移动",
+            "Do not track further"
+          ],
+          [
+            3,
+            "忽略基础变换",
+            "Ignore Basic Transform"
+          ]
+        ]
       },
       "RelationRot": {
         "label_zh": "旋转跟随模式（分轴）",
-        "tooltip_zh": "X/Y/Z 每个分量各自取值 0-3：0=完全跟踪地图中心，1=跟踪物体，2=不跟随，3=忽略变化。",
-        "confidence": "guess",
-        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释；该结构体本身标记为 //unconfirmed，未经游戏内实测验证",
-        "tester": "community (NSACloud/RE-Engine-EFX-Template fork)",
-        "date": "2026-07-04"
+        "tooltip_zh": "X/Y/Z 分量各自独立设置跟随模式。",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释确认了 0-3 四档取值、该结构体本身标记为 //unconfirmed；具体每档的中/英文短标签借用姊妹项目 EFX-Editor（MHWI）的 ENUM_TRACKING_ANGLE（efx_format/schema/enums.py），两边引擎同构但未逐一验证 MHWs 是否完全一致",
+        "tester": "community (NSACloud/RE-Engine-EFX-Template fork) + EFX-Editor (MHWI)",
+        "date": "2026-09-10",
+        "axis_enum_items": [
+          [
+            0,
+            "绝对追踪地图中心",
+            "Track Map Center Absolutely"
+          ],
+          [
+            1,
+            "追踪玩家移动",
+            "Track Player Movement"
+          ],
+          [
+            2,
+            "不再追踪后续移动",
+            "Do not track further"
+          ],
+          [
+            3,
+            "对齐到角度并追踪",
+            "Snap to Angle And Track"
+          ]
+        ]
       },
       "RelationScl": {
         "label_zh": "缩放跟随模式（分轴）",
-        "tooltip_zh": "X/Y/Z 每个分量各自取值 0-3：0=完全跟踪地图中心，1=跟踪物体，2=不跟随，3=忽略变化。",
-        "confidence": "guess",
-        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释；该结构体本身标记为 //unconfirmed，未经游戏内实测验证",
-        "tester": "community (NSACloud/RE-Engine-EFX-Template fork)",
-        "date": "2026-07-04"
+        "tooltip_zh": "X/Y/Z 分量各自独立设置跟随模式。",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释确认了 0-3 四档取值、该结构体本身标记为 //unconfirmed；具体每档的中/英文短标签借用姊妹项目 EFX-Editor（MHWI）的 ENUM_TRACKING_POS（efx_format/schema/enums.py，与 RelationPos 共用同一张表），两边引擎同构但未逐一验证 MHWs 是否完全一致",
+        "tester": "community (NSACloud/RE-Engine-EFX-Template fork) + EFX-Editor (MHWI)",
+        "date": "2026-09-10",
+        "axis_enum_items": [
+          [
+            0,
+            "绝对追踪地图中心",
+            "Track Map Center Absolutely"
+          ],
+          [
+            1,
+            "追踪玩家移动",
+            "Track Player Movement"
+          ],
+          [
+            2,
+            "不再追踪后续移动",
+            "Do not track further"
+          ],
+          [
+            3,
+            "忽略基础变换",
+            "Ignore Basic Transform"
+          ]
+        ]
       },
       "ParticleUseLocal": {
         "label_zh": "粒子跟踪开关",
-        "tooltip_zh": "布尔类字段（模板按 ubyte 读取），推测控制粒子是否使用本地/跟踪坐标系。",
+        "tooltip_zh": "疑为粒子是否使用本地/跟踪坐标系的开关。",
         "confidence": "guess",
         "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释；该结构体本身标记为 //unconfirmed，未经游戏内实测验证",
         "tester": "community (NSACloud/RE-Engine-EFX-Template fork)",
@@ -37,7 +162,7 @@
       },
       "ConstInheritRate": {
         "label_zh": "跟踪继承比例（存疑）",
-        "tooltip_zh": "推测是粒子跟踪比例，模板原注释本身带问号（不确定），未经游戏内实测验证。",
+        "tooltip_zh": "疑为粒子跟踪比例，作用未知。",
         "confidence": "guess",
         "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释（原注释带\"？\"），该结构体本身标记为 //unconfirmed",
         "tester": "community (NSACloud/RE-Engine-EFX-Template fork)",
@@ -45,11 +170,18 @@
       },
       "ConstFrame": {
         "label_zh": "取消跟踪帧数",
-        "tooltip_zh": "推测是经过多少帧后取消对物体/骨骼的跟踪。",
+        "tooltip_zh": "疑为经过多少帧后取消对物体/骨骼的跟踪。",
         "confidence": "guess",
         "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释；该结构体本身标记为 //unconfirmed，未经游戏内实测验证",
         "tester": "community (NSACloud/RE-Engine-EFX-Template fork)",
         "date": "2026-07-04"
+      },
+      "ParentBone": {
+        "label_zh": "父级骨骼绑定",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
       }
     },
     "ReeLib.Efx.Structs.Transforms.EFXAttributeTransform3D": {
@@ -59,13 +191,34 @@
         "confidence": "confirmed",
         "evidence": "用户直接确认",
         "tester": "user",
-        "date": "2026-07-07"
+        "date": "2026-07-07",
+        "label_zh": "本地旋转"
+      },
+      "RotationOrder": {
+        "label_zh": "旋转顺序",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "LocalPosition": {
+        "label_zh": "本地位置",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "LocalScale": {
+        "label_zh": "本地缩放",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
       }
     },
     "ReeLib.Efx.Structs.Basic.EFXAttributeUVSequence": {
       "Flags": {
         "label_zh": "播放/翻转/朝向（位域）",
-        "tooltip_zh": "位域，不是单一数值。低 8 位（byte0）分四段：\n  bit0-1 播放模式：0=只显示起始帧 1=循环 2=播放一次后消亡 3=播放一次后定格\n  bit2-3 水平翻转：0=不翻转 1=固定翻转 2=随机翻转\n  bit4-5 垂直翻转：同上\n  bit6-7 播放方向：0=正向 1=倒放 2=随机正倒\n第 9-16 位（byte1）：bit0-1 贴图朝向（0=正常 1=顺时针90° 2=逆时针90°），bit2 作用未知。\n高 16 位恒为 0。\n全语料 66146 个实例：byte0 众数 41（循环 + 水平随机翻 + 垂直随机翻 + 正向），占 33%。播放模式四档都在用（循环 64%、只显示起始帧 19%、播放一次后消亡 16%、播放一次后定格 2%）；翻转和方向这三个子段只出现过 0/1/2，值 3 一次都没有。",
         "confidence": "likely",
         "evidence": "与姊妹项目 EFX-Editor（MHWI/MT Framework）的 UVSEQUENCE.loopingMode 位结构对照得出。那边的位划分经用户实机测试确认（EFX-Editor efx_format/schema/enums.py::BITS_LOOPING_MODE，以 BILLBOARD2D 当测试画布，2026-07-10）。本项目侧用 MHWs 全语料 66146 个 UVSequence 实例做统计验证：flipH/flipV/direction 三个 2 位子段无一出现值 3（MHWI 判定为非法组合）、byte2-3 全为 0（MHWI 的 loopingPad 恒 0）、byte0 的 P10/P90/众数 = 1/42/41，与 MHWI 的 1/42/41 一致。byte1 是两边唯一的分歧：MHWI 取值集 {0,1,2,3}，MHWs 取值集 {0,1,2,4,5,6}（从不出现 3 和 7），提示 MHWs 这里是 2 位朝向 + 1 位未知开关。",
         "tester": "corpus statistics (MHWs, 66146 instances) + EFX-Editor in-game verification (MHWI)",
@@ -204,6 +357,2144 @@
             ]
           }
         ]
+      },
+      "SequenceNo": {
+        "label_zh": "序列号",
+        "tooltip_zh": "UnknIndex 始终为 Index+1 或 Index+4。",
+        "confidence": "likely",
+        "evidence": "用户实机测试：UnknIndex=2或3、Index=0 时恒取第 0 个，证实运行时只用 Index。EfxBridge relstats 全语料复核（66146 例）：UnknIndex-Index 只取 1(66142次)/4(4次)，从未出现过 0 或负数，与静态/随机字段该有的自由分布不符。",
+        "tester": "user (in-game) + assistant (corpus relstats)",
+        "date": "2026-09-10"
+      },
+      "PatternNo": {
+        "label_zh": "起始帧号",
+        "tooltip_zh": "随机起始帧号范围：Min=Index 下界、Max=Index 上界（0-based）。",
+        "confidence": "likely",
+        "evidence": "EfxBridge relstats 全语料复核（66146 例）：s>r 恒成立但差值自由变化（64/1/11/6/21/16 等，随所属图集帧数变化），不像 SequenceNo 钉死在 1——是真正的 min/max 范围，s=Max、r=Min。",
+        "tester": "assistant (corpus relstats)",
+        "date": "2026-09-10"
+      },
+      "PlaySpeed": {
+        "label_zh": "播放速度",
+        "tooltip_zh": "随机播放速度范围：Min=s、Max=r，两者相等时每次速度恒定。",
+        "confidence": "likely",
+        "evidence": "用户实机测试：仅当 s==r 时每次播放速度才恒定。EfxBridge relstats 全语料复核（66146 例）：s<=r 恒成立，s==r 占多数（84%），其余按小数步长连续分布，是典型 min/max 随机区间。",
+        "tester": "user (in-game) + assistant (corpus relstats)",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Pt.EFXAttributePtLife": {
+      "Status": {
+        "label_zh": "触发状态",
+        "label_en": "Trigger Status",
+        "tooltip_zh": "决定这个 PtLife 在粒子生命周期的哪个阶段触发 ActionIndex 指向的 Action。",
+        "confidence": "confirmed",
+        "evidence": "vendor/RE-Engine-Lib/REE-Lib/OtherFiles/EFX/EFXEnums.cs 的 PtLifeStatus 枚举（Initialize=0/Appear=1/Keep=2/Vanish=3/Terminate=4/Unknown=-1）；MHWI 姊妹项目 EFX-Editor 对同名字段的独立标注给出一致的阶段划分（0=生成时/1=淡入时/2=持续时/3=淡出时/4=死亡时/-1=未知）",
+        "tester": "user (found via REE-Lib source) + assistant (cross-checked against MHWI)",
+        "date": "2026-09-09",
+        "bits": [
+          {
+            "mask": 4294967295,
+            "label_zh": "触发状态",
+            "label_en": "Trigger Status",
+            "items": [
+              [
+                -1,
+                "未知",
+                "Unknown"
+              ],
+              [
+                0,
+                "生成时",
+                "On Spawn (Initialize)"
+              ],
+              [
+                1,
+                "淡入时",
+                "During Fade-in (Appear)"
+              ],
+              [
+                2,
+                "持续时",
+                "Sustain (Keep)"
+              ],
+              [
+                3,
+                "淡出时",
+                "During Fade-out (Vanish)"
+              ],
+              [
+                4,
+                "死亡时",
+                "On Death (Terminate)"
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeTransform2DExpression": {
+      "scaleX": {
+        "label_zh": "X 缩放",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "scaleY": {
+        "label_zh": "Y 缩放",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeBillboard3D": {
+      "Flags": {
+        "label_zh": "混合类型（存疑）",
+        "tooltip_zh": "可能是混合类型（BlendType），作用未知。",
+        "confidence": "guess",
+        "evidence": "010 模板对应字段实际叫 unkn1，注释\"Might be BlendType\"——vendor 源码（EfxTypeBillboard.cs）对这个字段本身也没有确定的名字，两边都是猜测",
+        "tester": "assistant (vendor source physical order cross-check, 语义存疑)",
+        "date": "2026-09-10"
+      },
+      "Color": {
+        "label_zh": "颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "ColorRange": {
+        "label_zh": "颜色范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "SizeScalar": {
+        "label_zh": "生成时大小",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 SizeScaler（单数，和 C# 的 SizeScalar 差一个字母）；vendor 源码字段类型序列与模板物理顺序一致（AlphaRate/Rotation 一带都是干净锚点）",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "ColorRate": {
+        "label_zh": "颜色倍率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Intensity": {
+        "label_zh": "强度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AlphaRate": {
+        "label_zh": "透明度倍率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "EdgeBlendRange": {
+        "label_zh": "边缘融合范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Rotation": {
+        "label_zh": "旋转",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10",
+        "tooltip_zh": "生成时的初始旋转角度。"
+      },
+      "SizeX": {
+        "label_zh": "X 轴大小",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10",
+        "tooltip_zh": "生成时的初始 X 轴大小。"
+      },
+      "SizeY": {
+        "label_zh": "Y 轴大小",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10",
+        "tooltip_zh": "生成时的初始 Y 轴大小。"
+      },
+      "ShadowType": {
+        "label_zh": "阴影类型",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ParticleIgnoreScale": {
+        "label_zh": "忽略粒子缩放",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "EnableGroupColor": {
+        "label_zh": "启用组颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "OcclusionByParticleShadow": {
+        "label_zh": "受粒子阴影遮挡",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Offset": {
+        "label_zh": "偏移量",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeBillboard3DExpression": {
+      "color": {
+        "label_zh": "颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "colorRange": {
+        "label_zh": "颜色范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeBillboard3DMaterial": {
+      "Color": {
+        "label_zh": "颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "ColorRange": {
+        "label_zh": "颜色范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeBillboard3DMaterialExpression": {
+      "color": {
+        "label_zh": "颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeMeshV2": {
+      "Color": {
+        "label_zh": "颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "ColorRange": {
+        "label_zh": "颜色范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "ColorRate": {
+        "label_zh": "颜色倍率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "EmissiveColor": {
+        "label_zh": "自发光颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "RotationOrder": {
+        "label_zh": "旋转顺序",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "MaxPartsNum": {
+        "label_zh": "最大网格帧数",
+        "tooltip_zh": "网格序列（多帧网格动画）的最大帧数上限。",
+        "confidence": "likely",
+        "evidence": "对照 vendor/RE-Engine-Lib REE-Lib/OtherFiles/EFX/EfxTypeMesh.cs 的 EFXAttributeTypeMeshV2 字段声明顺序，与 010 Editor 模板 RE_EFX_STRUCTS.btx 里 TypeMesh 结构体的物理字段顺序按类型（uint/float/via.Color/via.Range 等各自占用的物理槽位数）逐一核对：模板里紧跟颜色/自发光字段之后、名叫 frameCount 的 uint 字段（模板author 未写注释）在两边顺序和类型上都对应 MaxPartsNum",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "PartsStartNo": {
+        "label_zh": "起始网格编号",
+        "tooltip_zh": "调用 mesh 文件中网格的顺序（起始编号 + 变化区间，Range 类型）。",
+        "confidence": "likely",
+        "evidence": "vendor 源码里 PartsStartNo 是 via.RangeI（占 2 个物理槽位）；010 模板里紧跟在其后的 MeshGroup1（注释\"调用mesh文件中网格的顺序\"）、MeshGroup2（注释\"上面值+1\"）正好是 2 个连续 uint，按物理顺序和槽位数对应上",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "EmissiveRate": {
+        "label_zh": "自发光倍率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "PlaySpeed": {
+        "label_zh": "播放速度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "PlaySpeedCoef": {
+        "label_zh": "播放速度系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "PlayType": {
+        "label_zh": "播放类型",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "PlayOrder": {
+        "label_zh": "播放顺序",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationX": {
+        "label_zh": "X 轴旋转",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationY": {
+        "label_zh": "Y 轴旋转",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationZ": {
+        "label_zh": "Z 轴旋转",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ScaleX": {
+        "label_zh": "X 轴缩放",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ScaleY": {
+        "label_zh": "Y 轴缩放",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ScaleZ": {
+        "label_zh": "Z 轴缩放",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "MirrorMeshPath": {
+        "label_zh": "镜像网格路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "MeshPath": {
+        "label_zh": "网格路径",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "MaterialPath": {
+        "label_zh": "材质路径",
+        "tooltip_zh": "引用的 mdf 材质文件路径。",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeVelocity2DExpression": {
+      "speed": {
+        "label_zh": "初速度",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "字段名对照姊妹项目 EFX-Editor（MHWI）同名/近似字段得出短标签提示，只借用了 MHWI 的中文短标签措辞，未采纳其详细 tooltip 内容——两边引擎（RE Engine vs MT Framework）字段名相同不代表取值语义/计算方式完全一致，未逐一验证",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "gravity": {
+        "label_zh": "重力",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeVelocity3D": {
+      "Speed": {
+        "label_zh": "初速度",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "字段名对照姊妹项目 EFX-Editor（MHWI）同名/近似字段得出短标签提示，只借用了 MHWI 的中文短标签措辞，未采纳其详细 tooltip 内容——两边引擎（RE Engine vs MT Framework）字段名相同不代表取值语义/计算方式完全一致，未逐一验证",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "SpeedCoef": {
+        "label_zh": "速度系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "DirectionVectorX": {
+        "label_zh": "运动方向 X",
+        "tooltip_zh": "粒子运动方向（Range 类型：基准值 + 随机浮动范围）。",
+        "confidence": "likely",
+        "evidence": "010 模板 RE_EFX_STRUCTS.btx 的 Velocity3D 结构体里 DirectionX/DirectionXRandom 两个连续 float 字段，按 vendor 源码（EfxVelocity.cs）DirectionVectorX 声明为 via.Range（占 2 个物理槽位）逐一对齐；模板字段名少了 \"Vector\" 中缀，只是命名习惯差异",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "DirectionVectorY": {
+        "label_zh": "运动方向 Y",
+        "tooltip_zh": "见 DirectionVectorX，对应 Y 轴。",
+        "confidence": "likely",
+        "evidence": "见 DirectionVectorX 的 evidence",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "DirectionVectorZ": {
+        "label_zh": "运动方向 Z",
+        "tooltip_zh": "见 DirectionVectorX，对应 Z 轴。",
+        "confidence": "likely",
+        "evidence": "见 DirectionVectorX 的 evidence",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "Offset": {
+        "label_zh": "运动偏移",
+        "tooltip_zh": "粒子运动偏移（Vector3）。",
+        "confidence": "likely",
+        "evidence": "010 模板 VelocityOffsetX/Y/Z 三个连续 float 字段，对应 vendor 源码里的 Vector3 Offset 字段（占 3 个物理槽位），只有 X 分量带注释",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "Size": {
+        "label_zh": "运动能量（存疑）",
+        "tooltip_zh": "疑为粒子的逐轴运动能量；与字段名 Size 的字面含义不符，实际作用未知。",
+        "confidence": "guess",
+        "evidence": "010 模板 energyOnAxisX/Y/Z 三个连续 float 字段紧跟在 VelocityOffsetX/Y/Z 之后，按 vendor 源码声明顺序（Offset 后面正好是 Vector3 Size），槽位数和位置对得上，但字段名语义（\"能量\" vs \"大小\"）互相矛盾，需要游戏内实测才能确认",
+        "tester": "assistant (vendor source + template physical order cross-check, 语义存疑)",
+        "date": "2026-09-10"
+      },
+      "GravityRate": {
+        "label_zh": "重力",
+        "tooltip_zh": "重力（Range 类型：基准值 + 随机浮动范围）。",
+        "confidence": "likely",
+        "evidence": "010 模板 Gravity/GravityRandom 两个连续 float 字段，对应 vendor 源码 via.Range GravityRate（2 个物理槽位）",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "SpeedDelayFrame": {
+        "label_zh": "运动延迟帧数",
+        "tooltip_zh": "开始运动前的延迟帧数（Range 类型）。",
+        "confidence": "likely",
+        "evidence": "010 模板 VelocitySpeedDelay/VelocitySpeedDelayRandom 两个连续 float 字段，对应 vendor 源码 via.RangeI SpeedDelayFrame（2 个物理槽位）",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "GravityDelayFrame": {
+        "label_zh": "重力延迟帧数",
+        "tooltip_zh": "重力开始生效前的延迟帧数（Range 类型）。",
+        "confidence": "likely",
+        "evidence": "010 模板 GravityDelay/GravityDelayRandom 两个连续 float 字段，对应 vendor 源码 via.RangeI GravityDelayFrame（2 个物理槽位）",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "VelocityType": {
+        "label_zh": "速度类型",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "InheritRate": {
+        "label_zh": "继承速度比例",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "InheritDistance": {
+        "label_zh": "继承距离",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Spread": {
+        "label_zh": "扩散",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeVelocity3DExpression": {
+      "speed": {
+        "label_zh": "初速度",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "字段名对照姊妹项目 EFX-Editor（MHWI）同名/近似字段得出短标签提示，只借用了 MHWI 的中文短标签措辞，未采纳其详细 tooltip 内容——两边引擎（RE Engine vs MT Framework）字段名相同不代表取值语义/计算方式完全一致，未逐一验证",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "velocityX": {
+        "label_zh": "X 基准点偏置",
+        "tooltip_zh": "逐轴速度计算的基准偏置分量，配合 divergence 类字段使用；具体公式未知。",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "字段名对照姊妹项目 EFX-Editor（MHWI）同名/近似字段得出短标签提示，只借用了 MHWI 的中文短标签措辞，未采纳其详细 tooltip 内容——两边引擎（RE Engine vs MT Framework）字段名相同不代表取值语义/计算方式完全一致，未逐一验证",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "velocityY": {
+        "label_zh": "Y 基准点偏置",
+        "tooltip_zh": "见 velocityX。",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "字段名对照姊妹项目 EFX-Editor（MHWI）同名/近似字段得出短标签提示，只借用了 MHWI 的中文短标签措辞，未采纳其详细 tooltip 内容——两边引擎（RE Engine vs MT Framework）字段名相同不代表取值语义/计算方式完全一致，未逐一验证",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "velocityZ": {
+        "label_zh": "Z 基准点偏置",
+        "tooltip_zh": "见 velocityX。",
+        "confidence": "borrowed_short_label_from_mhwi",
+        "evidence": "字段名对照姊妹项目 EFX-Editor（MHWI）同名/近似字段得出短标签提示，只借用了 MHWI 的中文短标签措辞，未采纳其详细 tooltip 内容——两边引擎（RE Engine vs MT Framework）字段名相同不代表取值语义/计算方式完全一致，未逐一验证",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeEmitterShape2D": {
+      "RangeX": {
+        "label_zh": "生成范围 X",
+        "tooltip_zh": "四边形时，最小值大于最大值会变成奇怪形状。",
+        "confidence": "likely",
+        "evidence": "010 模板 RE_EFX_STRUCTS.btx 里 ScaleXmin/ScaleXmax 两个字段（模板叫 Scale，vendor 叫 Range，命名不同但都是 via.Range 的 2 个物理槽位）",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "RangeY": {
+        "label_zh": "生成范围 Y",
+        "confidence": "likely",
+        "evidence": "见 RangeX 的 evidence，对应模板 ScaleYmin/ScaleYmax",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "ShapeType": {
+        "label_zh": "形状类型",
+        "tooltip_zh": "0=四边形，1=圆，2=以上都不是（无形状）。",
+        "confidence": "likely",
+        "evidence": "010 模板里这个字段实际叫 null1_4（模板作者还没把它从占位名改过来），按 vendor 源码字段声明顺序（RangeX/RangeY 后紧跟 ShapeType）和物理槽位数对齐确认",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "RangeDivideNum": {
+        "label_zh": "生成固定间隔",
+        "tooltip_zh": "沿生成范围按固定间隔（等分数量）生成粒子。",
+        "confidence": "guess",
+        "evidence": "010 模板里这个字段实际叫 null1_5，按物理顺序紧跟在 ShapeType 之后，与 vendor 源码字段顺序一致；模板注释比较简略，具体行为未逐一验证",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeEmitterShape3D": {
+      "RangeDivideHorizontalNum": {
+        "label_zh": "横向等分数量",
+        "tooltip_zh": "粒子生成水平方向固定间隔（等分数量）。",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 RangeDivideHorizontal（缺 Num 后缀），按 vendor 源码字段顺序确认是同一个字段",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "RangeDivideVerticalNum": {
+        "label_zh": "纵向等分数量",
+        "tooltip_zh": "粒子生成垂直方向固定间隔（等分数量）。",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 RangeDivideVertical（缺 Num 后缀），按 vendor 源码字段顺序确认是同一个字段",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "LocalRotation": {
+        "unit": "angle_radians",
+        "tooltip_zh": "弧度制欧拉角（Vector3）。",
+        "confidence": "likely",
+        "evidence": "010 模板 LocalRotationX/Y/Z 三个连续 float 字段（只有 X 带注释\"旋转\"），对应 vendor 源码 Vector3 LocalRotation（3 个物理槽位）",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10",
+        "label_zh": "本地旋转"
+      },
+      "RotationCorrect": {
+        "label_zh": "旋转矫正方式",
+        "tooltip_zh": "0=无变化，1=与摄像头平行，2=与摄像头平行且 Y 轴固定，3=朝向摄像头，4=朝向摄像头且 Y 轴固定。",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 RotationCorrectType（多一个 Type 后缀），按 vendor 源码字段顺序确认是同一个字段",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "DivideEquidistant": {
+        "label_zh": "等分划分（存疑）",
+        "tooltip_zh": "作用未知。",
+        "confidence": "guess",
+        "evidence": "010 模板对应字段拼写是 DivideEquidstant（少一个 i，模板作者的笔误），按 vendor 源码字段顺序确认是同一个字段",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "DivideEquidistantCalcOuterCurveData": {
+        "label_zh": "等分划分按外侧曲线计算（存疑）",
+        "tooltip_zh": "作用未知。",
+        "confidence": "guess",
+        "evidence": "010 模板对应字段名是 DivideEquidstantCaloOuterCurve（拼写和后缀都不同），按 vendor 源码字段顺序确认是同一个字段",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "DivideEquidistantRecalcEveryFrameData": {
+        "label_zh": "等分划分逐帧重算（存疑）",
+        "tooltip_zh": "作用未知。",
+        "confidence": "guess",
+        "evidence": "010 模板对应字段名是 DivideEquidstantEveryFrame（拼写和后缀都不同），按 vendor 源码字段顺序确认是同一个字段",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "RangeY": {
+        "label_zh": "Y 轴范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ShapeType": {
+        "label_zh": "形状类型",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）；枚举成员数量（3）与模板描述一一对应",
+        "tester": "assistant",
+        "date": "2026-09-10",
+        "bits": [
+          {
+            "mask": 4294967295,
+            "label_zh": "形状类型",
+            "label_en": "Shape Type",
+            "items": [
+              [
+                0,
+                "立方体",
+                "Box"
+              ],
+              [
+                1,
+                "球型",
+                "Sphere"
+              ],
+              [
+                2,
+                "圆柱",
+                "Cylinder"
+              ]
+            ]
+          }
+        ]
+      },
+      "RangeDivideNum": {
+        "label_zh": "等分数量",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RangeDivideAxis": {
+        "label_zh": "等分坐标轴",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationOrder": {
+        "label_zh": "旋转顺序",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10",
+        "tooltip_zh": "控制粒子生成平面的旋转朝向。"
+      },
+      "UseExtension": {
+        "label_zh": "启用扩展",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10",
+        "tooltip_zh": "开启后改变基础形状轮廓（立方体变四棱锥、球体两侧内凹、圆柱变圆锥），常与等分间隔搭配使用。"
+      },
+      "ScaleHorizontal": {
+        "label_zh": "水平角度范围",
+        "tooltip_zh": "弧度制，限制发射器的水平角度范围。",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ScaleVertical": {
+        "label_zh": "垂直角度范围",
+        "tooltip_zh": "弧度制，限制发射器的垂直角度范围。",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RangeX": {
+        "label_zh": "X 轴范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RangeZ": {
+        "label_zh": "Z 轴范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeFadeByEmitterAngle": {
+      "FadeInStart": {
+        "label_zh": "淡入起点",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "FadeInEnd": {
+        "label_zh": "淡入终点",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "AlphaRate": {
+        "label_zh": "透明度倍率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FadeBlend": {
+        "label_zh": "淡出混合",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeLuminanceBleed": {
+      "Bleed": {
+        "label_zh": "溢出强度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "ColorScaler": {
+        "label_zh": "颜色倍率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "TexelScaler": {
+        "label_zh": "纹素缩放系数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      }
+    },
+    "ReeLib.Efx.Structs.Pt.EFXAttributePtCollision": {
+      "HorizontalBounce": {
+        "label_zh": "水平弹跳",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "projectionOffset": {
+        "label_zh": "投影偏移",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "projectionDist": {
+        "label_zh": "投影距离",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      }
+    },
+    "ReeLib.Efx.Structs.Pt.EFXAttributePtUvSequence": {
+      "PatternNo": {
+        "label_zh": "起始帧号",
+        "tooltip_zh": "所选 Sequence 内 Patterns 表的下标（0-based）。",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeGpuBillboard": {
+      "Color": {
+        "label_zh": "颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "ColorRange": {
+        "label_zh": "颜色范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "ColorRate": {
+        "label_zh": "颜色倍率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Intensity": {
+        "label_zh": "强度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "EdgeBlendRange": {
+        "label_zh": "边缘融合范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AlphaRate": {
+        "label_zh": "透明度倍率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Rotation": {
+        "label_zh": "旋转",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "SizeX": {
+        "label_zh": "X 轴大小",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "SizeY": {
+        "label_zh": "Y 轴大小",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Offset": {
+        "label_zh": "偏移量",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeTransform3DModifier": {
+      "unkn7": {
+        "label_zh": "X 轴旋转角度",
+        "unit": "angle_radians",
+        "tooltip_zh": "弧度制欧拉角，X 轴旋转角度。",
+        "confidence": "likely",
+        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 里 Transform3DModifier 结构体按物理顺序排列 RotationX/rotationXJitter/RotationY/rotationYJitter/RotationZ/rotationZJitter 六个字段，逐字段带中文注释，但该结构体在 C# 侧全部 54 个字段都叫 unkn0~unkn53，按名字或按整体顺序都对不上（结构体前段字段数量两边不一致，见 unkn0/unkn1 附近的错位）。用 EfxBridge fieldstats 对真实语料（9168/9221 文件解析成功，6400 个实例）逐字段统计取值分布，发现 unkn7~unkn12 六个字段的实测值全部是 π 的整数分之一（如 3.1415927、1.5707964、0.5235988、0.34906587 等典型角度制弧度值），与模板同一位置的六个角度字段完全吻合，据此按局部顺序对齐（不是对整个结构体做顺序对齐）",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      },
+      "unkn8": {
+        "label_zh": "X 轴旋转随机值",
+        "unit": "angle_radians",
+        "tooltip_zh": "见 unkn7（rotationXJitter，X 轴旋转角度的随机浮动范围）。",
+        "confidence": "likely",
+        "evidence": "见 unkn7 的 evidence；实测取值集中在较小角度（π/36、π/18、π/6 等），与\"抖动/随机幅度\"字段的取值特征吻合",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      },
+      "unkn9": {
+        "label_zh": "Y 轴旋转角度",
+        "unit": "angle_radians",
+        "tooltip_zh": "见 unkn7。",
+        "confidence": "likely",
+        "evidence": "见 unkn7 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      },
+      "unkn10": {
+        "label_zh": "Y 轴旋转随机值",
+        "unit": "angle_radians",
+        "tooltip_zh": "见 unkn7。取值呈双峰分布（0 或 π 各约一半），更像是否翻转 180 度的开关而不是连续随机范围。",
+        "confidence": "likely",
+        "evidence": "见 unkn7 的 evidence；unkn10 实测 6400 个实例里 3434 个为 0.0、2811 个为 π，双峰分布明显区别于其余同组字段",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      },
+      "unkn11": {
+        "label_zh": "Z 轴旋转角度",
+        "unit": "angle_radians",
+        "tooltip_zh": "见 unkn7。",
+        "confidence": "likely",
+        "evidence": "见 unkn7 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      },
+      "unkn12": {
+        "label_zh": "Z 轴旋转随机值",
+        "unit": "angle_radians",
+        "tooltip_zh": "见 unkn7。",
+        "confidence": "likely",
+        "evidence": "见 unkn7 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      },
+      "unkn31": {
+        "label_zh": "X 轴随机方向旋转角速度",
+        "unit": "angle_radians",
+        "tooltip_zh": "弧度制（1 度约 0.0175）。控制持续旋转的角速度，不是静态角度。",
+        "confidence": "likely",
+        "evidence": "同一结构体（Transform3DModifier）继续用取值分布指纹法对齐：确认 unkn0=unkn1_0、unkn29=unkn1_29、unkn45=unkn1_45（外加已确认的 unkn7=RotationX）后，发现这三个锚点相对模板物理顺序的偏移量都恒为 +2（模板比 C# 侧多出 unknSeqNum、mhws_unkn0 两个开头字段，此后全程无漂移），据此把偏移量应用到模板里 x/x1/x2/x3/y/y1/y2/y3/z/z1/z2/z3 这十二个具名字段，逐个用 EfxBridge fieldstats 全语料统计核实：unkn31/35/39（x/y/z 基准角速度）取值都是角度制整数分之弧度、unkn32/36/40（x1/y1/z1 随机值）同样是角度制但幅度更小、unkn33/37/41（x2/y2/z2 变动值）取值高度集中在 1.0 附近（与模板注释\"1匀速，大于1加速小于1减速\"精确吻合）、unkn34.value/unkn38/unkn42（x3/y3/z3 变动随机值）几乎恒为 0（与模板注释\"在上面值基础上随机加减\"这种极少用到的三级微调项吻合，unkn34 甚至在 C# 反射里被识别成 nullable 字段）——x/y/z 三组分布形状两两对应，内部自洽",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      },
+      "unkn32": {
+        "label_zh": "X 轴角速度随机值",
+        "unit": "angle_radians",
+        "tooltip_zh": "见 unkn31。",
+        "confidence": "likely",
+        "evidence": "见 unkn31 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      },
+      "unkn33": {
+        "label_zh": "X 轴角速度变动系数",
+        "tooltip_zh": "1=匀速，大于 1 加速，小于 1 减速；近 70% 的实例取值恰为 1.0。",
+        "confidence": "likely",
+        "evidence": "见 unkn31 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      },
+      "unkn34": {
+        "label_zh": "X 轴角速度变动随机值",
+        "tooltip_zh": "在 unkn33（变动系数）基础上叠加的随机波动，绝大多数情况下不设置（恒为 0）。",
+        "confidence": "likely",
+        "evidence": "见 unkn31 的 evidence；该字段在 C# 反射里表现为 nullable（EfxBridge fieldstats 输出键名是 unkn34.value 而非 unkn34），与模板注释里\"在上面值基础上随机加减\"这种极少用到的三级微调项定位一致",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      },
+      "unkn35": {
+        "label_zh": "Y 轴随机方向旋转角速度",
+        "unit": "angle_radians",
+        "tooltip_zh": "见 unkn31。",
+        "confidence": "likely",
+        "evidence": "见 unkn31 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      },
+      "unkn36": {
+        "label_zh": "Y 轴角速度随机值",
+        "unit": "angle_radians",
+        "tooltip_zh": "见 unkn31。",
+        "confidence": "likely",
+        "evidence": "见 unkn31 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      },
+      "unkn37": {
+        "label_zh": "Y 轴角速度变动系数",
+        "tooltip_zh": "见 unkn33。",
+        "confidence": "likely",
+        "evidence": "见 unkn31 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      },
+      "unkn38": {
+        "label_zh": "Y 轴角速度变动随机值",
+        "tooltip_zh": "见 unkn34。",
+        "confidence": "likely",
+        "evidence": "见 unkn31 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      },
+      "unkn39": {
+        "label_zh": "Z 轴随机方向旋转角速度",
+        "unit": "angle_radians",
+        "tooltip_zh": "见 unkn31。",
+        "confidence": "likely",
+        "evidence": "见 unkn31 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      },
+      "unkn40": {
+        "label_zh": "Z 轴角速度随机值",
+        "unit": "angle_radians",
+        "tooltip_zh": "见 unkn31。",
+        "confidence": "likely",
+        "evidence": "见 unkn31 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      },
+      "unkn41": {
+        "label_zh": "Z 轴角速度变动系数",
+        "tooltip_zh": "见 unkn33。",
+        "confidence": "likely",
+        "evidence": "见 unkn31 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      },
+      "unkn42": {
+        "label_zh": "Z 轴角速度变动随机值",
+        "tooltip_zh": "见 unkn34。全语料从未出现过非零值。",
+        "confidence": "likely",
+        "evidence": "见 unkn31 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeGpuMesh": {
+      "Color": {
+        "label_zh": "颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "ColorRange": {
+        "label_zh": "颜色范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "ColorRate": {
+        "label_zh": "颜色倍率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      },
+      "RotationOrder": {
+        "label_zh": "旋转顺序",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "user+assistant",
+        "date": "2026-09-09"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeNoise": {
+      "LowFrequency": {
+        "label_zh": "低频扰动速度",
+        "tooltip_zh": "粒子运动扰动（Range 类型：基准值 + 随机浮动范围）。",
+        "confidence": "likely",
+        "evidence": "vendor 源码（EfxMiscStructs.cs）EFXAttributeNoise 四个字段全是 via.Range（各占 2 个物理槽位）；010 模板对应的 LowFrquency/LowFrquencyRandom（拼写少一个 e）两个连续 float 字段按顺序和槽位数对齐",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "LowFrequencyWidth": {
+        "label_zh": "低频扰动半径",
+        "tooltip_zh": "见 LowFrequency。",
+        "confidence": "likely",
+        "evidence": "对应模板 LowFrquencyWidth/LowFrquencyWidthRandom，见 LowFrequency 的 evidence",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "HighFrequency": {
+        "label_zh": "高频扰动速度",
+        "tooltip_zh": "见 LowFrequency。",
+        "confidence": "likely",
+        "evidence": "对应模板 HighFrquency/HighFrquencyRandom，见 LowFrequency 的 evidence",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "HighFrequencyWidth": {
+        "label_zh": "高频扰动半径",
+        "tooltip_zh": "见 LowFrequency。",
+        "confidence": "likely",
+        "evidence": "对应模板 HighFrquencyWidth/HighFrquencyWidthRandom，见 LowFrequency 的 evidence",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeRgbCommon": {
+      "GreenChSaturate": {
+        "label_zh": "绿通道饱和度",
+        "confidence": "likely",
+        "evidence": "vendor 源码（EfxMiscStructs.cs）EFXAttributeRgbCommon 字段声明顺序是 GreenChColor/GreenChColorRange/GreenChIntensity/GreenChSaturate/GreenChCurve；010 模板对应位置的字段全叫通用占位名 ChValue1/ChValue2（模板作者没有单独区分绿/红通道，两段结构physically 重复了一遍），按物理顺序对齐到这里",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "GreenChCurve": {
+        "label_zh": "绿通道曲线",
+        "confidence": "likely",
+        "evidence": "见 GreenChSaturate 的 evidence，是紧跟在其后的下一个物理槽位",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "RedChAlphaToB": {
+        "label_zh": "红转蓝通道",
+        "tooltip_zh": "0 时显示 A 通道和红通道，持续时间结束后变为蓝通道；1 时显示蓝通道；其余取值会出现异常效果。",
+        "confidence": "likely",
+        "evidence": "010 模板红通道那一遍重复结构里 ChValue1 的注释直接描述了这个行为，按 vendor 源码字段声明顺序（RedChColor/RedChColorRange/RedChIntensity/RedChAlphaToB/Alpha）对齐到 RedChAlphaToB",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "Alpha": {
+        "label_zh": "透明度",
+        "confidence": "likely",
+        "evidence": "见 RedChAlphaToB 的 evidence，是紧跟在其后的下一个物理槽位（模板此处无注释）",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "GreenChLifeType": {
+        "label_zh": "绿通道持续开关",
+        "tooltip_zh": "改为 1 会变成持续性效果。",
+        "confidence": "likely",
+        "evidence": "010 模板绿通道那一遍重复结构里最后一个字段叫 ContinuesSwitch，注释\"改1变持续\"，按 vendor 源码字段顺序（UseGreenChLife/…VanishFrame/GreenChLighting/GreenChLifeType）对齐到 GreenChLifeType",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "RedChLifeType": {
+        "label_zh": "红通道持续开关",
+        "tooltip_zh": "见 GreenChLifeType，对应红通道。",
+        "confidence": "likely",
+        "evidence": "见 GreenChLifeType 的 evidence，对应模板红通道那一遍重复结构里的第二个 ContinuesSwitch",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "GreenChColorRange": {
+        "label_zh": "绿通道颜色范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "GreenChIntensity": {
+        "label_zh": "绿通道强度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RedChColorRange": {
+        "label_zh": "红通道颜色范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RedChIntensity": {
+        "label_zh": "红通道强度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "UseGreenChLife": {
+        "label_zh": "启用绿通道生命周期",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "GreenChAppearFrame": {
+        "label_zh": "绿通道出现帧数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "GreenChKeepFrame": {
+        "label_zh": "绿通道维持帧数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "GreenChVanishFrame": {
+        "label_zh": "绿通道消失帧数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "GreenChLighting": {
+        "label_zh": "绿通道光照",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "UseRedChLife": {
+        "label_zh": "启用红通道生命周期",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RedChAppearFrame": {
+        "label_zh": "红通道出现帧数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RedChKeepFrame": {
+        "label_zh": "红通道维持帧数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RedChVanishFrame": {
+        "label_zh": "红通道消失帧数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RedChLighting": {
+        "label_zh": "红通道光照",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "MdfProperty": {
+      "PropertyNameUTF8Hash": {
+        "label_zh": "属性名哈希",
+        "tooltip_zh": "材质/贴图属性名的哈希值，对应 mdf 文件里那个属性的名字（原始字符串没有落盘，只存哈希）。",
+        "confidence": "likely",
+        "evidence": "010 模板 RE_EFX_STRUCTS.btx 里 TypeMesh 结构体 properties 数组元素对应的两段重复结构（材质属性/贴图属性）都有这个字段，注释分别是\"材质属性类型hash\"/\"贴图属性类型hash\"；这个字段不是 TypeMesh 顶层字段，而是 properties: List<MdfProperty> 数组元素（vendor EfxCommon.cs 的 MdfProperty 类）内部字段，本项目原本没有给这类嵌套数组元素挂知识表的机制，2026-09-10 新增 model.is_mdf_property_node() + 合成类型名 \"MdfProperty\" 才能标注",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "mdfPropertyIndex": {
+        "label_zh": "属性编号",
+        "tooltip_zh": "这个属性在 mdf 文件内的编号。",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段叫 PropertyNameNumber，注释\"对应mdf内属性编号\"；见 PropertyNameUTF8Hash 的 evidence",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "mdfParameterValueCount": {
+        "label_zh": "数值数量",
+        "tooltip_zh": "这个属性对应的数值个数（贴图类属性通常是贴图编号计数，普通数值属性是分量数）。",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段叫 parameterCount；见 PropertyNameUTF8Hash 的 evidence",
+        "tester": "assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonLength": {
+      "Width": {
+        "label_zh": "粒子宽度",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 scale_x，按 vendor 源码（EfxTypeRibbon.cs）字段类型序列逐位对齐确认（Width 前后的 Flags/SizeScalar 都是干净的类型匹配锚点）；全语料统计 7513 个实例，取值集中在 0.3~1.0，符合宽度语义",
+        "tester": "assistant (vendor source physical order + corpus stats cross-check)",
+        "date": "2026-09-10"
+      },
+      "Length": {
+        "label_zh": "粒子长度",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 scale_y，按同一条类型序列对齐链路（LengthFlags 处有干净的类型匹配锚点）确认；全语料统计该字段的 .s 分量有一部分实例取值是极小的反常浮点数（接近 subnormal），具体原因未查清，但位置对齐本身有独立锚点支撑，不影响\"这是 Length 字段\"这个结论",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "BasingPoint": {
+        "label_zh": "基准点位置",
+        "tooltip_zh": "0.5 为正中。",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 transformX，按类型序列对齐确认；全语料统计 7513 个实例里 .s 分量 99.6% 精确等于 0.5，与\"0.5正中\"的注释高度吻合",
+        "tester": "assistant (vendor source physical order + corpus stats cross-check)",
+        "date": "2026-09-10"
+      },
+      "DirectionX": {
+        "label_zh": "X 方向（和固定轴有关，存疑）",
+        "tooltip_zh": "作用未知。",
+        "confidence": "guess",
+        "evidence": "010 模板对应字段实际叫 unkn1_23，按类型序列对齐确认；全语料统计取值多为三角函数式的常数（如 0.9396926≈cos20°），符合\"方向分量\"特征，但具体和哪根轴的关系模板作者自己也不确定",
+        "tester": "assistant (vendor source physical order + corpus stats cross-check)",
+        "date": "2026-09-10"
+      },
+      "DirectionY": {
+        "label_zh": "Y 方向（和固定轴有关，存疑）",
+        "tooltip_zh": "见 DirectionX。",
+        "confidence": "guess",
+        "evidence": "见 DirectionX 的 evidence，对应模板 unkn1_25",
+        "tester": "assistant (vendor source physical order + corpus stats cross-check)",
+        "date": "2026-09-10"
+      },
+      "HeadColor": {
+        "label_zh": "渐变色影响程度（存疑）",
+        "tooltip_zh": "实际是颜色类型字段，作用未知。",
+        "confidence": "guess",
+        "evidence": "010 模板对应字段实际叫 color0（和 TypeRibbonLength 结构体前段一个同名占位字段重名），按物理顺序（HeadColor/ColorPlace1/ColorPlace2 三个连续 Color 字段，模板这里也恰好是三个连续 Color）对齐，但注释内容和字段类型对不上，不确定是不是标注错误",
+        "tester": "assistant (vendor source physical order cross-check, 语义存疑)",
+        "date": "2026-09-10"
+      },
+      "ColorPlace1": {
+        "label_zh": "渐变色 1",
+        "confidence": "likely",
+        "evidence": "见 HeadColor 的 evidence，对应模板第二个 color1",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "ColorPlace2": {
+        "label_zh": "渐变色 2",
+        "confidence": "likely",
+        "evidence": "见 HeadColor 的 evidence，对应模板 color2",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "Color": {
+        "label_zh": "颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorRange": {
+        "label_zh": "颜色范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorRate": {
+        "label_zh": "颜色倍率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Intensity": {
+        "label_zh": "强度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "EdgeBlendRange": {
+        "label_zh": "边缘融合范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AlphaRate": {
+        "label_zh": "透明度倍率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "TextureRepeatNum": {
+        "label_zh": "贴图重复次数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "DirectionZ": {
+        "label_zh": "Z 方向",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "HeadScale": {
+        "label_zh": "头部缩放",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeGpuRibbonLength": {
+      "BlendFlags": {
+        "label_zh": "混合模式（存疑）",
+        "tooltip_zh": "0=粒子显示黑色，2=不显示黑色。",
+        "confidence": "guess",
+        "evidence": "010 模板对应字段实际叫 Type；按 vendor 源码（EfxTypeRibbon.cs）字段类型序列逐位对齐——这个结构体两边字段数量和类型序列完全一致（25/25，含 ParticleNum 这个名字+类型双重吻合的锚点），是本轮对齐最干净的一个结构体",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "SizeScalar": {
+        "label_zh": "粒子缩放",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 Scale/ScaleRandom；见 BlendFlags 的 evidence",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "Width": {
+        "label_zh": "X 轴缩放",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 ScaleX/ScaleXRandom；见 BlendFlags 的 evidence",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "TextureRepeatNum": {
+        "label_zh": "碰撞检测（存疑）",
+        "tooltip_zh": "0=无碰撞，1=碰撞；也可能是贴图重复次数，实际作用未知。",
+        "confidence": "guess",
+        "evidence": "010 模板对应字段实际叫 Collision；按类型序列对齐确认（前后 ScaleX/ScaleXRandom 和 ParticleNum 都是干净锚点），字段名和模板注释语义矛盾，需要游戏内实测才能判断",
+        "tester": "assistant (vendor source physical order cross-check, 语义存疑)",
+        "date": "2026-09-10"
+      },
+      "Length": {
+        "label_zh": "Y 轴缩放",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 ScaleY/ScaleYRandom；见 BlendFlags 的 evidence",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "BasingPoint": {
+        "label_zh": "基准点位置",
+        "tooltip_zh": "0.5 为正中。",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 BasingPointX/BasingPointY（名字带 X/Y 但其实是同一个 Range 字段的基准值+随机值，不是两根轴）；见 BlendFlags 的 evidence，且和 TypeRibbonLength.BasingPoint 的\"0.5正中\"说法一致，互相印证",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "Intensity": {
+        "label_zh": "强度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "EdgeBlendRange": {
+        "label_zh": "边缘融合范围",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "AlphaRate": {
+        "label_zh": "透明度倍率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ShapeDivision": {
+        "label_zh": "形状分段数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "DirectionX": {
+        "label_zh": "X 方向",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "DirectionY": {
+        "label_zh": "Y 方向",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "DirectionZ": {
+        "label_zh": "Z 方向",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ParticleNum": {
+        "label_zh": "粒子数量上限",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeVelocity2D": {
+      "unkn1_6": {
+        "tooltip_zh": "粒子运动速度随机值（配合 unkn1_5 的基准速度使用）。",
+        "confidence": "guess",
+        "evidence": "010 模板对应字段实际叫 null1_6（模板作者按语料统计发现它经常是 0），按模板物理顺序紧跟在 unkn1_5（注释\"粒子运动速度，小于1减速大于1加速\"）之后，两边字段编号在这个区间内保持一致（都从 0 开始编号且没有版本门控插队），所以判定是它的随机值搭档",
+        "tester": "assistant (template physical order cross-check)",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeDistortion": {
+      "SpecularPower": {
+        "label_zh": "畸变强度",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 Power；vendor 源码（EfxMiscStructs.cs）字段类型序列逐位对齐——模板这里两个版本门控字段（unknSeqNum 之后紧跟的 mhws_unkn0）恰好对应 C# 的 DistortionType（枚举/uint），后面 Influence 字段模板和 C# 同名，Power/intensity/color 顺势对齐",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "SpecularIntensity": {
+        "label_zh": "亮度",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 intensity；见 SpecularPower 的 evidence",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "DistortionType": {
+        "label_zh": "扭曲类型",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "SpecularColor": {
+        "label_zh": "高光颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FadeScreenEdge": {
+        "label_zh": "屏幕边缘淡出",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Influence": {
+        "label_zh": "表面模糊度",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeRotateAnim": {
+      "RotationAddX": {
+        "label_zh": "X 轴旋转速度",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 rotateSpeedX/rotateSpeedXRandom；vendor 源码（EfxTransform.cs）字段类型序列与模板物理顺序完全一致（15/15 槽位对齐，无插队）",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "RotationAddY": {
+        "label_zh": "Y 轴旋转速度",
+        "confidence": "likely",
+        "evidence": "见 RotationAddX 的 evidence，对应模板 rotateSpeedY/rotateSpeedYRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "RotationAddZ": {
+        "label_zh": "Z 轴旋转速度",
+        "confidence": "likely",
+        "evidence": "见 RotationAddX 的 evidence，对应模板 rotateSpeedZ/rotateSpeedZRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "RotationCoefX": {
+        "label_zh": "X 轴旋转加速度",
+        "confidence": "likely",
+        "evidence": "见 RotationAddX 的 evidence，对应模板 rotateSpeedXacceleration/rotateSpeedXaccelerationRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "RotationCoefY": {
+        "label_zh": "Y 轴旋转加速度",
+        "confidence": "likely",
+        "evidence": "见 RotationAddX 的 evidence，对应模板 rotateSpeedYacceleration/rotateSpeedYaccelerationRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "RotationCoefZ": {
+        "label_zh": "Z 轴旋转加速度",
+        "confidence": "likely",
+        "evidence": "见 RotationAddX 的 evidence，对应模板 rotateSpeedZacceleration/rotateSpeedZaccelerationRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeTransform2D": {
+      "LocalPosition": {
+        "label_zh": "位置",
+        "tooltip_zh": "屏幕像素坐标，960/540 为正中（对应 1920x1080 分辨率的一半）。",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 pos_x/pos_y；vendor 源码（EfxTransform.cs）字段类型序列与模板物理顺序完全一致（5/5 槽位对齐）",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Basic.EFXAttributeUVScroll": {
+      "uScrollAdd": {
+        "label_zh": "U 方向流动",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 ScrollAddU/ScrollAddURandom；vendor 源码（EfxBasics.cs）字段类型序列与模板物理顺序完全一致",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "vScrollAdd": {
+        "label_zh": "V 方向流动",
+        "confidence": "likely",
+        "evidence": "见 uScrollAdd 的 evidence，对应模板 ScrollAddV/ScrollAddVRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "uScrollAddCoef": {
+        "label_zh": "U 方向流动速度",
+        "confidence": "likely",
+        "evidence": "见 uScrollAdd 的 evidence，对应模板 ScrollSpeedU/ScrollSpeedURandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "vScrollAddCoef": {
+        "label_zh": "V 方向流动速度",
+        "confidence": "likely",
+        "evidence": "见 uScrollAdd 的 evidence，对应模板 ScrollSpeedV/ScrollSpeedVRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "uScrollOffset": {
+        "label_zh": "U 方向流动偏移",
+        "confidence": "likely",
+        "evidence": "见 uScrollAdd 的 evidence，对应模板 ScrollOffectU/ScrollOffectURandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "vScrollOffset": {
+        "label_zh": "V 方向流动偏移",
+        "confidence": "likely",
+        "evidence": "见 uScrollAdd 的 evidence，对应模板 ScrollOffectV/ScrollOffectVRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeScaleAnim": {
+      "SizeScalarAdd": {
+        "label_zh": "整体缩放基准值",
+        "tooltip_zh": "整体缩放基准值，可能对应特效缩放的最小值。",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 MinScale/MinScaleRandom；vendor 源码（EfxTransform.cs）字段类型序列与模板物理顺序完全一致（18/18 槽位对齐）",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "SizeScalarCoef": {
+        "label_zh": "整体缩放系数",
+        "tooltip_zh": "整体缩放系数，可能对应特效缩放的最大值。",
+        "confidence": "likely",
+        "evidence": "见 SizeScalarAdd 的 evidence，对应模板 MaxScale/MaxScaleRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "SizeXAdd": {
+        "label_zh": "X 轴缩放变化速率",
+        "confidence": "likely",
+        "evidence": "见 SizeScalarAdd 的 evidence，对应模板 ScaleSpeedX/ScaleSpeedXRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "SizeXAddCoef": {
+        "label_zh": "X 轴缩放变化加速度",
+        "confidence": "likely",
+        "evidence": "见 SizeScalarAdd 的 evidence，对应模板 ScaleAccelX/ScaleAccelXRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "SizeYAdd": {
+        "label_zh": "Y 轴缩放变化速率",
+        "confidence": "likely",
+        "evidence": "见 SizeScalarAdd 的 evidence，对应模板 ScaleSpeedY/ScaleSpeedYRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "SizeYAddCoef": {
+        "label_zh": "Y 轴缩放变化加速度",
+        "confidence": "likely",
+        "evidence": "见 SizeScalarAdd 的 evidence，对应模板 ScaleAccelY/ScaleAccelYRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "SizeZAdd": {
+        "label_zh": "Z 轴缩放变化速率",
+        "confidence": "likely",
+        "evidence": "见 SizeScalarAdd 的 evidence，对应模板 ScaleSpeedZ/ScaleSpeedZRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "SizeZAddCoef": {
+        "label_zh": "Z 轴缩放变化加速度",
+        "confidence": "likely",
+        "evidence": "见 SizeScalarAdd 的 evidence，对应模板 ScaleAccelZ/ScaleAccelZRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "SizeDelayFrame": {
+        "label_zh": "缩放延迟帧数",
+        "confidence": "likely",
+        "evidence": "见 SizeScalarAdd 的 evidence，对应模板 Delay/DelayRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Vortexel.EFXAttributePtVortexelWind": {
+      "TransitionRate": {
+        "label_zh": "风力速度",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 unkn0/unkn1，是该结构体的第一个 Range 字段，按 vendor 源码（EfxVortexel.cs）物理顺序对齐",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "MaxSpeed": {
+        "label_zh": "风力范围（存疑）",
+        "tooltip_zh": "风力范围；也可能是最大速度，实际作用未知。",
+        "confidence": "guess",
+        "evidence": "010 模板对应字段实际叫 unkn5，按物理位置对齐（该位置往前的类型序列干净匹配，但 unkn5 后一位类型对不上，说明再往后可能又有插队字段，此处对齐本身仍然可信）",
+        "tester": "assistant (vendor source physical order cross-check, 语义存疑)",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeStretchBlur": {
+      "TargetStencil": {
+        "tooltip_zh": "这个值不是 2 的时候好像不起作用。",
+        "confidence": "confirmed",
+        "evidence": "vendor 源码（EfxMiscStructs.cs）里这个字段自带内联注释 `<comment=\"Doesn't seem to work when this value isn't two\">`，和 010 模板对应字段 two 的注释逐字一致，两条独立来源互相印证",
+        "tester": "vendor + community (010 template), cross-confirmed",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeFadeByAngle": {
+      "Cone": {
+        "label_zh": "锥体范围",
+        "tooltip_zh": "锥体范围，可能是弧度制。",
+        "confidence": "guess",
+        "evidence": "010 模板对应字段实际叫 ConeAngle1；vendor 源码（EfxFade.cs）字段类型序列与模板物理顺序完全一致（Flags/AlphaRate 两端都是干净的类型+名字双重锚点）",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "ConeDirection": {
+        "label_zh": "锥体方向",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 ConeDiraction（拼写少一个 e），按 vendor 源码字段类型序列对齐确认",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "AlphaRate": {
+        "label_zh": "透明度倍率",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeBillboard2D": {
+      "SizeScalar": {
+        "label_zh": "粒子大小",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 Scale/Scalerandom；vendor 源码（EfxTypeBillboard.cs）字段类型序列与模板物理顺序一致",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "SizeX": {
+        "label_zh": "X 轴大小",
+        "confidence": "likely",
+        "evidence": "见 SizeScalar 的 evidence，对应模板 ScaleX/ScaleXRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "SizeY": {
+        "label_zh": "Y 轴大小",
+        "confidence": "likely",
+        "evidence": "见 SizeScalar 的 evidence，对应模板 ScaleY/ScaleYRandom",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypePolygon": {
+      "SizeScalar": {
+        "label_zh": "粒子大小",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 Scale/ScaleRandom，紧跟在 RotationX/Y/Z 三组 Range 字段之后的第一个 Range 块，按 vendor 源码（EfxTypePolygon.cs）字段分组顺序对齐（这一段模板本身有插队字段，具体槽位有轻微不确定，但\"这一块 Range 对应 SizeScalar/Width/Height\"这个结构性结论比较稳）",
+        "tester": "assistant (vendor source structural block cross-check)",
+        "date": "2026-09-10"
+      },
+      "Width": {
+        "label_zh": "X 轴大小",
+        "confidence": "likely",
+        "evidence": "见 SizeScalar 的 evidence，对应模板 ScaleX/ScaleXRandom",
+        "tester": "assistant (vendor source structural block cross-check)",
+        "date": "2026-09-10"
+      },
+      "Height": {
+        "label_zh": "Y 轴大小",
+        "confidence": "likely",
+        "evidence": "见 SizeScalar 的 evidence，对应模板 ScaleY/ScaleYRandom",
+        "tester": "assistant (vendor source structural block cross-check)",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Pt.EFXAttributePtBehavior": {
+      "varCount_mhws": {
+        "label_zh": "特效行为属性数量",
+        "tooltip_zh": "properties 数组的元素个数。",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 substructCount——这个名字在模板里出现了两次（第一次在 unkn1 之后没有注释，第二次在 behaviorString 之后带注释\"特效行为属性数量\"），按 vendor 源码（EfxPtBehavior.cs）字段声明顺序，behaviorString 之后紧跟的正是 varCount_mhws（MHWS 专属，替代旧版本的 varCount），位置和语义都对得上",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeRgbWater": {
+      "mhws_unkn": {
+        "label_zh": "高光亮度",
+        "tooltip_zh": "疑为高光亮度，作用未知。",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 Intensity（第一次出现），注释\"亮度\"；按 vendor 源码（EfxMiscStructs.cs）字段类型序列对齐——SpecularColor 之后、SpecularIntensity 之前只有这一个 MHWS 专属浮点字段，模板物理顺序也是 SpecularColor 后紧跟这一个",
+        "tester": "assistant (vendor source physical order cross-check)",
+        "date": "2026-09-10"
+      },
+      "SpecularIntensity": {
+        "label_zh": "高光饱和度（存疑）",
+        "tooltip_zh": "高光强度；是饱和度还是亮度未知。",
+        "confidence": "guess",
+        "evidence": "010 模板对应字段实际叫 Saturate；按物理位置紧跟在 mhws_unkn 之后，位置对得上但语义和字段名对不上",
+        "tester": "assistant (vendor source physical order cross-check, 语义存疑)",
+        "date": "2026-09-10"
+      },
+      "GtoB": {
+        "label_zh": "绿转蓝",
+        "tooltip_zh": "控制颜色从绿色向蓝色过渡的程度。",
+        "confidence": "guess",
+        "evidence": "010 模板里有一个字段名字就叫 GreenToBlue（和这个字段概念上直接对应），但它在模板里的物理位置比按 vendor 源码顺序推算出来的位置晚一格（模板这一段的字段命名和物理顺序本身有内部不一致，具体表现见 memory），这里按名字含义而不是严格槽位对齐来标注，更保险",
+        "tester": "assistant (name-based match, 物理位置存在轻微不确定)",
+        "date": "2026-09-10"
+      },
+      "SpecularLifeType": {
+        "label_zh": "持续类型",
+        "tooltip_zh": "疑为高光的持续性开关，作用未知。",
+        "confidence": "guess",
+        "evidence": "010 模板对应字段实际叫 Type（第一次出现，注释\"类型\"）；按 vendor 源码字段顺序，UseSpecularLife/…VanishFrame 三组之后紧跟的正是 SpecularLifeType，和 RgbCommon 结构体里 Use{Green,Red}ChLife/…VanishFrame/…LifeType 的重复模式完全一致，互相印证结构，但具体枚举值含义没有单独验证",
+        "tester": "assistant (vendor source physical order + cross-struct pattern match)",
+        "date": "2026-09-10"
+      },
+      "SheetLifeType": {
+        "label_zh": "持续类型",
+        "tooltip_zh": "见 SpecularLifeType。",
+        "confidence": "guess",
+        "evidence": "见 SpecularLifeType 的 evidence，对应模板第二次出现的 Type",
+        "tester": "assistant (vendor source physical order + cross-struct pattern match)",
+        "date": "2026-09-10"
+      },
+      "GtoBLifeType": {
+        "label_zh": "持续类型",
+        "tooltip_zh": "见 SpecularLifeType。",
+        "confidence": "guess",
+        "evidence": "见 SpecularLifeType 的 evidence，对应模板第三次出现的 Type",
+        "tester": "assistant (vendor source physical order + cross-struct pattern match)",
+        "date": "2026-09-10"
+      },
+      "SpecularColor": {
+        "label_zh": "高光颜色",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Basic.EFXAttributeSpawn": {
+      "UseLoopNumRatio": {
+        "label_zh": "循环次数比开关（存疑）",
+        "tooltip_zh": "作用未知。",
+        "confidence": "guess",
+        "evidence": "010 模板对应字段拼写是 UesLoopNumRatio（字母顺序打乱的笔误），直接对应 C# 同名字段（忽略拼写错误）",
+        "tester": "assistant (typo-corrected name match)",
+        "date": "2026-09-10"
+      },
+      "DistancePerSpawn": {
+        "label_zh": "生成间隔距离（存疑）",
+        "tooltip_zh": "可能是每次生成之间要求的最小移动距离，未确定。",
+        "confidence": "guess",
+        "evidence": "010 模板对应字段拼写是 DintancePerSpawn（笔误，distance 拼错），直接对应 C# 同名字段",
+        "tester": "assistant (typo-corrected name match)",
+        "date": "2026-09-10"
+      },
+      "SpawnNum": {
+        "label_zh": "单次生成数量",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "UseSpawnFrame": {
+        "label_zh": "是否使用生成总帧数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "SpawnFrame": {
+        "label_zh": "生成总帧数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "LoopNum": {
+        "label_zh": "循环次数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10",
+        "tooltip_zh": "0 表示不循环。"
+      },
+      "EmitterDelayFrame": {
+        "label_zh": "发射延迟帧数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "UseRevival": {
+        "label_zh": "是否重生",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RevivalNum": {
+        "label_zh": "重生次数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RevivalInterval": {
+        "label_zh": "重生间隔",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "TrySpawnAllParticles": {
+        "label_zh": "尝试一次性生成全部粒子",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "IntervalFrame": {
+        "label_zh": "粒子生成间隔",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "MaxParticles": {
+        "label_zh": "最大粒子数",
+        "tooltip_zh": "同时存在的粒子数量上限。",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ParticleInterval": {
+        "confidence": "unknown",
+        "evidence": "机器挖掘表对应字段注释本身带问号（\"粒子间隔？\"），且与同结构体内独立存在的 IntervalFrame 容易混淆——显式留空以盖掉挖掘表的猜测，不采信，等真实样本。",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Basic.EFXAttributeShaderSettings": {
+      "color0": {
+        "label_zh": "颜色 0",
+        "tooltip_zh": "着色器使用的颜色参数，具体用途未知。",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "ColorBrightness": {
+        "label_zh": "颜色亮度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeFadeByDepth": {
+      "FarStart": {
+        "label_zh": "远端起始距离",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "FarEnd": {
+        "label_zh": "远端结束距离",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "NearStart": {
+        "label_zh": "近端起始距离",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "NearEnd": {
+        "label_zh": "近端结束距离",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Basic.EFXAttributeAlphaCorrection": {
+      "CurveConst": {
+        "label_zh": "曲线常数",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "HighPass": {
+        "label_zh": "高通（存疑）",
+        "tooltip_zh": "数值越高，闪烁幅度越强，作用未知。",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "LowPass": {
+        "label_zh": "低通（存疑）",
+        "tooltip_zh": "数值越高，闪烁越平滑，作用未知。",
+        "confidence": "guess",
+        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeUnitCulling": {
+      "Center": {
+        "label_zh": "中心点",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "Rotation": {
+        "label_zh": "旋转",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "DrawDistance": {
+        "label_zh": "绘制距离",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Misc.EFXAttributeBlink": {
+      "MaxRate": {
+        "label_zh": "最大比例",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "LowFrequencyWidth": {
+        "label_zh": "低频宽度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "HighFrequencyWidth": {
+        "label_zh": "高频宽度",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeScaleByDepth": {
+      "NearScale": {
+        "label_zh": "近端缩放",
+        "confidence": "direct_translation_self_evident",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tester": "assistant",
+        "date": "2026-09-10"
       }
     }
   }

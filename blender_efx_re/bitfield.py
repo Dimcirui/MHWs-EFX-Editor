@@ -8,6 +8,10 @@ blender_efx_re/bitfield.py —— 位域字段的分段编辑器
 对齐姊妹项目 EFX-Editor 的形态（`blender_efx/bitmask_ops.py`）：面板上一个按钮显示解码摘要，
 点开弹窗逐段选，**段外的残留位单独用整数框暴露**——保证未定义位零丢失、能精确还原。
 
+**这个模块现在只处理真正的多段位域**（`UVSequence.Flags` 那种）。只有一段、且这一段占满
+整个字段的退化情形（RotationOrder、`Life.Flags` 这类"本质就是单选枚举"的字段）不再走这里的
+弹窗，改成 `model.py` 的 `enum_proxy` 内联下拉——见 `panels.py::draw_node()` 的分流逻辑。
+
 位段规格来自 semantics 知识表里字段条目的 `bits` 键，形如：
 
     "bits": [
@@ -147,24 +151,13 @@ def resolve_node(root_collection, path: str):
 
 def read_packed(node) -> int | None:
     """位域字段的当前打包值。只有整数节点才有意义。"""
-    if node.data_type == "BIGINT":
-        raw = node.uint_str
-    elif node.data_type == "INT":
-        raw = node.int_value
-    else:
+    if node.data_type not in ("BIGINT", "INT"):
         return None
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return None
-    return value + (1 << 32) if value < 0 else value
+    return model._read_packed_int(node)
 
 
 def write_packed(node, value: int) -> None:
-    if node.data_type == "BIGINT":
-        node.uint_str = str(value)
-    else:
-        node.int_value = value
+    model._write_packed_int(node, value)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

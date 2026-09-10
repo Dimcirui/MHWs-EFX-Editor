@@ -1,0 +1,955 @@
+{
+  "game": "MHWS",
+  "defaults": {
+    "ParentOptions": {
+      "ParentBone": null,
+      "RelationPos": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "RelationRot": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "RelationScl": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "ParticleUseLocal_re7": 0,
+      "ParticleUseLocal": 0,
+      "ConstInheritRate": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "ConstFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "ConstReleaseFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "ConstInheritReleaseRate": 0.0,
+      "PragUkn1": 0,
+      "PragUkn2": 0,
+      "BoneName": ""
+    },
+    "Life": {
+      "AppearFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "KeepHoldFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "Flags": 0
+    },
+    "Transform3D": {
+      "LocalPosition": {
+        "X": 0.0
+      },
+      "LocalRotation": {
+        "X": 0.0,
+        "Y": 0.0,
+        "Z": 0.0
+      },
+      "LocalScale": {
+        "X": 1.0,
+        "Y": 1.0,
+        "Z": 1.0
+      },
+      "RotationOrder": 2,
+      "prag_unkn": 0
+    },
+    "Spawn": {
+      "ParticleInterval": 1,
+      "SpawnNum": {
+        "x": 1,
+        "y": 1
+      },
+      "LoopNumDmc5": {
+        "r": 0,
+        "s": 0
+      },
+      "UseSpawnFrameInt": 0,
+      "UseSpawnFrame": false,
+      "SpawnFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "LoopNum": {
+        "r": 1,
+        "s": 0
+      },
+      "EmitterDelayFrame": {
+        "x": 0,
+        "y": 0
+      },
+      "RingBufferMode": false,
+      "UseLoopNumRatio": false,
+      "Interpolate": false,
+      "DistancePerSpawn": 1.0,
+      "UseRevival": false,
+      "RevivalNum": {
+        "r": 0,
+        "s": 0
+      },
+      "RevivalInterval": {
+        "r": 0,
+        "s": 0
+      },
+      "re4_unkn0": 0,
+      "re4_unkn1": 0.0,
+      "re4_unkn2": 0,
+      "re4_unkn3": 0,
+      "re4_unkn4": 0,
+      "TrySpawnAllParticles": false,
+      "SpawnChanceFrame": 0,
+      "InitializeFull": false,
+      "mhws_unkn_toggle": 0
+    },
+    "ShaderSettings": {
+      "re8_unkn1": 0.0,
+      "re8_unkn2": 0.0,
+      "LayerPositive": 0,
+      "toggle_re7": 0,
+      "color0": {
+        "rgba": 4278190080
+      },
+      "unkn6": 0.15,
+      "unkn7": 0.15,
+      "unkn8": 1.0,
+      "unkn9": 1.0,
+      "unkn10": 1.0,
+      "unkn11": 100.0,
+      "unkn12": 0.0,
+      "unkn13": 0,
+      "unkn14": 0,
+      "unkn15": 0.0,
+      "unkn16": 0.0398,
+      "unkn17": 0.0,
+      "re4_unkn1": 0.2,
+      "re4_unkn2": 0.0,
+      "re4_unkn3": 0.0,
+      "unkn19": 0,
+      "sb_unkn2": 0.0,
+      "sb_unkn3": 0.0,
+      "sb_unkn4": 0.0,
+      "sb_unkn5": 0.0,
+      "toggle_re4": 0,
+      "dd2_unkn1": 0.0,
+      "ColorBrightness": 0.0,
+      "toggle_dd2": 0,
+      "unkn21": 1.0,
+      "sb_unkn9": 0.0,
+      "sb_unkn10": 0.0,
+      "sb_unkn11": 5.0,
+      "sb_unkn12": 1.0,
+      "dd2_unkn2": 0.0,
+      "unkn22": 7,
+      "re8_unkn3": 0.0,
+      "re8_unkn4": 0.0,
+      "re8_unkn5": 0.0,
+      "unkn24": 0,
+      "unkn25": 0,
+      "unkn26": 0,
+      "unkn27": 0,
+      "unkn28": 0,
+      "unkn29": 0,
+      "mhws_unkn1": -1.0,
+      "mhws_unkn2": -1.0,
+      "mhws_unkn_short": 32767
+    },
+    "UVSequence": {
+      "PatternNo": {
+        "r": 0
+      }
+    },
+    "Velocity3D": {
+      "Flags": 0,
+      "DirectionVectorX": {
+        "r": 0.0
+      },
+      "DirectionVectorY": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "DirectionVectorZ": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "SpeedCoef": {
+        "r": 0.0
+      },
+      "SpeedDelayFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "Offset": {
+        "X": 0.0,
+        "Y": 0.0,
+        "Z": 0.0
+      },
+      "Size": {
+        "Y": 1.0
+      },
+      "VelocityType": 1,
+      "GravityRate": {
+        "r": 0.0
+      },
+      "GravityDelayFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "InheritRate": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "InheritDistance": {
+        "s": 0.0,
+        "r": 1.0
+      },
+      "Spread": {
+        "s": 0.0,
+        "r": 0.0
+      }
+    },
+    "EmitterShape3D": {
+      "RangeY": {
+        "s": 0.0
+      },
+      "ShapeType": 2,
+      "RangeDivideNum": 0,
+      "RangeDivideAxis": 0,
+      "RangeDivideHorizontalNum": 0,
+      "RangeDivideVerticalNum": 0,
+      "LocalRotation": {
+        "X": 0.0,
+        "Y": 0.0,
+        "Z": 0.0
+      },
+      "RotationOrder": 2,
+      "RotationCorrect": 0,
+      "DivideEquidistant": false,
+      "DivideEquidistantCalcOuterCurveData": false,
+      "DivideEquidistantRecalcEveryFrameData": false,
+      "UseExtension": false,
+      "ScaleHorizontal": {
+        "s": 0.0,
+        "r": 6.2831855
+      },
+      "ScaleVertical": {
+        "s": 1.0,
+        "r": 0.0
+      }
+    },
+    "EffectShader": {
+      "unknShaderCRCHash4": 0,
+      "unknShaderCRCHash5": 0,
+      "unkn3": {
+        "value": 0
+      },
+      "unknShaderCRCHash6": 0,
+      "unknShaderCRCHash7": 0,
+      "unknShaderCRCHash8": 0,
+      "unknShaderCRCHash11": 0,
+      "unkn10": {
+        "value": 0
+      },
+      "unknShaderCRCHash12": 0,
+      "unknShaderCRCHash13": 0,
+      "unknShaderCRCHash14": 0,
+      "unknShaderCRCHash15": 0,
+      "unkn18": {
+        "value": 0
+      },
+      "unknShaderCRCHash18": 0,
+      "unknShaderCRCHash19": 0,
+      "unknShaderCRCHash20": 0,
+      "unknShaderCRCHash21": 0,
+      "unkn20": {
+        "b1": 0,
+        "b2": 0,
+        "b3": 0,
+        "b4": 0
+      },
+      "shaderPath": ""
+    },
+    "ScaleAnim": {
+      "SizeScalarAdd": {
+        "r": 0.0
+      },
+      "SizeScalarCoef": {
+        "r": 0.0
+      },
+      "SizeXAdd": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "SizeXAddCoef": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "SizeYAdd": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "SizeYAddCoef": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "SizeZAdd": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "SizeZAddCoef": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "SizeDelayFrame": {
+        "r": 0,
+        "s": 0
+      }
+    },
+    "PtSort": {
+      "SortType": 0
+    },
+    "RgbCommon": {
+      "Flags": 0,
+      "GreenChColorRange": {
+        "rgba": 4294967295
+      },
+      "GreenChIntensity": 1.0,
+      "GreenChSaturate": 1.0,
+      "GreenChCurve": 1.0,
+      "RedChColorRange": {
+        "rgba": 4294967295
+      },
+      "RedChIntensity": 1.0,
+      "RedChAlphaToB": 0.0,
+      "UseGreenChLife": false,
+      "GreenChAppearFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "GreenChKeepFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "GreenChVanishFrame": {
+        "s": 0
+      },
+      "GreenChLighting": false,
+      "GreenChLifeType": 0,
+      "UseRedChLife": 0,
+      "RedChAppearFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "RedChKeepFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "RedChVanishFrame": {
+        "s": 0
+      },
+      "RedChLighting": true,
+      "RedChLifeType": 0
+    },
+    "TypeBillboard3D": {
+      "Flags": 0,
+      "ColorRange": {
+        "rgba": 4294967295
+      },
+      "ColorRate": 1.0,
+      "Intensity": 0.0,
+      "AlphaRate": 0.0,
+      "EdgeBlendRange": 0.0,
+      "Rotation": {
+        "s": 0.0,
+        "r": 3.1415927
+      },
+      "SizeX": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "SizeY": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "ShadowType": 0,
+      "unknDD2": 1.0,
+      "ParticleIgnoreScale": 0,
+      "EnableGroupColor": false,
+      "OcclusionByParticleShadow": false,
+      "Reserved": false,
+      "Offset": {
+        "s": 0.0,
+        "r": 0.0
+      }
+    },
+    "FadeByDepth": {
+      "FarStart": 100.0,
+      "FarEnd": 120.0
+    },
+    "FixRandomGenerator": {
+      "useRandomSeedTableCount": 1,
+      "randomSeedTable1": -1,
+      "randomSeedTable2": -1,
+      "randomSeedTable3": -1,
+      "randomSeedTable4": -1,
+      "randomSeedTable5": -1,
+      "randomSeedTable6": -1,
+      "randomSeedTable7": -1,
+      "tableSelectionGroup": -1
+    },
+    "PtVortexelWind": {
+      "TransitionRate": {
+        "r": 0.0
+      },
+      "unkn7": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "TransitionThreshold": 1.0,
+      "TransitionWaitFrame": 0,
+      "IsTransitionWaitFramePerParticle": false,
+      "IsMergeGravity": false
+    },
+    "RotateAnim": {
+      "Flags": 1,
+      "RotationAddY": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "RotationAddZ": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "RotationCoefX": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "RotationCoefY": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "RotationCoefZ": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "RotationDelayFrame": {
+        "r": 0,
+        "s": 0
+      }
+    },
+    "TypeNoDraw": {
+      "Flags": 0,
+      "Color": {
+        "rgba": 4294967295
+      },
+      "ColorRange": {
+        "rgba": 4294967295
+      },
+      "RotationOrder": 2,
+      "Rotation": {
+        "X": 0.0,
+        "Y": 0.0,
+        "Z": 0.0
+      },
+      "RotationRandom": {
+        "X": 0.0,
+        "Y": 0.0,
+        "Z": 0.0
+      },
+      "Size": {
+        "X": 1.0,
+        "Y": 0.0,
+        "Z": 1.0
+      },
+      "SizeRandom": {
+        "X": 0.0,
+        "Y": 1.0,
+        "Z": 0.0
+      },
+      "unkn14": 1.0,
+      "unkn15": 0.0
+    },
+    "UVSequenceModifier": {
+      "Flags": 1
+    },
+    "AlphaCorrection": {
+      "Flags": 1,
+      "CurveConst": 0.0
+    },
+    "PtBehavior": {
+      "unkn1": 2,
+      "varCount": 0
+    },
+    "RgbWater": {
+      "SpecularColor": {
+        "rgba": 4294967295
+      },
+      "mhws_unkn": 1.0,
+      "SpecularIntensity": 1.0,
+      "SheetIntensity": 1.0,
+      "UseSpecularLife": false,
+      "SpecularAppearFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "SpecularKeepFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "SpecularVanishFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "SpecularLifeType": 0,
+      "UseSheetLife": 0,
+      "SheetAppearFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "SheetKeepFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "SheetVanishFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "SheetLifeType": 0,
+      "UseGtoBLife": 0,
+      "GtoBAppearFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "GtoBKeepFrame": {
+        "r": 0,
+        "s": 0
+      },
+      "GtoBVanishFrame": {
+        "s": 0
+      },
+      "GtoBLifeType": 0
+    },
+    "TypeRibbonLength": {
+      "BlendFlags": 0,
+      "Color": {
+        "rgba": 4294967295
+      },
+      "ColorRange": {
+        "rgba": 4294967295
+      },
+      "ColorRate": 1.0,
+      "Intensity": 0.0,
+      "EdgeBlendRange": 0.0,
+      "AlphaRate": 0.0,
+      "Flags": 0,
+      "Width": {
+        "r": 0.0
+      },
+      "TextureRepeatNum": 3e-45,
+      "ShadowMultiplier": 1.0,
+      "FadeSide": 1.0,
+      "LengthFlags": 3212836864,
+      "ShapeDivision": 0,
+      "BasingPoint": {
+        "s": 0.5
+      },
+      "ReleaseFixEnd": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "DirectionX": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "DirectionY": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "DirectionZ": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "HeadColor": {
+        "rgba": 4294967295
+      },
+      "ColorPlace1": {
+        "rgba": 4294967295
+      },
+      "ColorPlace2": {
+        "rgba": 4294967295
+      },
+      "ColorPlace1Ratio": 0.5,
+      "ColorPlace2Ratio": 1.0,
+      "HeadScale": 1.0,
+      "ScalePlace1": 1.0,
+      "ScalePlace2": 1.0,
+      "ScalePlace1Ratio": 0.5,
+      "ScalePlace2Ratio": 1.0,
+      "GhostStretch": {
+        "s": 1.0,
+        "r": 0.0
+      }
+    },
+    "TypeMesh": {
+      "Flags2": 8,
+      "WildsUknFloat": 1.0,
+      "Color": {
+        "rgba": 4294967295
+      },
+      "ColorRange": {
+        "rgba": 4294967295
+      },
+      "ColorRate": 1.0,
+      "EmissiveColor": {
+        "rgba": 4294967295
+      },
+      "EmissiveRate": 1.0,
+      "PartsStartNo": {
+        "r": 0,
+        "s": 1
+      },
+      "PlaySpeed": {
+        "s": 1.0,
+        "r": 1.0
+      },
+      "PlaySpeedCoef": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "PlayType": 0,
+      "PlayOrder": 0,
+      "RotationOrder": 2,
+      "RotationX": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "RotationY": {
+        "s": 0.0
+      },
+      "RotationZ": {
+        "s": 0.0
+      },
+      "ScaleX": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "ScaleY": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "ScaleZ": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "FrontAxis": 2,
+      "re4_unkn1": 1,
+      "dd2_unkn1": 1.0,
+      "texCount": 0,
+      "dd2_unkn2": 0,
+      "MirrorMeshPath": "",
+      "texPathBlockLength": 0,
+      "texPaths[]": {
+        "length": 0
+      }
+    },
+    "Transform3DModifier": {
+      "unkn1": 0.0,
+      "unkn2": 0.0,
+      "unkn3": 0.0,
+      "unkn4": 0.0,
+      "unkn5": 0.0,
+      "unkn6": 0.0,
+      "unkn7": 0.0,
+      "unkn8": 0.0,
+      "unkn9": 0.0,
+      "unkn10": 0.0,
+      "unkn11": 0.0,
+      "unkn12": 0.0,
+      "unkn13": 0.0,
+      "unkn14": 0.0,
+      "unkn15": 0.0,
+      "unkn16": 0.0,
+      "unkn17": 0.0,
+      "unkn18": 0.0,
+      "unkn19": 0.0,
+      "unkn20": 0.0,
+      "unkn21": 0.0,
+      "unkn22": {
+        "value": 0
+      },
+      "unkn23": 0.0,
+      "unkn24": 0.0,
+      "unkn25": 0.0,
+      "unkn26": {
+        "value": 0
+      },
+      "unkn27": 0.0,
+      "unkn28": 0.0,
+      "unkn29": 0.0,
+      "unkn30": 0.0,
+      "unkn31": 0.0,
+      "unkn32": 0.0,
+      "unkn33": 0.0,
+      "unkn34": {
+        "value": 0
+      },
+      "unkn35": 0.0,
+      "unkn36": 0.0,
+      "unkn37": 0.0,
+      "unkn38": 0.0,
+      "unkn39": 0.0,
+      "unkn40": 0.0,
+      "unkn41": 0.0,
+      "unkn42": 0.0,
+      "unkn43": 0.0,
+      "unkn44": 0.0,
+      "unkn45": 0.0,
+      "unkn46": {
+        "value": 0
+      },
+      "unkn47": 0.0,
+      "unkn48": {
+        "value": 0
+      },
+      "unkn49": 0.0,
+      "unkn50": {
+        "value": 0
+      },
+      "unkn51": 0.0,
+      "unkn52": 0.0,
+      "unkn53": 0.0,
+      "unkn54": {
+        "value": 0
+      }
+    },
+    "Layout": {
+      "Unkn3": 0
+    },
+    "TypeGpuBillboard": {
+      "instanceCount": 0,
+      "BlendFlags": 0,
+      "unkn3": 0,
+      "ColorRange": {
+        "rgba": 4294967295
+      },
+      "ColorRate": 1.0,
+      "Intensity": 0.0,
+      "EdgeBlendRange": 0.0,
+      "AlphaRate": 0.0,
+      "Flags": 0,
+      "re4Ukn": 0,
+      "Rotation": {
+        "s": 0.0
+      },
+      "SizeX": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "SizeY": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "Offset": {
+        "X": 0.0,
+        "Y": 0.0
+      }
+    },
+    "PtLife": {
+      "Status": 0,
+      "ActionIndex": 0
+    },
+    "FadeByEmitterAngle": {
+      "Flags": 0,
+      "AlphaRate": 0.0,
+      "FadeInStart": 5.0,
+      "FadeInEnd": 1.0,
+      "FadeBlend": 0
+    },
+    "UnitCulling": {
+      "Flags": 37,
+      "Center": {
+        "X": 0.0,
+        "Y": 0.0,
+        "Z": 0.0
+      },
+      "Rotation": {
+        "X": 0.0,
+        "Y": 0.0,
+        "Z": 0.0
+      },
+      "DrawDistance": -1.0
+    },
+    "Blink": {
+      "Flags": 0,
+      "MaxRate": 1.0,
+      "LowFrequencyWidth": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "HighFrequencyWidth": {
+        "s": 0.5,
+        "r": 0.0
+      }
+    },
+    "SpawnExpression": {
+      "Expression": {
+        "version": 5571972,
+        "parsedExpressions": null,
+        "expressions[]": {
+          "length": 1
+        }
+      },
+      "ExpressionBits": {
+        "bitCount": 7,
+        "bitNames[]": {
+          "length": 7
+        },
+        "bits[]": {
+          "length": 1
+        }
+      },
+      "expressionBits": {
+        "bitCount": 7,
+        "bitNames[]": {
+          "length": 7
+        },
+        "bits[]": {
+          "length": 1
+        }
+      },
+      "spawnNum": 2,
+      "spawnNumRange": 2,
+      "intervalFrame": 2,
+      "intervalFrameRange": 2,
+      "emitterDelayFrameRange": 2,
+      "speed": 4,
+      "expressions": {
+        "version": 5571972,
+        "parsedExpressions": null,
+        "expressions[]": {
+          "length": 1
+        }
+      }
+    },
+    "TypeGpuMesh": {
+      "ParticleNum": 0,
+      "uknWilds0": 1.0,
+      "unkn3": 0,
+      "Color": {
+        "rgba": 4294967295
+      },
+      "ColorRange": {
+        "rgba": 4294967295
+      },
+      "ColorRate": 1.0,
+      "MaxPartsNum": 4,
+      "PartsStartNo": {
+        "r": 0
+      },
+      "PlaySpeed": {
+        "s": 1.0,
+        "r": 1.0
+      },
+      "PlaySpeedCoef": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "PlayType": 0,
+      "PlayOrder": 0,
+      "RotationOrder": 2,
+      "RotationX": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "RotationY": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "RotationZ": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "ScaleX": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "ScaleY": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "ScaleZ": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "OrientDirectionUpVector": 1,
+      "DirectionSmoothness": 1.0,
+      "texCount": 0,
+      "BufferNum": 0,
+      "MirrorMeshPath": "",
+      "texBlockLength": 0,
+      "texturePaths[]": {
+        "length": 0
+      }
+    },
+    "Distortion": {
+      "DistortionType": 1,
+      "SpecularPower": 0.0,
+      "SpecularIntensity": 1.0,
+      "SpecularColor": {
+        "rgba": 4294967295
+      },
+      "FadeScreenEdge": true
+    },
+    "EmitMask": {
+      "mask": 1024
+    },
+    "ScaleByDepth": {
+      "Flags": 0,
+      "NearScale": 1.0
+    },
+    "TypeGpuRibbonLength": {
+      "unkn1": 0,
+      "Intensity": 0.0,
+      "EdgeBlendRange": 0.0,
+      "AlphaRate": 0.0,
+      "Width": {
+        "r": 0.0
+      },
+      "TextureRepeatNum": 1.0,
+      "unkn_Re4": 0.0,
+      "ShapeDivision": 1,
+      "BasingPoint": {
+        "s": 0.5
+      },
+      "DirectionX": {
+        "s": 0.0,
+        "r": 0.0
+      },
+      "DirectionY": {
+        "s": 1.0,
+        "r": 0.0
+      },
+      "DirectionZ": {
+        "s": 0.0,
+        "r": 0.0
+      }
+    },
+    "FadeByAngle": {
+      "AlphaRate": 0.0,
+      "ConeDirection": {
+        "X": 0.0,
+        "Z": 0.0
+      }
+    }
+  }
+}

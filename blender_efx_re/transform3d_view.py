@@ -92,6 +92,7 @@ class EFX_RE_OT_sync_transform3d(Operator):
 
     bl_idname = "efx_re.sync_transform3d_to_view"
     bl_label = "Refresh Transform3D View"
+    bl_description = "按 Transform3D 的字段值重新摆放视口里的 Entry/Action（仅可视化，不影响导出数据）"
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):

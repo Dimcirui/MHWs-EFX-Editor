@@ -22,8 +22,8 @@ bl_info = {
     "author": "Dimcirui",
     "version": (0, 0, 1),
     "blender": (4, 3, 0),
-    "location": "View3D > Sidebar > EFX",
-    "description": "Import and export Monster Hunter Wilds EFX effect files",
+    "location": "View3D > Sidebar > Wilds EFX / MHWilds UVS",
+    "description": "Import and export Monster Hunter Wilds EFX effect files and UVS texture atlases",
     "category": "Import-Export",
 }
 
