@@ -1,23 +1,13 @@
-# MHWs-EFX-Editor
+# MHWilds EFX Editor for Blender
 
-Monster Hunter Wilds（RE Engine）`.efx` 特效文件的 Blender 编辑插件。Phase 0（C# 后端往返稳定性
-验证）已完成，目前处于 Phase 1（JSON 交换协议 + Blender addon 骨架搭建中）。当前只有一个最小
-"导入→查看 JSON→导出"闭环，还没有字段级 PropertyGroup 面板。
+A Blender add-on designed for editing `.efx` and `.uvs` files in *Monster Hunter Wilds*.
 
-详见 [PLAN.md](PLAN.md)。
+### Requirements
+- **Blender:** 4.3 or higher
+- **Runtime:** .NET 8 Runtime must be installed and properly configured in your system `PATH`.
 
-姊妹项目（MHWI/MT Framework，独立不依赖）：[EFX-Editor](../MHW-EFX-Editor)
-
-## 克隆
-
-本仓库用 git submodule 引入 [RE-Engine-Lib](https://github.com/kagenocookie/RE-Engine-Lib)：
-
-```
-git clone --recurse-submodules <this-repo-url>
-```
-
-已经克隆过忘了带 `--recurse-submodules`：
-
-```
-git submodule update --init --recursive
-```
+### Key Features
+- **Modular Workflow:** Freely re-parent Attributes across different Entries; effortlessly drag and drop Entries and Actions between different `.efx` files in the Outliner. Full support for Blender's native duplicate and delete operations.
+- **Visual UVS Editor:** Intuitive visual editing and preview for UV sequences directly within Blender.
+- **Preset System:** Easily save, load, and reuse effect configurations.
+- **Consistent Workflow:** Features and operations largely align with the familiar *MHW EFX Editor* toolchain.
