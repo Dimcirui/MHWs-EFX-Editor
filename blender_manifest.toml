@@ -5,7 +5,7 @@ type    = "add-on"
 
 name     = "MHWs EFX Editor"
 tagline  = "Import and export Monster Hunter Wilds EFX effect files"
-version  = "0.2.0"
+version  = "0.2.1"
 
 maintainer = "Dimcirui"
 
@@ -33,7 +33,13 @@ paths_exclude_pattern = [
     "*.blend[1-9]",
     "Thumbs.db",
     "*.user",
-    "vendor/",
+    # 只排除仓库根的 vendor/RE-Engine-Lib（C# 源码 submodule，不可分发）。
+    # 不加开头的 "/" 会按 gitignore 语义在任意深度匹配 "vendor/"，把
+    # blender_efx_re/vendor/GDeflateWrapper.dll（MHWilds VecField 运行时依赖的
+    # 那个 DLL，不是源码，必须打进包）也一起排掉——这个坑真的踩过一次，
+    # 打包验证时发现 zip 里没有这个 DLL 才发现的，见 tools/ 没有对应校验脚本，
+    # 以后改这条规则务必重新跑一遍 `blender --command extension build` 并解压确认。
+    "/vendor/",
     "docs/",
     "dist/",
     # 诊断用游戏资产（Capcom 原始 EFX，不可分发）——照抄 .gitignore 里同一条禁令，这里必须
