@@ -59,4 +59,7 @@ paths_exclude_pattern = [
     "tools/EfxBridge/*.cs",
     "tools/EfxBridge/*.csproj",
     "tools/EfxBridge/obj/",
+    # 开发期给 vendor submodule 打的补丁文件（CLAUDE.md #5 的例外），最终用户用不上，
+    # 只需要已经编译好、已经应用过这些补丁的 EfxBridge.dll。
+    "tools/vendor-patches/",
 ]
