@@ -50,6 +50,7 @@
 
 using System.Text.Json;
 using ReeLib;
+using ReeLib.Common;
 using ReeLib.Efx;
 using ReeLib.Efx.Structs.Basic;
 using ReeLib.Efx.Structs.Common;
@@ -86,6 +87,15 @@ static JsonSerializerOptions CreateBridgeJsonOptions()
     // FixedExpressionTreeJsonConverter 的说明。
     options.Converters.Insert(0, new FixedExpressionTreeJsonConverter());
     options.Converters.Insert(0, new FloatKeepsDecimalPointConverter());
+    // vendor 的 EfxJsonTypeResolver 只给 EFXAttribute / EFXExpressionDataBase /
+    // PtBehaviorVariableDataBase 配了多态判别（GetTypeInfo 里按 type == 判断），没覆盖
+    // EfxMaterialStructBase（V1/V2 两个子类）——实测过 dump 出来的 material 字段只剩
+    // `{"Version": ...}`，V1/V2 各自的 mdfPath/properties/texPaths 等字段全部被基类声明
+    // 悄悄截断丢掉（不是 load 才炸的那 3.6%，是所有带 material 字段的文件从 dump 那一步就已经
+    // 丢数据，见 KNOWN_UPSTREAM_ISSUES.md #7 的补充记录）。不改 vendor 源码，改用同一个套路：
+    // 包一层 IJsonTypeInfoResolver，委托给 EfxJsonTypeResolver.Instance 拿到基础 JsonTypeInfo，
+    // 只在 EfxMaterialStructBase 这一个类型上补多态配置。
+    options.TypeInfoResolver = new MaterialPolymorphismResolver();
     return options;
 }
 
@@ -108,6 +118,14 @@ if (args.Length >= 1 && args[0] == "uvsload")
 if (args.Length >= 1 && args[0] == "tex2dds")
 {
     return RunTex2Dds(args);
+}
+if (args.Length >= 1 && args[0] == "mdfdump")
+{
+    return RunMdfDump(args);
+}
+if (args.Length >= 1 && args[0] == "pakextract")
+{
+    return RunPakExtract(args);
 }
 if (args.Length >= 1 && args[0] == "exprcheck")
 {
@@ -141,6 +159,14 @@ if (args.Length >= 1 && args[0] == "attrindex")
 {
     return RunAttrIndex(args);
 }
+if (args.Length >= 1 && args[0] == "condstats")
+{
+    return RunCondStats(args);
+}
+if (args.Length >= 1 && args[0] == "ptbehaviorcatalog")
+{
+    return RunPtBehaviorCatalog(args);
+}
 
 if (args.Length < 2 || args[0] != "roundtrip")
 {
@@ -159,6 +185,8 @@ if (args.Length < 2 || args[0] != "roundtrip")
     Console.WriteLine("  dotnet <dll> relstats <语料目录> <json 输出路径>");
     Console.WriteLine("  dotnet <dll> typefreq <语料目录> <json 输出路径>");
     Console.WriteLine("  dotnet <dll> fieldstatsbatch <语料目录> <逗号分隔的类型名列表> <json 输出路径> [每字段保留的不同取值数，默认 40]");
+    Console.WriteLine("  dotnet <dll> condstats <语料目录> <attribute 类型名> <条件字段名> <json 输出路径> [每字段保留的不同取值数，默认 40]");
+    Console.WriteLine("  dotnet <dll> ptbehaviorcatalog <语料目录> <json 输出路径>");
     return 1;
 }
 
@@ -689,6 +717,163 @@ static int RunTex2Dds(string[] args)
     catch (Exception ex)
     {
         Console.WriteLine($"[ERROR] {texPath}");
+        Console.WriteLine(ex.ToString());
+        return 1;
+    }
+}
+
+// mdfdump 子命令：读一个 .mdf2 材质文件，把它声明的参数表/贴图槽吐成 JSON。
+//
+//   mdfdump <mdf2 文件路径> <json 输出路径>
+//   mdfdump --pak <游戏安装目录> <mdf2 内部路径（natives/STM/... 带版本号后缀）> <json 输出路径>
+//
+// TypeMeshV2 的 `properties`（MdfProperty 数组）语义是"这个 attribute 覆盖了所引用材质的哪几个
+// 参数"：能覆盖哪些、每个几个分量、`mdfPropertyIndex` 该填几，全部由 `MaterialPath` 指向的那个
+// .mdf2 决定。所以"新增一条 property"必须先读到材质本身，否则只能照语料里见过的组合猜，而
+// `mdfPropertyIndex` 猜错等于静默改到另一个参数上（铁律 #2/#7）。
+//
+// 哈希：EFX 侧的 `PropertyNameUTF8Hash` 和 mdf2 自己存的 `hash`/`asciiHash` 是同一个名字的三种
+// 不同哈希（mdf2 存 UTF-16 和 ASCII 两种，EFX 用 UTF-8），互相对不上。这里按参数名现算一遍
+// UTF-8 的一并输出，Python 侧才能直接和 EFX 里的哈希比对。
+//
+// pak 模式只把要找的那一个路径加进 `searchedPaths` 再 `FindFiles()`，走的是"扫各 pak 的条目表
+// 找这个哈希"，不是 `CacheEntries()` 那种把全部条目读进内存的路子。
+static int RunMdfDump(string[] args)
+{
+    var usePak = args.Length >= 2 && args[1] == "--pak";
+    if (usePak ? args.Length < 5 : args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> mdfdump <mdf2 文件路径> <json 输出路径>");
+        Console.WriteLine("      dotnet <dll> mdfdump --pak <游戏安装目录> <mdf2 内部路径> <json 输出路径>");
+        return 1;
+    }
+
+    var sourcePath = usePak ? args[3] : args[1];
+    var jsonOutPath = usePak ? args[4] : args[2];
+
+    try
+    {
+        MdfFile mdf;
+        if (usePak)
+        {
+            var gameDir = args[2];
+            var reader = new PakReader { EnableConsoleLogging = false };
+            reader.PakFilePriority = PakUtils.ScanPakFiles(gameDir);
+            if (reader.PakFilePriority.Count == 0)
+            {
+                Console.WriteLine($"[ERROR] 目录里没有找到任何 .pak：{gameDir}");
+                return 1;
+            }
+            reader.AddFiles(sourcePath);
+            var hit = reader.FindFiles().FirstOrDefault();
+            if (hit.stream == null)
+            {
+                Console.WriteLine($"[ERROR] pak 里找不到这个路径：{sourcePath}");
+                return 1;
+            }
+            // 从内存流读时 FilePath 只是给版本号解析用的（`FileHandler.FileVersion` 从路径算，
+            // 见 CLAUDE.md 已知机关 #13），流本身和磁盘无关。
+            var memory = new MemoryStream();
+            hit.stream.CopyTo(memory);
+            memory.Seek(0, SeekOrigin.Begin);
+            mdf = new MdfFile(new FileHandler(memory, sourcePath));
+        }
+        else
+        {
+            mdf = new MdfFile(new FileHandler(sourcePath));
+        }
+        mdf.Read();
+
+        var materials = mdf.Materials.Select(mat => new
+        {
+            name = mat.Name,
+            masterMaterial = mat.MasterMaterial,
+            // index 就是 EFX `MdfProperty.mdfPropertyIndex` 要填的值（参数在这张表里的位置）。
+            parameters = mat.Parameters.Select((p, i) => new
+            {
+                index = i,
+                name = p.paramName,
+                utf8Hash = MurMur3HashUtils.GetUTF8Hash(p.paramName),
+                componentCount = p.componentCount,
+                value = p.parameter,
+            }).ToArray(),
+            // 贴图槽：EFX 侧对应 parameterType=Texture 的 property（那种 mdfPropertyIndex 恒为 -1，
+            // 由 vendor 写出时强制，见 MdfProperty.DoWrite）。path 可以当新建时的基础值。
+            textures = mat.Textures.Select((t, i) => new
+            {
+                index = i,
+                name = t.texType,
+                utf8Hash = MurMur3HashUtils.GetUTF8Hash(t.texType),
+                path = t.texPath,
+            }).ToArray(),
+        }).ToArray();
+
+        var payload = new
+        {
+            sourcePath,
+            fileVersion = mdf.FileHandler.FileVersion,
+            materials,
+        };
+        var json = JsonSerializer.Serialize(payload, CreateUvsJsonOptions());
+        File.WriteAllText(jsonOutPath, json);
+        Console.WriteLine($"OK: {sourcePath} -> {jsonOutPath}");
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ERROR] {sourcePath}");
+        Console.WriteLine(ex.ToString());
+        return 1;
+    }
+}
+
+// pakextract 子命令：按内部路径从游戏 .pak 里捞一个文件写到磁盘上。
+//
+//   pakextract <游戏安装目录> <内部路径（natives/STM/... 带版本号后缀）> <输出路径>
+//
+// 材质参数覆盖表那套要求用户手上有一个真的 .mdf2 文件（见 blender_efx_re/mdf_catalog.py），
+// 而 VFX 用的材质通常没人会专门去解包。有这条命令就不用为了拿一个参考材质去装第三方解包工具。
+// 按内部路径的哈希直接定位条目，不建全量条目缓存，实测单次 <1 秒。
+static int RunPakExtract(string[] args)
+{
+    if (args.Length < 4)
+    {
+        Console.WriteLine("用法: dotnet <dll> pakextract <游戏安装目录> <内部路径> <输出路径>");
+        return 1;
+    }
+    var gameDir = args[1];
+    var internalPath = args[2];
+    var outPath = args[3];
+
+    try
+    {
+        var reader = new PakReader { EnableConsoleLogging = false };
+        reader.PakFilePriority = PakUtils.ScanPakFiles(gameDir);
+        if (reader.PakFilePriority.Count == 0)
+        {
+            Console.WriteLine($"[ERROR] 目录里没有找到任何 .pak：{gameDir}");
+            return 1;
+        }
+        reader.AddFiles(internalPath);
+        var hit = reader.FindFiles().FirstOrDefault();
+        if (hit.stream == null)
+        {
+            Console.WriteLine($"[ERROR] pak 里找不到这个路径：{internalPath}");
+            return 1;
+        }
+
+        var directory = Path.GetDirectoryName(Path.GetFullPath(outPath));
+        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+        using (var file = File.Create(outPath))
+        {
+            hit.stream.CopyTo(file);
+        }
+        Console.WriteLine($"OK: {internalPath} -> {outPath}");
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ERROR] {internalPath}");
         Console.WriteLine(ex.ToString());
         return 1;
     }
@@ -1408,6 +1593,268 @@ static int RunTypeFreq(string[] args)
     return 0;
 }
 
+// condstats 子命令：跟 fieldstats 一样在整个语料上给某个 attribute 类型的字段做取值直方图，
+// 但先按某个"条件字段"（一般是枚举，如 VelocityType）的取值分桶，桶内再统计其余字段——
+// 用来验证"某个模式字段是否门控其余字段"这类假说：如果假说成立，某些字段的分布应该在
+// 不同桶之间明显偏移（比如某字段在条件=0 的桶里五花八门，在条件=1 的桶里几乎全是同一个值）。
+// 不满足假说时两个桶分布看不出差异，这时不能门控，反而是有力的反证。
+//
+//   condstats <语料目录> <attribute 类型名> <条件字段名> <json 输出路径> [每字段保留的不同取值数，默认 40]
+//
+// 复用 fieldstats 的 Tally/Bump 逻辑，只是外面多包一层按条件字段值分桶。
+static int RunCondStats(string[] args)
+{
+    if (args.Length < 5)
+    {
+        Console.WriteLine("用法: dotnet <dll> condstats <语料目录> <attribute 类型名> <条件字段名> <json 输出路径> [每字段保留的不同取值数，默认 40]");
+        return 1;
+    }
+    var dir = args[1];
+    var typeName = args[2];
+    var condField = args[3];
+    var jsonOutPath = args[4];
+    var maxDistinct = args.Length >= 6 && int.TryParse(args[5], out var md) ? md : 40;
+
+    if (!Directory.Exists(dir))
+    {
+        Console.WriteLine($"目录不存在: {dir}");
+        return 1;
+    }
+    if (!Enum.TryParse<EfxAttributeType>(typeName, true, out var wanted))
+    {
+        Console.WriteLine($"[ERROR] 未知的 attribute 类型名: {typeName}");
+        return 1;
+    }
+
+    var options = CreateBridgeJsonOptions();
+    var files = Directory.EnumerateFiles(dir, "*.efx.*", SearchOption.AllDirectories).ToList();
+    // 条件字段取值(字符串形式) -> (该桶实例数, 字段路径 -> 取值 -> 出现次数)
+    var buckets = new Dictionary<string, (int count, Dictionary<string, Dictionary<string, int>> fields)>();
+    int scanned = 0, failed = 0, instances = 0, missingCond = 0;
+
+    void Bump(Dictionary<string, Dictionary<string, int>> fields, string path, string value)
+    {
+        if (!fields.TryGetValue(path, out var hist))
+            fields[path] = hist = new Dictionary<string, int>();
+        hist[value] = hist.GetValueOrDefault(value) + 1;
+    }
+
+    void Tally(Dictionary<string, Dictionary<string, int>> fields, System.Text.Json.Nodes.JsonNode? node, string path)
+    {
+        switch (node)
+        {
+            case System.Text.Json.Nodes.JsonObject obj:
+                foreach (var (key, child) in obj)
+                {
+                    if (key == "$type") continue;
+                    Tally(fields, child, path.Length == 0 ? key : path + "." + key);
+                }
+                break;
+            case System.Text.Json.Nodes.JsonArray arr:
+                Bump(fields, path + "[].length", arr.Count.ToString());
+                break;
+            case null:
+                Bump(fields, path, "null");
+                break;
+            default:
+                Bump(fields, path, node.ToJsonString());
+                break;
+        }
+    }
+
+    void Visit(EFXEntryBase container)
+    {
+        foreach (var attr in container.Attributes)
+        {
+            if (attr.type == wanted)
+            {
+                instances++;
+                var json = JsonSerializer.Serialize(attr, typeof(EFXAttribute), options);
+                var node = System.Text.Json.Nodes.JsonNode.Parse(json) as System.Text.Json.Nodes.JsonObject;
+                string condValue = "MISSING";
+                if (node != null && node.TryGetPropertyValue(condField, out var condNode) && condNode != null)
+                    condValue = condNode.ToJsonString();
+                else
+                    missingCond++;
+
+                if (!buckets.TryGetValue(condValue, out var bucket))
+                    bucket = (0, new Dictionary<string, Dictionary<string, int>>());
+                bucket.count++;
+                if (node != null)
+                {
+                    foreach (var (key, child) in node)
+                    {
+                        if (key == "$type" || key == condField) continue;
+                        Tally(bucket.fields, child, key);
+                    }
+                }
+                buckets[condValue] = bucket;
+            }
+            if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
+            {
+                foreach (var e in pe.efxrData.Entries) Visit(e);
+                foreach (var a in pe.efxrData.Actions) Visit(a);
+            }
+        }
+    }
+
+    foreach (var path in files)
+    {
+        try
+        {
+            var efx = new EfxFile(new FileHandler(path));
+            efx.Read();
+            scanned++;
+            foreach (var e in efx.Entries) Visit(e);
+            foreach (var a in efx.Actions) Visit(a);
+        }
+        catch (Exception)
+        {
+            failed++;  // 语料里本来就有一批读不了的，见 KNOWN_UPSTREAM_ISSUES
+        }
+    }
+
+    var payload = new
+    {
+        type = wanted.ToString(),
+        conditionField = condField,
+        filesTotal = files.Count,
+        filesScanned = scanned,
+        filesFailed = failed,
+        instances,
+        missingCond,
+        buckets = buckets.OrderBy(kv => kv.Key).ToDictionary(
+            kv => kv.Key,
+            kv => new
+            {
+                count = kv.Value.count,
+                fields = kv.Value.fields.ToDictionary(
+                    f => f.Key,
+                    f => new
+                    {
+                        distinct = f.Value.Count,
+                        top = f.Value.OrderByDescending(x => x.Value).Take(maxDistinct)
+                                .ToDictionary(x => x.Key, x => x.Value),
+                    }),
+            }),
+    };
+    File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine(
+        $"OK: {wanted} 按 {condField} 分桶（{buckets.Count} 个取值，缺失 {missingCond}），"
+        + $"共 {instances} 个实例（扫描 {scanned}/{files.Count} 个文件，失败 {failed}）-> {jsonOutPath}");
+    return 0;
+}
+
+// ptbehaviorcatalog：为「PtBehavior 能否照 MeshV2.properties/姊妹项目 EFX-Editor 那样模块化」
+// 这个问题准备语料证据。PtBehavior 没有外部资产文件可读（不像 MeshV2 引用 .mdf2），只能靠
+// 全语料按 behaviorString 分组，统计每个类见过的 behaviorProperty 名/dataType，以及
+// properties[] 数组的实际出现顺序（判断顺序对不对游戏有意义要看这个）。
+// MHWS 的 PtBehaviorVariable 自带 behaviorProperty 字符串（不像 MHWI 只存哈希），
+// 所以这里不需要姊妹项目 ptbehavior/names.py 那张哈希反查表。
+static int RunPtBehaviorCatalog(string[] args)
+{
+    if (args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> ptbehaviorcatalog <语料目录> <json 输出路径>");
+        return 1;
+    }
+    var dir = args[1];
+    var jsonOutPath = args[2];
+
+    if (!Directory.Exists(dir))
+    {
+        Console.WriteLine($"目录不存在: {dir}");
+        return 1;
+    }
+
+    var files = Directory.EnumerateFiles(dir, "*.efx.*", SearchOption.AllDirectories).ToList();
+    int scanned = 0, failed = 0, instances = 0;
+
+    var byBehavior = new Dictionary<string, PtBehaviorBucket>();
+
+    void Visit(EFXEntryBase container)
+    {
+        foreach (var attr in container.Attributes)
+        {
+            if (attr is ReeLib.Efx.Structs.Pt.EFXAttributePtBehavior pb)
+            {
+                instances++;
+                var bstr = pb.behaviorString ?? "";
+                if (!byBehavior.TryGetValue(bstr, out var bucket))
+                    byBehavior[bstr] = bucket = new PtBehaviorBucket();
+                bucket.InstanceCount++;
+
+                var names = new List<string>();
+                foreach (var v in pb.properties)
+                {
+                    var name = v.behaviorProperty ?? "";
+                    names.Add(name);
+                    if (!bucket.Properties.TryGetValue(name, out var prop))
+                        bucket.Properties[name] = prop = new PtBehaviorPropertyBucket();
+                    prop.Freq++;
+                    var typeName = v.dataType.ToString();
+                    prop.DataTypes[typeName] = prop.DataTypes.GetValueOrDefault(typeName) + 1;
+                    var hashKey = "0x" + v.varHash.ToString("X8");
+                    prop.VarHashes[hashKey] = prop.VarHashes.GetValueOrDefault(hashKey) + 1;
+                }
+                var seqKey = string.Join("|", names);
+                bucket.Sequences[seqKey] = bucket.Sequences.GetValueOrDefault(seqKey) + 1;
+            }
+            if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
+            {
+                foreach (var e in pe.efxrData.Entries) Visit(e);
+                foreach (var a in pe.efxrData.Actions) Visit(a);
+            }
+        }
+    }
+
+    foreach (var path in files)
+    {
+        try
+        {
+            var efx = new EfxFile(new FileHandler(path));
+            efx.Read();
+            scanned++;
+            foreach (var e in efx.Entries) Visit(e);
+            foreach (var a in efx.Actions) Visit(a);
+        }
+        catch (Exception)
+        {
+            failed++;  // 语料里本来就有一批读不了的，见 KNOWN_UPSTREAM_ISSUES
+        }
+    }
+
+    var payload = new
+    {
+        filesTotal = files.Count,
+        filesScanned = scanned,
+        filesFailed = failed,
+        instances,
+        behaviors = byBehavior.Count,
+        byBehavior = byBehavior.OrderByDescending(kv => kv.Value.InstanceCount).ToDictionary(
+            kv => kv.Key,
+            kv => new
+            {
+                instanceCount = kv.Value.InstanceCount,
+                properties = kv.Value.Properties.OrderBy(p => p.Key).ToDictionary(
+                    p => p.Key,
+                    p => new
+                    {
+                        freq = p.Value.Freq,
+                        dataTypes = p.Value.DataTypes,
+                        varHashes = p.Value.VarHashes,
+                    }),
+                sequences = kv.Value.Sequences.OrderByDescending(s => s.Value)
+                        .ToDictionary(s => s.Key, s => s.Value),
+            }),
+    };
+    File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine(
+        $"OK: PtBehavior 共 {instances} 个实例，{byBehavior.Count} 个 behaviorString"
+        + $"（扫描 {scanned}/{files.Count} 个文件，失败 {failed}）-> {jsonOutPath}");
+    return 0;
+}
+
 static int RunNew(string[] args)
 {
     if (args.Length < 3)
@@ -1582,6 +2029,20 @@ sealed class UvsBridgePayload
     public List<SequenceBlock> sequences { get; set; } = new();
 }
 
+class PtBehaviorBucket
+{
+    public int InstanceCount;
+    public Dictionary<string, PtBehaviorPropertyBucket> Properties = new();
+    public Dictionary<string, int> Sequences = new();
+}
+
+class PtBehaviorPropertyBucket
+{
+    public int Freq;
+    public Dictionary<string, int> DataTypes = new();
+    public Dictionary<string, int> VarHashes = new();
+}
+
 sealed class FloatKeepsDecimalPointConverter : System.Text.Json.Serialization.JsonConverter<float>
 {
     public override float Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
@@ -1613,6 +2074,27 @@ sealed class FloatKeepsDecimalPointConverter : System.Text.Json.Serialization.Js
             text += ".0";
         }
         writer.WriteRawValue(text);
+    }
+}
+
+sealed class MaterialPolymorphismResolver : System.Text.Json.Serialization.Metadata.IJsonTypeInfoResolver
+{
+    public System.Text.Json.Serialization.Metadata.JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options)
+    {
+        var info = EfxJsonTypeResolver.Instance.GetTypeInfo(type, options);
+        if (info != null && type == typeof(EfxMaterialStructBase))
+        {
+            info.PolymorphismOptions = new System.Text.Json.Serialization.Metadata.JsonPolymorphismOptions
+            {
+                TypeDiscriminatorPropertyName = "$type",
+                IgnoreUnrecognizedTypeDiscriminators = true,
+                UnknownDerivedTypeHandling = System.Text.Json.Serialization.JsonUnknownDerivedTypeHandling.FailSerialization,
+            };
+            info.PolymorphismOptions.DerivedTypes.Add(new System.Text.Json.Serialization.Metadata.JsonDerivedType(typeof(EfxMaterialStructV1), typeof(EfxMaterialStructV1).FullName!));
+            info.PolymorphismOptions.DerivedTypes.Add(new System.Text.Json.Serialization.Metadata.JsonDerivedType(typeof(EfxMaterialStructV2), typeof(EfxMaterialStructV2).FullName!));
+            info.PreferredPropertyObjectCreationHandling = System.Text.Json.Serialization.JsonObjectCreationHandling.Populate;
+        }
+        return info;
     }
 }
 
