@@ -1,0 +1,96 @@
+diff --git a/REE-Lib/OtherFiles/EFX/EfxUnknownAttributes.cs b/REE-Lib/OtherFiles/EFX/EfxUnknownAttributes.cs
+new file mode 100644
+index 0000000..fcfa9b8
+--- /dev/null
++++ b/REE-Lib/OtherFiles/EFX/EfxUnknownAttributes.cs
+@@ -0,0 +1,55 @@
++using ReeLib.InternalAttributes;
++
++namespace ReeLib.Efx.Structs.Misc;
++
++// MHWs-EFX-Editor 本地补丁：这几个类型在 MHWilds 的 itemType 映射表里存在，但 vendor 没有
++// 给它们配读写实现类——EfxAttributeTypeRemapper.Create() 找不到类型就直接抛
++// "Unsupported EFX attribute type"，导致带这些 attribute 的文件整个读不进来。
++//
++// 我们不认识这些类型的字段结构（vendor 自己也不认识——AttributeTypeIDs 里能查到 itemType
++// 数值，但没有任何字段布局线索），所以不去猜字段，照抄社区 010 模板对同类情况的处理
++// （`ubyte unkn[unknSeqNum - 4]`）：整个 attribute body 当一段不透明字节数组读写，不解释、
++// 不暴露给用户编辑，只保证能原样导入、原样导出。
++//
++// 这几个类要用到 EFXAttribute.ExpectedByteSize（同一次补丁加在 EfxFile.cs 里）：MHWilds
++// 起每个 attribute 前面都有一个"声明长度"字段，之前只用来读完之后做校验，没有传给 attribute
++// 自己——不透明类必须知道这个长度才能知道该读多少字节。
++public abstract class EFXAttributeOpaqueUnknown : EFXAttribute
++{
++    protected EFXAttributeOpaqueUnknown(EfxAttributeType type) : base(type)
++    {
++    }
++
++    public byte[] unknownData = [];
++
++    protected override bool DoRead(FileHandler handler)
++    {
++        var len = ExpectedByteSize >= 4 ? ExpectedByteSize - 4 : 0;
++        unknownData = handler.ReadArray<byte>(len);
++        return true;
++    }
++
++    protected override bool DoWrite(FileHandler handler)
++    {
++        handler.WriteArray(unknownData);
++        return true;
++    }
++}
++
++[EfxStruct(EfxAttributeType.PtColorMixerClip, EfxVersion.MHWilds)]
++public sealed class EFXAttributePtColorMixerClip : EFXAttributeOpaqueUnknown
++{
++    public EFXAttributePtColorMixerClip() : base(EfxAttributeType.PtColorMixerClip) { }
++}
++
++[EfxStruct(EfxAttributeType.FixRandomGeneratorExpression, EfxVersion.MHWilds)]
++public sealed class EFXAttributeFixRandomGeneratorExpression : EFXAttributeOpaqueUnknown
++{
++    public EFXAttributeFixRandomGeneratorExpression() : base(EfxAttributeType.FixRandomGeneratorExpression) { }
++}
++
++[EfxStruct(EfxAttributeType.FluidParticle2DSimulatorExpression, EfxVersion.MHWilds)]
++public sealed class EFXAttributeFluidParticle2DSimulatorExpression : EFXAttributeOpaqueUnknown
++{
++    public EFXAttributeFluidParticle2DSimulatorExpression() : base(EfxAttributeType.FluidParticle2DSimulatorExpression) { }
++}
+diff --git a/REE-Lib/OtherFiles/EfxFile.cs b/REE-Lib/OtherFiles/EfxFile.cs
+index 9c818e9..636551d 100644
+--- a/REE-Lib/OtherFiles/EfxFile.cs
++++ b/REE-Lib/OtherFiles/EfxFile.cs
+@@ -180,6 +180,14 @@ namespace ReeLib.Efx
+         public EfxVersion Version;
+         public bool IsTypeAttribute => type.ToString().StartsWith("Type") && this is not IExpressionAttribute and not IClipAttribute and not IMaterialExpressionAttribute;
+ 
++        // MHWs-EFX-Editor 本地补丁：MHWilds 起每个 attribute 前面会声明一个字节长度
++        // （下面 EFXEntry/EFXAction.DoRead() 里读到的 expectedSize，含 UniqueID 的 4 字节），
++        // 原本只用来读完之后校验，没有传给 attribute 自己。给完全不认识字段结构的类型
++        // （opaque 透传实现，见 EfxUnknownAttributes.cs）留一个读取自己长度的口子。
++        // -1 = 未提供（非 MHWilds 版本，或者调用方没设置）。
++        [JsonIgnore]
++        public int ExpectedByteSize = -1;
++
+         public static EFXAttribute Create(EfxVersion version, EfxAttributeType type, int seqNum = -1)
+         {
+             var item = EfxAttributeTypeRemapper.Create(type, version);
+@@ -717,6 +725,7 @@ namespace ReeLib.Efx
+                 var seqNum = handler.Read<int>();
+                 var attr = EFXAttribute.Create(Version, type, seqNum);
+                 attr.Version = Version;
++                attr.ExpectedByteSize = expectedSize;
+                 attr.Read(handler);
+                 // Log.Debug($"Read {attr.type} at {attr.Start}");
+                 if (expectedSize != -1 && expectedSize - 4 != attr.StructSize) {//UniqueID is included in the struct size, so subtract 4
+@@ -846,6 +855,7 @@ namespace ReeLib.Efx
+                 var seqNum = handler.Read<int>();
+                 var attr = EFXAttribute.Create(Version, type, seqNum);
+                 attr.Version = Version;
++                attr.ExpectedByteSize = expectedSize;
+                 attr.Read(handler);
+                 if (expectedSize != -1 && expectedSize - 4 != attr.StructSize) {//UniqueID is included in the struct size, so subtract 4
+                     throw new Exception($"EFX attribute ({attr.type}) was not properly read. Expected: {expectedSize} Actual: {attr.StructSize+4} Start:{attr.Start} End:{attr.Start + attr.StructSize}");

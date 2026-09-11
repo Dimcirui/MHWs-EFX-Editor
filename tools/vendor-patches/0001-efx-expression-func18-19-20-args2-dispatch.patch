@@ -1,0 +1,33 @@
+diff --git a/REE-Lib/OtherFiles/EFX/EfxExpressionParser.cs b/REE-Lib/OtherFiles/EFX/EfxExpressionParser.cs
+index f8d633e..e2fccfa 100644
+--- a/REE-Lib/OtherFiles/EFX/EfxExpressionParser.cs
++++ b/REE-Lib/OtherFiles/EFX/EfxExpressionParser.cs
+@@ -269,11 +269,23 @@ public static partial class EfxExpressionStringParser
+ 				atom = ParseExpression(ref ctx),
+ 			};
+ 		} else if (args == 2) {
+-			var bin = new ExpressionBinaryOperation() { oper = Enum.Parse<BinaryExpressionOperator>(nameSpan, true) };
+-			bin.left = ParseExpression(ref ctx);
+-			SkipToken(ref ctx, TokenType.Comma);
+-			bin.right = ParseExpression(ref ctx);
+-			result = bin;
++			// MHWs-EFX-Editor 本地补丁：Min/Max 是 BinaryExpressionOperator 成员，但 Func18/19/20
++			// 是 EfxExpressionFunction 成员，两参函数名同时映射进这个分支时不能都当 BinaryExpressionOperator
++			// 解析。详见宿主仓库 KNOWN_UPSTREAM_ISSUES.md #6 与 tools/vendor-patches/。
++			if (Enum.TryParse<BinaryExpressionOperator>(nameSpan, true, out var binOp)) {
++				var bin = new ExpressionBinaryOperation() { oper = binOp };
++				bin.left = ParseExpression(ref ctx);
++				SkipToken(ref ctx, TokenType.Comma);
++				bin.right = ParseExpression(ref ctx);
++				result = bin;
++			} else {
++				var func = new ExpressionFuncOperation() { func = Enum.Parse<EfxExpressionFunction>(nameSpan, true) };
++				func.args = new ExpressionAtom[2];
++				func.args[0] = ParseExpression(ref ctx);
++				SkipToken(ref ctx, TokenType.Comma);
++				func.args[1] = ParseExpression(ref ctx);
++				result = func;
++			}
+ 		// } else if (args == 3) {
+ 		// 	var ter = new ExpressionTernaryOperation() { func = Enum.Parse<EfxExpressionFunction>(nameSpan, true) };
+ 		// 	ter.left = ParseExpression(ref ctx);
