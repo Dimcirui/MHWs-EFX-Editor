@@ -510,10 +510,11 @@
       "Rotation": {
         "label_zh": "旋转",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容；用 EfxBridge fieldstats 对全语料实测取值分布复核：s/r 众数落在 0~2π 区间且大量取值是 π/180 的整数倍，和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数（π/6、π/4、π/2、π 等）高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
         "date": "2026-09-10",
-        "tooltip_zh": "生成时的初始旋转角度。"
+        "tooltip_zh": "生成时的初始旋转角度。",
+        "unit": "angle_radians"
       },
       "SizeX": {
         "label_zh": "X 轴大小",
@@ -698,23 +699,26 @@
       "RotationX": {
         "label_zh": "X 轴旋转",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容；用 EfxBridge fieldstats 对全语料实测取值分布复核：s/r 众数落在 0~2π 区间且大量取值是 π/180 的整数倍，和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数（π/6、π/4、π/2、π 等）高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-10",
+        "unit": "angle_radians"
       },
       "RotationY": {
         "label_zh": "Y 轴旋转",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容；用 EfxBridge fieldstats 对全语料实测取值分布复核：s/r 众数落在 0~2π 区间且大量取值是 π/180 的整数倍，和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数（π/6、π/4、π/2、π 等）高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-10",
+        "unit": "angle_radians"
       },
       "RotationZ": {
         "label_zh": "Z 轴旋转",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容；用 EfxBridge fieldstats 对全语料实测取值分布复核：s/r 众数落在 0~2π 区间且大量取值是 π/180 的整数倍，和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数（π/6、π/4、π/2、π 等）高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-10",
+        "unit": "angle_radians"
       },
       "ScaleX": {
         "label_zh": "X 轴缩放",
@@ -779,64 +783,66 @@
     "ReeLib.Efx.Structs.Transforms.EFXAttributeVelocity3D": {
       "Speed": {
         "label_zh": "初速度",
-        "confidence": "borrowed_short_label_from_mhwi",
-        "evidence": "字段名对照姊妹项目 EFX-Editor（MHWI）同名/近似字段得出短标签提示，只借用了 MHWI 的中文短标签措辞，未采纳其详细 tooltip 内容——两边引擎（RE Engine vs MT Framework）字段名相同不代表取值语义/计算方式完全一致，未逐一验证",
-        "tester": "user+assistant",
-        "date": "2026-09-09"
+        "tooltip_zh": "粒子初始移动速度（米/帧，Range 类型：基准值 + 随机浮动范围）。",
+        "confidence": "likely",
+        "evidence": "字段名对照姊妹项目 EFX-Editor（MHWI）同名/近似字段得出短标签提示，只借用了 MHWI 的中文短标签措辞——两边引擎（RE Engine vs MT Framework）字段名相同不代表取值语义/计算方式完全一致，未逐一验证。单位：EFX-Editor 自己的 `speedCoef`（MHWs 同名字段 SpeedCoef）已被实机确认是\"对应速度每帧乘一次\"的逐帧乘算系数（`EFX-Editor/docs/AUTHORING.md:52`，1=匀速/>1 越来越快），既然 SpeedCoef 是逐帧作用在 Speed 上的，Speed 本身最自然的理解就是\"每帧位移量\"而不是物理意义上的每秒速度——但这是结构推断，不是 MHWs 里独立实测过的结论；反例是同一份 EFX-Editor 文档里 HOMING.turnRate 经实机测试确认是每秒角速度（`rF=360` 实测正好每秒一整圈），说明这套引擎家族里\"逐帧系数\"和\"连续速率\"两种单位制并存，不能一刀切，故只标 likely。",
+        "tester": "user+assistant (单位判断: assistant, 结构推断)",
+        "date": "2026-09-10"
       },
       "SpeedCoef": {
         "label_zh": "速度系数",
-        "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
-        "tester": "user+assistant",
-        "date": "2026-09-09"
+        "tooltip_zh": "每帧对 Speed 乘算一次的系数（无单位）：1=匀速，>1 逐帧加速，<1 逐帧减速。",
+        "confidence": "likely",
+        "evidence": "字段名本身足以说明作用，直接翻译。单位：姊妹项目 EFX-Editor 把同名字段 `speedCoef` 归入\"逐帧速度倍率\"一族并经实机确认（`EFX-Editor/docs/AUTHORING.md:52`：\"对应的速度每帧乘一次这个值，所以 1=匀速，>1 越来越快\"），该族全语料众数都在 1.0；这是同一个字段名在同一套 velocity3d 概念下的直接命中，不是靠字段名相似度猜的类比，置信度比 Speed 本身更高，但仍未在 MHWs 里独立实机复核过，故标 likely 不是 confirmed。",
+        "tester": "user+assistant (单位判断: assistant, 引用 EFX-Editor 实机确认)",
+        "date": "2026-09-10"
       },
       "DirectionVectorX": {
         "label_zh": "运动方向 X",
-        "tooltip_zh": "粒子运动方向（Range 类型：基准值 + 随机浮动范围）。",
-        "confidence": "likely",
-        "evidence": "010 模板 RE_EFX_STRUCTS.btx 的 Velocity3D 结构体里 DirectionX/DirectionXRandom 两个连续 float 字段，按 vendor 源码（EfxVelocity.cs）DirectionVectorX 声明为 via.Range（占 2 个物理槽位）逐一对齐；模板字段名少了 \"Vector\" 中缀，只是命名习惯差异",
-        "tester": "assistant (vendor source + template physical order cross-check)",
+        "tooltip_zh": "粒子运动方向分量（无单位方向向量，Range 类型：基准值 + 随机浮动范围）。仅 VelocityType=Direction 时生效。",
+        "confidence": "confirmed",
+        "evidence": "010 模板 RE_EFX_STRUCTS.btx 的 Velocity3D 结构体里 DirectionX/DirectionXRandom 两个连续 float 字段，按 vendor 源码（EfxVelocity.cs）DirectionVectorX 声明为 via.Range（占 2 个物理槽位）逐一对齐；模板字段名少了 \"Vector\" 中缀，只是命名习惯差异。门控关系：EfxBridge condstats 对全语料 41754 个 Velocity3D 实例按 VelocityType 分桶统计，DirectionVectorX/Y/Z 在 VelocityType=0(Direction) 桶（n=15132）里的取值多样性（distinct 379~602、众数占比 47~78%）明显高于 1(Normal,n=26189)/2(Radial,n=414)/3(Spread,n=19) 三桶（distinct 骤降到 1~133、众数占比普遍 75%+），与姊妹项目 EFX-Editor 对 RE-Engine 原生 VelocityType 枚举语义的验证性研究一致（该研究本身是从 RE-Engine 反查、再经 MHWI 实机测试验证过的，见 EFX-Editor/efx_format/schema/attributes.py:316-324）",
+        "tester": "assistant (vendor source + template physical order cross-check + EfxBridge condstats 全语料分桶统计)",
         "date": "2026-09-10"
       },
       "DirectionVectorY": {
         "label_zh": "运动方向 Y",
-        "tooltip_zh": "见 DirectionVectorX，对应 Y 轴。",
-        "confidence": "likely",
+        "tooltip_zh": "见 DirectionVectorX（无单位方向向量），对应 Y 轴。仅 VelocityType=Direction 时生效。",
+        "confidence": "confirmed",
         "evidence": "见 DirectionVectorX 的 evidence",
-        "tester": "assistant (vendor source + template physical order cross-check)",
+        "tester": "assistant (vendor source + template physical order cross-check + EfxBridge condstats 全语料分桶统计)",
         "date": "2026-09-10"
       },
       "DirectionVectorZ": {
         "label_zh": "运动方向 Z",
-        "tooltip_zh": "见 DirectionVectorX，对应 Z 轴。",
-        "confidence": "likely",
+        "tooltip_zh": "见 DirectionVectorX（无单位方向向量），对应 Z 轴。仅 VelocityType=Direction 时生效。",
+        "confidence": "confirmed",
         "evidence": "见 DirectionVectorX 的 evidence",
-        "tester": "assistant (vendor source + template physical order cross-check)",
+        "tester": "assistant (vendor source + template physical order cross-check + EfxBridge condstats 全语料分桶统计)",
         "date": "2026-09-10"
       },
       "Offset": {
         "label_zh": "运动偏移",
-        "tooltip_zh": "粒子运动偏移（Vector3）。",
-        "confidence": "likely",
-        "evidence": "010 模板 VelocityOffsetX/Y/Z 三个连续 float 字段，对应 vendor 源码里的 Vector3 Offset 字段（占 3 个物理槽位），只有 X 分量带注释",
-        "tester": "assistant (vendor source + template physical order cross-check)",
+        "tooltip_zh": "配合 Size 共同决定粒子运动方向（Vector3，米）。仅 VelocityType=Normal 时生效。",
+        "confidence": "confirmed",
+        "evidence": "010 模板 VelocityOffsetX/Y/Z 三个连续 float 字段，对应 vendor 源码里的 Vector3 Offset 字段（占 3 个物理槽位），只有 X 分量带注释。门控关系：EfxBridge condstats 分桶统计显示 Offset.X/Y/Z 在 VelocityType=1(Normal) 桶里的取值多样性（distinct 105~264、众数占比 25~87%）明显高于 0(Direction)/2(Radial)/3(Spread) 三桶（distinct 骤降到 2~88、众数占比普遍 70%+），方向与 DirectionVector 系字段互补，和姊妹项目 EFX-Editor 对 RE-Engine 原生 VelocityType 枚举的验证性研究一致（EFX-Editor/efx_format/schema/attributes.py:302-322：Offset+Size 共同决定方向，公式为 normalize((Size-1)×粒子生成坐标+Offset)，该研究经 MHWI 实机测试验证过）。单位：对 MHWs 全语料（VelocityType=1 桶，38624 实例）和 EFX-Editor 的 MHWI 全语料（同名字段 velocityX/Y/Z，velocityType=1 桶，55701 实例）分别统计 |取值| 的中位数/分位数，MHWs 侧中位数 0.5~1、p90 2.2~10，MHWI 侧中位数 15~38、p90 191~668——两边比值集中在几十到约 90 倍（越往分布尾部越接近 100 倍），量级上与已确认的 Transform3D 位置换算比例（MHWI 厘米制、MHWs 米制 1:1，见 memory/coord_conversion_1to1.md）一致，判定 Offset 是真实空间距离（米），不是无量纲系数——同一方法对 Size 字段算出的比值接近 1:1（见 Size 的 evidence），两个字段一真一假的对照本身也验证了这个判断方法有效。",
+        "tester": "assistant (vendor source + template physical order cross-check + EfxBridge condstats 全语料分桶统计 + 与 EFX-Editor MHWI 语料的取值量级跨项目对照)",
         "date": "2026-09-10"
       },
       "Size": {
-        "label_zh": "运动能量（存疑）",
-        "tooltip_zh": "疑为粒子的逐轴运动能量；与字段名 Size 的字面含义不符，实际作用未知。",
-        "confidence": "guess",
-        "evidence": "010 模板 energyOnAxisX/Y/Z 三个连续 float 字段紧跟在 VelocityOffsetX/Y/Z 之后，按 vendor 源码声明顺序（Offset 后面正好是 Vector3 Size），槽位数和位置对得上，但字段名语义（\"能量\" vs \"大小\"）互相矛盾，需要游戏内实测才能确认",
-        "tester": "assistant (vendor source + template physical order cross-check, 语义存疑)",
+        "label_zh": "运动方向系数",
+        "tooltip_zh": "配合 Offset 共同决定粒子运动方向：方向 = normalize((Size-1)×粒子生成坐标 + Offset)，速度大小由 Speed 决定、与 Size 数值无关。三轴相等时退化为径向收拢(<1)/发散(>1)，某轴=1 时该轴无效果。无量纲系数，不是长度。仅 VelocityType=Normal 时生效。",
+        "confidence": "likely",
+        "evidence": "010 模板 energyOnAxisX/Y/Z 三个连续 float 字段紧跟在 VelocityOffsetX/Y/Z 之后，按 vendor 源码声明顺序（Offset 后面正好是 Vector3 Size），槽位数和位置对得上。字段功能沿用姊妹项目 EFX-Editor 对 RE-Engine 原生 VelocityType 枚举的验证性研究（该研究从 RE-Engine 反查、经 MHWI 实机测试确认了这个公式，见 EFX-Editor/efx_format/schema/attributes.py:306-315）；EfxBridge condstats 分桶统计确认 Size.X/Y/Z 和 Offset 同步只在 VelocityType=1(Normal) 桶活跃（distinct 99~164）、其余三桶明显收敛（distinct 10~59），门控关系成立。单位：用跟 Offset 同一套方法对比取值量级——MHWs 的 Size.X/Y/Z（VelocityType=1 桶）中位数 1.1~1.2、p90 都是 2；EFX-Editor 的 MHWI 语料里同名字段 divergenceX/Y/Z（velocityType=1 桶）中位数 1.0~1.1、p90 都是 2，两边几乎完全同量级（不像 Offset 那样差 30~90 倍），支持 Size 是无量纲系数（数值本身而非物理距离才是意义所在），但具体公式未在 MHWs 里实机验证，故置信度仍是 likely 不是 confirmed",
+        "tester": "assistant (vendor source + template physical order cross-check + EfxBridge condstats 全语料分桶统计 + 与 EFX-Editor MHWI 语料的取值量级跨项目对照, 公式借自 EFX-Editor 未在 MHWs 实机复核)",
         "date": "2026-09-10"
       },
       "GravityRate": {
         "label_zh": "重力",
-        "tooltip_zh": "重力（Range 类型：基准值 + 随机浮动范围）。",
+        "tooltip_zh": "每帧叠加到运动速度上的下坠量（米/帧，Range 类型：基准值 + 随机浮动范围）。",
         "confidence": "likely",
-        "evidence": "010 模板 Gravity/GravityRandom 两个连续 float 字段，对应 vendor 源码 via.Range GravityRate（2 个物理槽位）",
-        "tester": "assistant (vendor source + template physical order cross-check)",
+        "evidence": "010 模板 Gravity/GravityRandom 两个连续 float 字段，对应 vendor 源码 via.Range GravityRate（2 个物理槽位）。单位：和 Speed 同属这个 attribute 里\"逐帧生效\"的运动量（对照 SpeedDelayFrame/GravityDelayFrame 都是显式的帧数字段），沿用 Speed 的\"米/帧\"推断（同一条 evidence 链，见 Speed），未独立验证。",
+        "tester": "assistant (vendor source + template physical order cross-check; 单位: 结构推断)",
         "date": "2026-09-10"
       },
       "SpeedDelayFrame": {
@@ -857,31 +863,36 @@
       },
       "VelocityType": {
         "label_zh": "速度类型",
-        "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
-        "tester": "assistant",
+        "tooltip_zh": "决定粒子运动方向的计算方式，决定下方 DirectionVectorX/Y/Z、Offset+Size、Spread 三组字段哪一组生效。",
+        "confidence": "confirmed",
+        "evidence": "字段名本身足以说明作用直接翻译；各取值门控哪组字段由 EfxBridge condstats 对全语料 41754 个实例按本字段分桶统计确认（见 DirectionVectorX/Offset/Spread 各自的 evidence），并与姊妹项目 EFX-Editor 对 RE-Engine 原生同名枚举的验证性研究一致（EFX-Editor/efx_format/schema/attributes.py:316-324）",
+        "tester": "assistant (EfxBridge condstats 全语料分桶统计)",
         "date": "2026-09-10"
       },
       "InheritRate": {
         "label_zh": "继承速度比例",
+        "tooltip_zh": "继承发射器速度的比例（无单位，0=不继承，1=完全继承）。",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容。单位：字段名里的\"Rate\"在这里应读作\"比例/比率\"而非\"速率\"——它不是一个随时间变化的量，是 spawn 时对发射器当前速度取一个比例混合进粒子初速度，跟 SpeedCoef 那种逐帧反复生效的机制不是一回事，所以标无单位而不是时间单位。",
         "tester": "assistant",
         "date": "2026-09-10"
       },
       "InheritDistance": {
         "label_zh": "继承距离",
+        "tooltip_zh": "继承发射器运动的效果，具体含义和单位未定。",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容。跟 Offset/Size 同样试过用 EFX-Editor 的 MHWI 语料做单位对照，但 EFX-Editor 的 VELOCITY3D_ATTR 里没有对应字段（其 attributes.py:334 明确记过 InheritRate/InheritDistance/Spread 三个字段在 MHWI 的 108B 里找不到位置），这条路走不通。EfxBridge condstats 里 InheritDistance.r 在全部 VelocityType 桶里 99%+ 集中在恰好 1.0（不像 Offset 那样有大范围数值），形状更接近 Size（无量纲系数，聚在 1.0 附近）而不是 Offset（真实距离，分布铺开）——但这只是形状类比，没有跨项目量级对照撑腰，不足以升级 confidence 或断言单位。",
         "tester": "assistant",
         "date": "2026-09-10"
       },
       "Spread": {
-        "label_zh": "扩散",
-        "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
-        "tester": "assistant",
-        "date": "2026-09-10"
+        "label_zh": "扩散锥角",
+        "tooltip_zh": "扩散锥角（弧度制）。仅 VelocityType=Spread 时生效。",
+        "confidence": "confirmed",
+        "evidence": "字段名本身足以说明作用，直接翻译；用 EfxBridge fieldstats 对全语料实测取值分布复核：s/r 众数落在 0~2π 区间且大量取值是 π/180 的整数倍，和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数（π/6、π/4、π/2、π 等）高度重合，判定为弧度制角度字段（unit=angle_radians）。门控关系：EfxBridge condstats 按 VelocityType 分桶统计，Spread.s 在 VelocityType=0/1/2 三桶里 99%+ 集中在 0.0（distinct 仅 3~9），只有 VelocityType=3(Spread) 桶（n=19）明显活跃（distinct 8、众数占比降到 31.6%）——字段名与枚举值同名（Spread）也和这个统计结果吻合，判定为 confirmed。",
+        "tester": "assistant (EfxBridge fieldstats + condstats 全语料统计)",
+        "date": "2026-09-10",
+        "unit": "angle_radians"
       }
     },
     "ReeLib.Efx.Structs.Transforms.EFXAttributeVelocity3DExpression": {
@@ -1079,18 +1090,20 @@
       "ScaleHorizontal": {
         "label_zh": "水平角度范围",
         "tooltip_zh": "弧度制，限制发射器的水平角度范围。",
-        "confidence": "guess",
-        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）",
+        "confidence": "likely",
+        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）；用 EfxBridge fieldstats 对全语料实测取值分布复核：s/r 众数落在 0~2π 区间且大量取值是 π/180 的整数倍，vendor 源码注释 \"Cylinder angle on cylinder shape\" 印证，和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数（π/6、π/4、π/2、π 等）高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-10",
+        "unit": "angle_radians"
       },
       "ScaleVertical": {
         "label_zh": "垂直角度范围",
         "tooltip_zh": "弧度制，限制发射器的垂直角度范围。",
-        "confidence": "guess",
-        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）",
+        "confidence": "likely",
+        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）；用 EfxBridge fieldstats 对全语料实测取值分布复核：s/r 众数落在 0~2π 区间且大量取值是 π/180 的整数倍，与 ScaleHorizontal 同一形状，和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数（π/6、π/4、π/2、π 等）高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-10",
+        "unit": "angle_radians"
       },
       "RangeX": {
         "label_zh": "X 轴范围",
@@ -1239,9 +1252,10 @@
       "Rotation": {
         "label_zh": "旋转",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容；用 EfxBridge fieldstats 对全语料实测取值分布复核：s/r 众数落在 0~2π 区间且大量取值是 π/180 的整数倍，和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数（π/6、π/4、π/2、π 等）高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-10",
+        "unit": "angle_radians"
       },
       "SizeX": {
         "label_zh": "X 轴大小",
@@ -1451,6 +1465,30 @@
         "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
         "tester": "user+assistant",
         "date": "2026-09-09"
+      },
+      "RotationX": {
+        "label_zh": "X 轴旋转",
+        "unit": "angle_radians",
+        "confidence": "likely",
+        "evidence": "用 EfxBridge fieldstats 对全语料实测取值分布复核：s/r 众数落在 0~2π 区间且大量取值是 π/180 的整数倍，vendor 源码字段类型为 via.Range，形状同 TypeMeshV2.RotationX，和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数（π/6、π/4、π/2、π 等）高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationY": {
+        "label_zh": "Y 轴旋转",
+        "unit": "angle_radians",
+        "confidence": "likely",
+        "evidence": "用 EfxBridge fieldstats 对全语料实测取值分布复核：s/r 众数落在 0~2π 区间且大量取值是 π/180 的整数倍，vendor 源码字段类型为 via.Range，形状同 TypeMeshV2.RotationY，和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数（π/6、π/4、π/2、π 等）高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
+        "tester": "assistant",
+        "date": "2026-09-10"
+      },
+      "RotationZ": {
+        "label_zh": "Z 轴旋转",
+        "unit": "angle_radians",
+        "confidence": "likely",
+        "evidence": "用 EfxBridge fieldstats 对全语料实测取值分布复核：s/r 众数落在 0~2π 区间且大量取值是 π/180 的整数倍，vendor 源码字段类型为 via.Range，形状同 TypeMeshV2.RotationZ，和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数（π/6、π/4、π/2、π 等）高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
+        "tester": "assistant",
+        "date": "2026-09-10"
       }
     },
     "ReeLib.Efx.Structs.Misc.EFXAttributeNoise": {
@@ -2453,9 +2491,10 @@
       "Rotation": {
         "label_zh": "旋转",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容；用 EfxBridge fieldstats 对全语料实测取值分布复核：X/Y/Z 众数落在 0~2π 区间且大量取值是 π/180 的整数倍，和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数（π/6、π/4、π/2、π 等）高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-10",
+        "unit": "angle_radians"
       },
       "DrawDistance": {
         "label_zh": "绘制距离",
@@ -6203,16 +6242,18 @@
       "Rotation": {
         "label_zh": "旋转",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译",
+        "evidence": "字段名本身足以说明作用，直接翻译；用 EfxBridge fieldstats 对全语料实测取值分布复核：X/Y/Z 众数落在 0~2π 区间且大量取值是 π/180 的整数倍，和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数（π/6、π/4、π/2、π 等）高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-10",
+        "unit": "angle_radians"
       },
       "RotationRandom": {
         "label_zh": "旋转随机幅度",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译",
+        "evidence": "字段名本身足以说明作用，直接翻译；用 EfxBridge fieldstats 对全语料实测取值分布复核：X/Y/Z 众数落在 0~2π 区间且大量取值是 π/180 的整数倍，和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数（π/6、π/4、π/2、π 等）高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-10",
+        "unit": "angle_radians"
       },
       "Size": {
         "label_zh": "大小",

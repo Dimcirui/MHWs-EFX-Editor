@@ -145,6 +145,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "EN": "Max is less than Min — this crashes the game",
         "ZH": "Max 小于 Min ——这个组合会让游戏崩溃",
     },
+    "attribute.show_all_fields": {"EN": "Show all fields", "ZH": "显示全部字段"},
 
     # Add（新增结构）
     "add.action":             {"EN": "Add Action",          "ZH": "新增 Action"},

@@ -35,7 +35,10 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, PointerProperty, StringProperty
 from bpy.types import Menu, Panel, UIList
 
-from . import attribute_types, bitfield, bridge, copy_paste, i18n, io_tree, model, semantics, structure_ops
+from . import (
+    attribute_types, bitfield, bridge, copy_paste, field_visibility, i18n, io_tree, model, semantics,
+    structure_ops,
+)
 from .i18n import T
 
 # 取活动对象一律用 `getattr(context, "object", None)` 而不是 `context.object`：脚本/后台
@@ -1395,14 +1398,65 @@ def _draw_fields_content(layout, context, obj) -> None:
     col = box.column(align=True)
     node_by_key = {n.key: n for n in obj.efx_fields}
     group_at, consumed = _resolve_axis_groups(obj.efx_attr_type, node_by_key)
+
+    # 按模式字段过滤生效字段（field_visibility.py）。"显示全部字段"开关可关闭过滤——隐藏的
+    # 字段字节原样保留，只是本来不画。只在该类型确实有门控规则时才画开关，没有规则的类型
+    # 不该在面板上多一个永远不起作用的开关。
+    mode_rules = field_visibility.FIELD_VISIBILITY.get(obj.efx_attr_type)
+    has_vis_rules = mode_rules is not None
+    show_all = bool(getattr(context.scene, "efx_re_show_all_fields", False))
+    if has_vis_rules:
+        col.prop(context.scene, "efx_re_show_all_fields",
+                 text=T("attribute.show_all_fields"), icon="HIDE_OFF")
+
+    def _mode_getter(fname, _nbk=node_by_key):
+        node = _nbk.get(fname)
+        return model._read_packed_int(node) if node is not None else None
+
+    # 模式选择字段本身（如 VelocityType）——被其它字段的规则当 mode_field 引用的那个字段——
+    # 也归进"模式专属"这一批：它是门控其余字段的开关，跟被它门控的字段放在一起才能让用户
+    # 看懂"为什么这批字段只显示这几个"，单独扔进恒定生效那批反而看不出关联。
+    mode_fields = {rule[0] for rule in mode_rules.values()} if mode_rules else set()
+
+    # 逐字段过滤后分两批：模式专属字段（模式选择字段本身 + 在 field_visibility 表里登记过、
+    # 只在特定模式下生效的字段；轴向分组按组首字段——如 DirectionVectorX——是否登记过判断
+    # 整组归哪一批）排前面，恒定生效的字段排后面，中间画一条灰色分隔线，一眼看出"这些字段
+    # 跟着模式变、那些字段不管什么模式都作数"。批内保持原有字节序，不额外排序；模式选择
+    # 字段排在同批最前面（先看到开关，再看开关控制的字段）。
+    mode_selectors: list = []
+    mode_specific: list = []
+    always_visible: list = []
     for node in obj.efx_fields:
+        # 放在这里而不是分桶之后：被隐藏的组首字段（如 DirectionVectorX）连带整组不进任何一批。
+        if has_vis_rules and not show_all and field_visibility.field_hidden(
+                obj.efx_attr_type, node.key, _mode_getter):
+            continue
+        # `consumed` 包含组首字段自己（见 `_resolve_axis_groups`），组首要留下来才能代表整组
+        # 进桶——只跳过 Y/Z 这类非组首的从属字段。
+        if node.key in consumed and node.key not in group_at:
+            continue
+        if mode_rules and node.key in mode_fields:
+            mode_selectors.append(node)
+        elif mode_rules and node.key in mode_rules:
+            mode_specific.append(node)
+        else:
+            always_visible.append(node)
+
+    def _draw_one(node) -> None:
         if node.key in group_at:
             label_zh, label_en, axes = group_at[node.key]
             _draw_axis_group(col, obj.efx_attr_type, label_zh, label_en, axes, node_by_key)
-            continue
-        if node.key in consumed:
-            continue
+            return
         draw_node(col, node, attr_type=obj.efx_attr_type, root_obj=root_obj, attr_owner=obj)
+
+    for node in mode_selectors:
+        _draw_one(node)
+    for node in mode_specific:
+        _draw_one(node)
+    if (mode_selectors or mode_specific) and always_visible:
+        col.separator(factor=1.0, type="LINE")
+    for node in always_visible:
+        _draw_one(node)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1780,8 +1834,15 @@ def register():
     # Scene.efx_blender_coords 同类开关的默认状态（默认显示原始存储值，不做单位转换）。
     bpy.types.Scene.efx_re_angle_degrees = BoolProperty(
         name="Angle fields in degrees",
-        description="把已知是弧度制的角度字段（目前只有 Transform3D 的 LocalRotation）"
-                    "按度显示/编辑，不影响实际存储的弧度值",
+        description="把已知是弧度制的角度字段按度显示/编辑，不影响实际存储的弧度值",
+        default=False,
+    )
+    # 纯 UI 开关：关闭"模式字段门控"（field_visibility.py）——被当前模式判定为不生效的字段
+    # 默认隐藏，开这个开关能看到全部字段。不影响导出，隐藏字段的字节原样保留。默认关，
+    # 对齐姊妹项目 EFX-Editor 同名开关 `efx_show_all_fields` 的默认状态。
+    bpy.types.Scene.efx_re_show_all_fields = BoolProperty(
+        name="Show all fields",
+        description="显示当前模式下不生效的字段（按字节原样保留，只是本来隐藏不画）",
         default=False,
     )
     # "当前 EFX"：活动对象不属于任何 EFX 树时，导出/粘贴退到这里指定的根，见
@@ -1819,7 +1880,7 @@ def register():
 
 
 def unregister():
-    for prop in ("efx_re_angle_degrees", "efx_re_active_root"):
+    for prop in ("efx_re_angle_degrees", "efx_re_active_root", "efx_re_show_all_fields"):
         try:
             delattr(bpy.types.Scene, prop)
         except AttributeError:
