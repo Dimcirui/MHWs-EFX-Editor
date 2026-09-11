@@ -311,6 +311,15 @@ class EFX_RE_OT_export(Operator, ExportHelper):
             self.report({"ERROR"}, str(ex))
             return {"CANCELLED"}
 
+        # 已知写不回去的构造：先说一声再照常往下走（目前 io_tree._unwritable_in_attribute()
+        # 里没有已知条目，见那边的注释——这段调用留着是给以后的新条目用的）。
+        # 不在这里拦——名单是我们维护的，上游修好之后硬拦截会因为名单过期继续挡着；
+        # 真正的关卡是下面那两道（load 失败 / 写出来读不回来），它们看的是当场的实际结果。
+        unwritable = io_tree.unwritable_constructs(root_col)
+        if unwritable:
+            head = "；".join(unwritable[:2]) + ("……" if len(unwritable) > 2 else "")
+            self.report({"WARNING"}, f"这棵树有 {len(unwritable)} 处上游写不回去的构造：{head}")
+
         data = io_tree.export_root_to_efxfile(root_col, reorder_effect_groups=self.reorder_effect_groups)
         out_path, notice, fatal = _ensure_version_suffix(self.filepath, data)
         if fatal:
@@ -336,7 +345,10 @@ class EFX_RE_OT_export(Operator, ExportHelper):
                 try:
                     bridge.load_efx(data, tmp_path)
                 except bridge.BridgeError as ex:
-                    self.report({"ERROR"}, f"EfxBridge load 失败，拒绝导出：\n{ex}")
+                    # 命中已知上游缺口时，把人话解释放在最前面——否则用户看到的是一坨
+                    # C# 堆栈，看不出"这个文件本来就导不出去，不是我改坏了"。
+                    reason = ("\n".join(unwritable) + "\n\n") if unwritable else ""
+                    self.report({"ERROR"}, f"{reason}EfxBridge load 失败，拒绝导出：\n{ex}")
                     return {"CANCELLED"}
 
                 try:

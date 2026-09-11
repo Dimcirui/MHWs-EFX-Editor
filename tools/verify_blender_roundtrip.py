@@ -55,7 +55,7 @@ if str(_REPO_ROOT) not in sys.path:
 import bpy  # noqa: E402  （必须在 sys.path 铺好之后再 import 本项目的包）
 
 import blender_efx_re  # noqa: E402
-from blender_efx_re import bridge, io_tree, operators, transform3d_view  # noqa: E402
+from blender_efx_re import bridge, io_tree, model, operators, transform3d_view  # noqa: E402
 
 
 def _script_args() -> list[str]:
@@ -188,6 +188,68 @@ def verify_sample(orig: pathlib.Path, workdir: pathlib.Path, report: Report) -> 
     )
 
 
+def verify_path_separators(report: Report) -> None:
+    """通用字段树里手打进去的反斜杠也要被纠正，不能只纠正导入的那一份。
+
+    导入侧 `populate_node()` 一直会规整，但用户在面板里粘贴路径走的是 `string_value` 的
+    update 回调——"导入的被纠正、自己填的不纠正"这种不一致，正好在最容易犯错的场景
+    （从资源管理器复制路径）下失灵，而那次 `UVSPath` 反斜杠导致游戏内报 "Invalid" 就是这么来的。
+    """
+    print("\n=== 路径分隔符（手填）")
+    bad = r"Art\VFX\UVS\Dimcirui\ak.uvs"
+    good = "Art/VFX/UVS/Dimcirui/ak.uvs"
+
+    obj = bpy.data.objects.new("sep_probe", None)
+    bpy.context.scene.collection.objects.link(obj)
+
+    node = obj.efx_fields.add()
+    model.populate_node(node, "UVSPath", "placeholder")
+    node.string_value = bad
+    report.check("手填的反斜杠当场被改成正斜杠", node.string_value == good, node.string_value)
+
+    # NULL -> STRING 的转正行为不能被这次改动带坏（同一个 update 回调）
+    null_node = obj.efx_fields.add()
+    model.populate_node(null_node, "MaybeNull", None)
+    report.check("null 字段导入后仍是 NULL 节点", null_node.data_type == "NULL",
+                 null_node.data_type)
+    null_node.string_value = bad
+    report.check("往 NULL 节点里打字仍会转正成 STRING，并且同样纠正分隔符",
+                 null_node.data_type == "STRING" and null_node.string_value == good,
+                 f"{null_node.data_type} / {null_node.string_value}")
+
+
+def verify_unwritable_detection(report: Report) -> None:
+    """导出前那句"这棵树写不回去"的警告（KNOWN_UPSTREAM_ISSUES #6）报得准不准。
+
+    两个方向都要验：真的导不出去的要报，导得出去的**不能**报。只报不准的警告比没有更糟——
+    用户会学会无视它，等真出事那次也一起无视了。
+
+    不依赖语料：`bridge.new_attribute()` 直接问 vendor 要一个真实实例，比手搓字典可靠。
+
+    material 字段（原 #7）不在这里测：那是 EfxBridge 自己的 JSON 多态配置缺口，已经在
+    `MaterialPolymorphismResolver`（tools/EfxBridge/Program.cs）修掉了，`_unwritable_in_attribute()`
+    里也删掉了对应分支——material 现在跟其他能正常读写的字段一样，不会走到这个检测器。
+    """
+    print("\n=== unwritable_constructs()（导出前警告）")
+    scene_col = bpy.context.scene.collection
+
+    def build(attr_type: str, mutate=None):
+        entry = bridge.new_entry()
+        attr = bridge.new_attribute(attr_type)
+        if mutate is not None:
+            mutate(attr)
+        entry["Attributes"] = [attr]
+        data = {"Header": {"Version": 5571972}, "Entries": [entry], "Actions": [],
+                "Bones": [], "FieldParameterValues": [], "UvarGroups": [],
+                "ExpressionParameters": [], "EffectGroups": []}
+        return io_tree.build_root_from_efxfile(data, scene_col, f"probe_{attr_type}")
+
+    # 完全无关的 attribute 不该被牵连
+    col = build("Transform3D")
+    report.check("普通 attribute 不误报", io_tree.unwritable_constructs(col) == [],
+                 str(io_tree.unwritable_constructs(col)))
+
+
 def verify_version_suffix(report: Report) -> None:
     """E1 根因 1 的单测：版本号后缀的补齐/校验规则（照抄 vendor PathUtils.ParseFileFormat）。"""
     print("\n=== _ensure_version_suffix() / _parsed_file_version()")
@@ -256,6 +318,8 @@ def main() -> int:
     report = Report()
     for orig in samples:
         verify_sample(orig, workdir, report)
+    verify_path_separators(report)
+    verify_unwritable_detection(report)
     verify_version_suffix(report)
 
     if report.failures:

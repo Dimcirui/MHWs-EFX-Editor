@@ -150,6 +150,34 @@ def verify_sample(orig: pathlib.Path, workdir: pathlib.Path, report: Report) -> 
     )
 
 
+def verify_texture_path_separators(report: Report) -> None:
+    """贴图路径里的反斜杠必须被规整成正斜杠。
+
+    RE Engine 的资源路径哈希不处理分隔符方向，`\\` 和 `/` 算出来是两个不同的哈希，游戏按哈希
+    查资源表，方向错了引用直接失效（EFX 侧那次 `UVSPath` 反斜杠就是这么在游戏内报 "Invalid"
+    的）。这个字段**经常是用户从资源管理器复制来的**，也可能是 GIF 转序列帧算子直接塞进来的
+    Windows 路径，所以三条路都要验。
+    """
+    print("\n=== 贴图路径分隔符")
+    bad = r"Art\VFX\Texture\Common\Sequence\11_flame_002_ALBA.tex"
+    good = "Art/VFX/Texture/Common/Sequence/11_flame_002_ALBA.tex"
+    scene_col = bpy.context.scene.collection
+
+    col = uvs_io.build_uvs_root({}, scene_col, "sep_probe")
+    item = col.efx_uvs_textures.add()
+    item.path = bad
+    report.check("手填/算子写入的反斜杠当场就被改成正斜杠", item.path == good, item.path)
+
+    exported = uvs_io.export_uvs_root(col)
+    report.check("导出时也是正斜杠", exported["textures"][0]["path"] == good,
+                 exported["textures"][0]["path"])
+
+    imported = uvs_io.build_uvs_root({"textures": [{"path": bad}], "sequences": []},
+                                     scene_col, "sep_probe2")
+    report.check("导入带反斜杠的文件时被纠正", imported.efx_uvs_textures[0].path == good,
+                 imported.efx_uvs_textures[0].path)
+
+
 def verify_version_suffix(report: Report) -> None:
     print("\n=== _ensure_uvs_version_suffix() / _parsed_file_version()")
     data = {"fileVersion": 8}
@@ -210,6 +238,7 @@ def main() -> int:
 
     report = Report()
     verify_sample(sample, workdir, report)
+    verify_texture_path_separators(report)
     verify_version_suffix(report)
 
     if report.failures:

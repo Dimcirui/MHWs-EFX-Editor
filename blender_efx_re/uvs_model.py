@@ -152,13 +152,30 @@ class EFXUvsSequenceItem(PropertyGroup):
     patterns_active_index: IntProperty()
 
 
+def _normalize_texture_path(self, context) -> None:
+    """贴图路径里的反斜杠就地改成正斜杠。
+
+    和 EFX 侧 `model._normalize_path_separators()` 同一个理由：RE Engine 的资源路径哈希
+    （`MurMur3HashUtils.GetPakFilepathHash`）不处理分隔符方向，`\\` 和 `/` 算出来是两个完全
+    不同的哈希，游戏按哈希查资源表，方向错了引用直接失效（EFX 侧那次是 `UVSPath` 写成反斜杠、
+    游戏内报 "Invalid"）。UVS 的贴图路径是同一类字段，同样的坑。
+
+    做成 `update` 回调而不是像 EFX 侧那样只在导入时规整：这里的路径**经常是用户自己填的**
+    （从资源管理器复制、或者 GIF 转序列帧那个算子直接塞进来的 Windows 路径），只管导入那一次
+    盖不住。回调里改回自己会再触发一次 update，但第二次 `fixed == self.path` 不再赋值，到此为止。
+    """
+    fixed = self.path.replace("\\", "/")
+    if fixed != self.path:
+        self.path = fixed
+
+
 class EFXUvsTextureItem(PropertyGroup):
     """对应 `ReeLib.Uvs.TextureBlock`（UvsFile.cs:22-34）。`path` 是游戏相对路径
     （不带扩展名版本号，如 `Art/VFX/Texture/Common/Sequence/11_fire_000_ALBA.tex`）——
     贴图预览（PLAN.md Step 4，本轮未做）会需要用户配一个解包根目录去把它解析成真实文件。
     """
 
-    path: StringProperty(name="Path")
+    path: StringProperty(name="Path", update=_normalize_texture_path)
     # 运行时句柄，语义未知，long 类型，BIGINT-safe 字符串存储（同 flags）。2026-09-09 批量扫了
     # 72 个官方文件：`state_holder` 91% 等于自己在贴图表里的下标（有例外，更像作者编号，
     # 不是每次重算的位置，见 PLAN.md），`tex_handle1/2/3` 486 个槽位里 485 个是 -1（唯一一个

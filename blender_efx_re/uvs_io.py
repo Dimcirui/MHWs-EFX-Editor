@@ -80,7 +80,10 @@ def export_uvs_root(col: Collection) -> dict:
             "texHandle1": int(item.tex_handle1 or "0"),
             "texHandle2": int(item.tex_handle2 or "0"),
             "texHandle3": int(item.tex_handle3 or "0"),
-            "path": item.path or "",
+            # 再规整一次分隔符：`EFXUvsTextureItem.path` 的 update 回调已经在编辑/导入时改过了
+            # （见 uvs_model._normalize_texture_path），但**打开旧 .blend 不触发 update 回调**
+            # ——这个改动之前存下来的场景里可能还留着反斜杠，那种路径写进文件游戏就查不到贴图。
+            "path": (item.path or "").replace("\\", "/"),
         })
 
     cutout_related = col.efx_uvs_cutout_related

@@ -923,6 +923,38 @@ def check_expression_bits(root_col: Collection) -> None:
         )
 
 
+# 已知"能读进来、改得动、但 vendor 写不回去"的构造，登记在 KNOWN_UPSTREAM_ISSUES.md。
+# 目前 #6（Func18/19/20 两参函数）、#7（material 字段反序列化）都已经修掉了——#7 在
+# EfxBridge 自己的 JSON 多态配置里修（`MaterialPolymorphismResolver`，
+# tools/EfxBridge/Program.cs），#6 是少见的、正式打了本地补丁的 vendor 例外
+# （tools/vendor-patches/，CLAUDE.md #5 的唯一例外）。两条都没剩下要在这里拦的构造，
+# 下面这个函数暂时是空的——**空是因为已知问题都解决了，不是没做**，下次撞上新的"能导入、
+# 改得动、但确定写不回去"的构造，就往 `_unwritable_in_attribute()` 里加一条分支。
+#
+# 这个清单本来就是**提前告知**用，不是拦截：真正的关卡还是导出时 `bridge.load_efx()` 抛
+# BridgeError（响亮失败，不会静默写坏文件）。刻意不做成硬拦截——上游哪天修好了，硬拦截会
+# 因为我们这份名单过期而继续挡着，而"先警告、照样试一次"在修好之后自动就通了。
+def _unwritable_in_attribute(attr_obj: Object) -> list[str]:
+    return []
+
+
+def unwritable_constructs(root_col: Collection) -> list[str]:
+    """整棵树里"注定导不出去"的构造，一行一条；空列表 = 没发现已知问题。
+
+    **空列表不等于一定能导出**——只代表没撞上我们已知的那几个上游缺口。
+    """
+    issues: list[str] = []
+    for parent_obj in root_entries(root_col) + root_actions(root_col):
+        for attr_obj in typed_children(parent_obj, model.TYPE_ATTRIBUTE):
+            issues.extend(_unwritable_in_attribute(attr_obj))
+            nested = attr_obj.efx_nested_root
+            if nested is not None and nested.get("~TYPE") == model.TYPE_ROOT:
+                # PlayEmitter 内嵌的那个完整 EfxFile 也要查——它和外层一起写出，
+                # 里面有一个写不回去，整个文件就出不去。
+                issues.extend(unwritable_constructs(nested))
+    return issues
+
+
 def collect_issues(root_col: Collection) -> list[str]:
     """把导出前那三项校验各跑一遍，收集**全部**问题，返回人类可读的一行一条；空列表 = 没问题。
 
@@ -939,4 +971,7 @@ def collect_issues(root_col: Collection) -> list[str]:
         issues.extend(f"ParentBone 不在骨骼表里 — {m}" for m in _missing_bone_refs(action_obj, known_names))
     issues.extend(f"Clip bit — {m}" for m in _walk_clip_issues_root(root_col))
     issues.extend(f"Expression bit — {m}" for m in _walk_expression_issues_root(root_col))
+    # 上游写不回去的构造：和上面几项性质不同（不是用户编辑出来的问题，是这个文件本来就
+    # 导不出去），但对"我现在这棵树能不能导出"这个问题同样是答案的一部分，一起列出来。
+    issues.extend(f"上游缺口 — {m}" for m in unwritable_constructs(root_col))
     return issues

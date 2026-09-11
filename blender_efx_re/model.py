@@ -329,9 +329,18 @@ def _promote_null_to_string(self, context) -> None:
 
     只处理"转正"，不处理反向（清空文本框不会退回 NULL）——`??=  ""` 那种 C# 写出侧本来就把
     `null` 和 `""` 当同一回事（见 `_normalize_path_separators()` 头部说明的 `filePath` 先例），
-    保持 `STRING("")` 更简单，不需要再造一个"用户主动清空 vs 从没填过"的状态区分。"""
+    保持 `STRING("")` 更简单，不需要再造一个"用户主动清空 vs 从没填过"的状态区分。
+
+    顺带把反斜杠规整成正斜杠：导入路径上 `populate_node()` 已经对**每个** STRING 节点做过
+    一次，但用户在面板里手打/粘贴进来的不经过那里——"导入的被纠正、自己填的不纠正"这种不一致
+    正好会在最容易犯错的场景（从资源管理器复制路径）下失灵，而那次 `UVSPath` 反斜杠导致游戏内
+    报 "Invalid" 就是这么来的。判据和导入侧完全一致，不另立一套。
+    """
     if self.data_type == "NULL":
         self.data_type = "STRING"
+    fixed = _normalize_path_separators(self.string_value)
+    if fixed != self.string_value:
+        self.string_value = fixed
 
 
 def _read_packed_int(node: "EFXValueNode") -> int:
@@ -758,15 +767,18 @@ def _normalize_path_separators(value: str) -> str:
     `Art\\VFX\\UVS\\Dimcirui\\ak.uvs`，游戏内报"Invalid"，而这个 .uvs 文件本身完好、
     EfxBridge 往返也完全干净，唯一的异常就是这一个字段的分隔符方向。
 
-    这里在**导入时**统一改成正斜杠（`EFXValueNode` 通用内容字段树是唯一会经手这类路径字符串的
-    地方，见 populate_dict_as_children 的两处调用——attribute 内容字段 + FieldParameterValues.
-    filePath），对绝大多数官方文件是无操作（本来就是正斜杠），只对这种拼写错误生效。不在导出时
-    才处理：这样用户在 Blender 里编辑时看到的就已经是纠正后的路径，不会出现"面板里看着是对的、
-    导出后又被悄悄改写"的困惑。
+    两个入口都规整、都在**用户看得见的时候**就改掉，不留到导出时偷偷改（那样会出现"面板里
+    看着是对的、导出后又被改写"的困惑）：
+
+    - 导入时 `populate_node()` 对每个 STRING 节点过一遍，对绝大多数官方文件是无操作
+      （本来就是正斜杠）；
+    - 用户在面板里手打/粘贴时 `string_value` 的 update 回调（`_promote_null_to_string()`）
+      再过一遍——只管导入那一次盖不住最容易犯错的场景（从资源管理器复制路径）。
 
     不作用于 entry/action/bone 名字等其它字符串字段——那些走各自专属的 `StringProperty`
     （`efx_name`/`EFXBoneItem.name` 等），根本不经过这个函数，这个规整只覆盖资源路径可能出现
-    的通用内容字段树。"""
+    的通用内容字段树。UVS 的贴图路径是同一类字段但走的是另一套 PropertyGroup，规整在
+    `uvs_model._normalize_texture_path()`。"""
     return value.replace("\\", "/") if "\\" in value else value
 
 
