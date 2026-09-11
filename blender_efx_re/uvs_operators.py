@@ -12,7 +12,7 @@ import os
 import re
 
 import bpy
-from bpy.props import IntProperty, StringProperty
+from bpy.props import BoolProperty, IntProperty, StringProperty
 from bpy.types import Operator
 from bpy_extras.io_utils import ExportHelper, ImportHelper
 
@@ -396,6 +396,187 @@ class EFX_UVS_OT_pattern_generate_grid(Operator):
         return {"FINISHED"}
 
 
+def _check_pillow() -> bool:
+    """检测 Pillow 是否可用（import 失败 = 未安装）。"""
+    try:
+        from PIL import Image  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _next_pow2(v: int) -> int:
+    """向上取整到 2 的幂（MHW 贴图要求边长为 2^n）。"""
+    p = 1
+    while p < v:
+        p *= 2
+    return p
+
+
+def _pick_pot_layout(n: int, fw: int, fh: int, cols: int | None = None, rows: int | None = None):
+    """计算精灵表行列数 + POT 画布尺寸。帧不缩放，按原始像素尺寸紧密左上对齐贴入格子；
+    网格末尾多余格子和画布补齐到 2 的幂产生的边缘留白均为透明——照抄姊妹项目 EFX-Editor
+    `uvs_io._pick_pot_layout()` 的算法，两边面对的都是"POT 贴图 + 帧不缩放"这同一个约束。
+
+    `cols`/`rows` 都给定时只把画布取整到 POT；否则遍历 `cols=1..n` 找 POT 画布面积最小
+    的一组，面积打平时优先更接近正方形的。
+    """
+    import math
+
+    if cols and rows:
+        cols, rows = max(1, cols), max(1, rows)
+        return cols, rows, _next_pow2(fw * cols), _next_pow2(fh * rows)
+
+    best = None
+    for c in range(1, n + 1):
+        r = math.ceil(n / c)
+        w, h = _next_pow2(fw * c), _next_pow2(fh * r)
+        key = (w * h, abs(math.log2(w) - math.log2(h)))
+        if best is None or key < best[0]:
+            best = (key, c, r, w, h)
+    _, cols, rows, canvas_w, canvas_h = best
+    return cols, rows, canvas_w, canvas_h
+
+
+def _gif_frame_pattern_rects(n: int, cols: int, fw: int, fh: int, canvas_w: int, canvas_h: int):
+    """按每帧在精灵表里的真实像素矩形换算 UV 分数（left/top/right/bottom），播放顺序
+    左→右、上→下。不能假设画布被 `cols`x`rows` 均匀切分——POT 取整常在画布右/下留一圈
+    透明留白，必须按 `fw`/`fh` 的真实像素步长算，否则从第二行/列起 UV 就会跟实际贴的像素
+    错位。`top`/`bottom` 沿用本文件 `EFX_UVS_OT_pattern_generate_grid` 现有的
+    `top = row * cell_h`（不翻转）约定。
+    """
+    rects = []
+    for k in range(n):
+        col, row = k % cols, k // cols
+        left, right = col * fw / canvas_w, (col + 1) * fw / canvas_w
+        top, bottom = row * fh / canvas_h, (row + 1) * fh / canvas_h
+        rects.append((left, top, right, bottom))
+    return rects
+
+
+class EFX_UVS_OT_gif_to_sequence(Operator, ImportHelper):
+    """读取一个 GIF，拆帧拼成 POT PNG 精灵表，并在当前 UVS 里新建一个 Texture（指向生成的
+    PNG）+ 一个 Sequence（每个 Pattern 对应精灵表里的一帧，按 `_gif_frame_pattern_rects()`
+    算好的 UV 矩形直接写入，不走 `EFX_UVS_OT_pattern_generate_grid` 那个均匀网格公式）。"""
+
+    bl_idname = "efx_uvs.gif_to_sequence"
+    bl_label = "GIF to Sequence"
+    bl_description = "把 GIF 动图拆帧拼成 PNG 精灵表，并在当前 UVS 新建对应的 Texture 和 Sequence"
+    bl_options = {"REGISTER", "UNDO"}
+
+    filter_glob: StringProperty(default="*.gif", options={"HIDDEN"})
+
+    auto_layout: BoolProperty(
+        name="Auto Layout",
+        description="自动挑选让 POT 画布面积最小的行列数",
+        default=True,
+    )
+    cols: IntProperty(name="Columns", min=1, default=1, description="Auto Layout 关闭时使用的列数")
+    rows: IntProperty(name="Rows", min=1, default=1, description="Auto Layout 关闭时使用的行数")
+
+    @classmethod
+    def poll(cls, context):
+        if not _check_pillow():
+            try:
+                cls.poll_message_set("需要 Pillow 库（在 Blender 自带 Python 里运行 pip install Pillow）")
+            except Exception:
+                pass
+            return False
+        return uvs_io.resolve_uvs_root(context) is not None
+
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "auto_layout")
+        row = layout.row(align=True)
+        row.enabled = not self.auto_layout
+        row.prop(self, "cols")
+        row.prop(self, "rows")
+
+    def execute(self, context):
+        try:
+            from PIL import Image
+        except ImportError:
+            self.report({"ERROR"}, "Pillow 未安装，无法处理 GIF")
+            return {"CANCELLED"}
+
+        gif_path = self.filepath
+        if not os.path.isfile(gif_path):
+            self.report({"ERROR"}, f"文件不存在：{gif_path}")
+            return {"CANCELLED"}
+
+        try:
+            gif = Image.open(gif_path)
+            raw_frames = []
+            while True:
+                raw_frames.append(gif.copy().convert("RGBA"))
+                gif.seek(gif.tell() + 1)
+        except EOFError:
+            pass
+        except Exception as ex:
+            self.report({"ERROR"}, f"读取 GIF 失败：{ex}")
+            return {"CANCELLED"}
+
+        if not raw_frames:
+            self.report({"ERROR"}, "GIF 中没有找到帧")
+            return {"CANCELLED"}
+
+        n = len(raw_frames)
+        fw, fh = raw_frames[0].size
+        cols, rows, canvas_w, canvas_h = _pick_pot_layout(
+            n, fw, fh, None if self.auto_layout else self.cols, None if self.auto_layout else self.rows,
+        )
+        # Auto Layout 关闭时用户可能手填一个装不下全部帧的 cols x rows——硬拦截，不静默丢帧：
+        # 后面精灵表拼贴那步会 `if i >= cols*rows: break` 扔掉多出来的帧，但 UV 矩形是照
+        # 原始帧数 n 算的，两边一旦对不上，多出来的 Pattern 会指向画布外/未绘制的透明区域，
+        # 报告文案却还照样写"n 帧"，看起来什么都没错——这正是需要在这里挡掉的那类问题。
+        if cols * rows < n:
+            self.report(
+                {"ERROR"},
+                f"{cols}x{rows} 格（{cols * rows} 个）装不下全部 {n} 帧，会静默丢帧——"
+                "调大 Columns/Rows，或勾选 Auto Layout",
+            )
+            return {"CANCELLED"}
+
+        sprite = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+        for i, frame in enumerate(raw_frames):
+            if i >= cols * rows:
+                break
+            sprite.paste(frame, ((i % cols) * fw, (i // cols) * fh))
+
+        out_path = os.path.splitext(gif_path)[0] + ".png"
+        try:
+            sprite.save(out_path)
+        except Exception as ex:
+            self.report({"ERROR"}, f"保存 PNG 失败：{ex}")
+            return {"CANCELLED"}
+
+        root_col = uvs_io.resolve_uvs_root(context)
+
+        tex_item = root_col.efx_uvs_textures.add()
+        tex_item.path = out_path
+        tex_index = len(root_col.efx_uvs_textures) - 1
+        tex_item.state_holder = str(tex_index)
+        root_col.efx_uvs_textures_active_index = tex_index
+
+        seq_item = root_col.efx_uvs_sequences.add()
+        seq_index = len(root_col.efx_uvs_sequences) - 1
+        seq_item.name = f"Sequence {seq_index}"
+        for left, top, right, bottom in _gif_frame_pattern_rects(n, cols, fw, fh, canvas_w, canvas_h):
+            pat_item = seq_item.patterns.add()
+            pat_item.left, pat_item.top, pat_item.right, pat_item.bottom = left, top, right, bottom
+            pat_item.texture_index = tex_index
+        seq_item.patterns_active_index = 0
+        root_col.efx_uvs_sequences_active_index = seq_index
+
+        self.report(
+            {"INFO"},
+            f"已生成 {out_path}（{n} 帧，{cols}x{rows} 格，画布 {canvas_w}x{canvas_h}），"
+            f"新建 Texture[{tex_index}] + Sequence[{seq_index}]——Texture 的 Path "
+            "目前是文件系统路径，导出前请改成游戏相对路径",
+        )
+        return {"FINISHED"}
+
+
 class EFX_UVS_OT_pattern_cutout_point_add(Operator):
     bl_idname = "efx_uvs.pattern_cutout_point_add"
     bl_label = "Add Cutout Point"
@@ -473,6 +654,7 @@ _CLASSES = (
     EFX_UVS_OT_texture_add, EFX_UVS_OT_texture_remove,
     EFX_UVS_OT_sequence_add, EFX_UVS_OT_sequence_remove,
     EFX_UVS_OT_pattern_add, EFX_UVS_OT_pattern_remove, EFX_UVS_OT_pattern_generate_grid,
+    EFX_UVS_OT_gif_to_sequence,
     EFX_UVS_OT_pattern_cutout_point_add, EFX_UVS_OT_pattern_cutout_point_remove,
     EFX_UVS_OT_pattern_cutout_apply_to_sequence,
 )

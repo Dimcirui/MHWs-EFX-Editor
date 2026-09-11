@@ -14,7 +14,7 @@ import bpy
 from bpy.props import PointerProperty
 from bpy.types import Panel, UIList
 
-from . import i18n, uvs_io, uvs_model
+from . import i18n, uvs_io, uvs_model, uvs_operators
 from .i18n import T
 
 _CATEGORY = "MHWilds UVS"
@@ -174,6 +174,15 @@ class EFX_UVS_PT_sequences(Panel):
             "efx_uvs.pattern_generate_grid", text=T("uvs.generate_grid"), icon="MESH_GRID",
             translate=False,
         )
+
+        layout.separator()
+        if uvs_operators._check_pillow():
+            layout.operator(
+                "efx_uvs.gif_to_sequence", text=T("uvs.gif_to_sequence"), icon="RENDER_ANIMATION",
+                translate=False,
+            )
+        else:
+            layout.label(text=T("uvs.need_pillow"), icon="ERROR")
         # pattern 的矩形/贴图下标/flags 字段编辑不放在这个基础侧栏——挪到「进阶编辑」（图形
         # 编辑器）那边了：矩形有叠加框实时对照，比在这里对着裸数字编辑靠谱，见
         # uvs_image_editor.EFX_UVS_PT_image_editor。

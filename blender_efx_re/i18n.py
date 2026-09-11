@@ -235,6 +235,8 @@ _STRINGS: dict[str, dict[str, str]] = {
     "uvs.sequences":           {"EN": "Sequences",           "ZH": "Sequence 列表"},
     "uvs.textures":            {"EN": "Textures",            "ZH": "贴图列表"},
     "uvs.flags":               {"EN": "Flags",               "ZH": "标志位"},
+    "uvs.gif_to_sequence":     {"EN": "GIF to Sequence",     "ZH": "GIF 转序列"},
+    "uvs.need_pillow":         {"EN": "Pillow library required", "ZH": "需要 Pillow 库"},
 
     # Asset Browser（attribute 反查资产库）
     "asset.corpus_dir":       {"EN": "EFX Root Directory",  "ZH": "EFX 根目录"},
