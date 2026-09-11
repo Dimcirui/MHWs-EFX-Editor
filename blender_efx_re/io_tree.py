@@ -36,6 +36,9 @@ ParentOptions），如果只用 `short_attr_name()` 裸类型名当对象名，B
 
 from __future__ import annotations
 
+import base64
+import binascii
+
 import bpy
 from bpy.types import Collection, Object
 
@@ -192,6 +195,20 @@ def apply_attribute_content(obj: Object, attr_dict: dict) -> None:
         content.pop("expressionBits", None)
         _populate_expression_attribute(obj, attr_dict)
     model.populate_dict_as_children(obj.efx_fields, content)
+    collapse_mdf_properties(obj)
+
+
+def collapse_mdf_properties(obj: Object) -> None:
+    """把材质参数覆盖表（`properties`）的每一条折起来。
+
+    `EFXValueNode.ui_expand` 全局默认展开（通用树的其它地方都靠展开才看得见内容），但这张表
+    每条只有一个值得看的值，面板已经把它压成一行了（见 panels._draw_mdf_property）——一进来
+    十几条全摊开只会把整个 attribute 挤出屏幕。不改全局默认，只在这一处收起来。
+    """
+    for node in obj.efx_fields:
+        if node.key == "properties" and node.data_type == "ARRAY":
+            for child in node.children:
+                child.ui_expand = False
 
 
 def build_attribute_object(attr_dict: dict, index: int, parent_obj: Object, collection: Collection) -> Object:
@@ -569,6 +586,46 @@ def _export_expression_attribute(obj: Object) -> tuple[dict, dict]:
     return expression_dict, expression_bits
 
 
+# `MdfProperty.GetSize()`（vendor EfxCommon.cs:81）：RE3 起每条 32 字节，更早的 28。
+_MDF_PROPERTY_SIZE_RE3 = 32
+_MDF_PROPERTY_SIZE_LEGACY = 28
+_EFX_VERSION_RE3 = 2228526
+
+
+def _refresh_derived_sizes(attr_dict: dict, version: int) -> None:
+    """重算那几个"vendor 自己不管、但确实是从别的字段推出来的"字节长度字段。
+
+    `RszByteSizeField` 标的字段一律不进代码生成器的重算分支（`ReeLibGenerator.cs:412` 那个
+    `if` 里只有 `RszArraySizeField`），各个类要么在手写的 `DoWrite()` 里自己补、要么就没人补。
+    没人补的这两个必须我们算，否则写出的字节和实际内容对不上：
+
+    - `propertiesDataSize`（TypeMesh 系列）= `properties` 条数 × 每条字节数。实测过：加一条
+      property 而不改这个值，写出的文件整个读不回来（解析在这里错位之后后面全乱）。
+    - `unknDataSize`（TypeGpuMesh）= `unknData` 那个字节块的长度。语料 392/392 个实例都严格
+      满足这个等式，所以它是长度前缀而不是独立数据；vendor 写出时按它决定写多少字节
+      （`[RszFixedSizeArray(nameof(unknDataSize))]`），和实际块长不一致就会多写/少写字节。
+
+    只在字典里**本来就有**对应字段时才动，不给没有这些字段的 attribute 凭空加一个。
+    """
+    properties = attr_dict.get("properties")
+    if "propertiesDataSize" in attr_dict and isinstance(properties, list):
+        size = _MDF_PROPERTY_SIZE_RE3 if version >= _EFX_VERSION_RE3 else _MDF_PROPERTY_SIZE_LEGACY
+        attr_dict["propertiesDataSize"] = len(properties) * size
+
+    if "unknDataSize" in attr_dict:
+        blob = attr_dict.get("unknData")
+        # System.Text.Json 把 `byte[]` 序列化成 base64 字符串（不是数字数组），空块是 null。
+        if blob is None:
+            attr_dict["unknDataSize"] = 0
+        elif isinstance(blob, str):
+            try:
+                attr_dict["unknDataSize"] = len(base64.b64decode(blob))
+            except (ValueError, binascii.Error):
+                # 解不开就别动那个数——用户把 base64 改坏了是另一回事，这里瞎算一个 0
+                # 反而会把原本还能救的块长也抹掉。
+                pass
+
+
 def export_attribute_object(obj: Object) -> dict:
     # $type 必须是字典的第一个键：C# 侧 EfxJsonTypeResolver 是流式读取多态判别字段来选定具体
     # EFXAttribute 子类的 JsonTypeInfo，不像 System.Text.Json 内置的 [JsonPolymorphic] 那样会
@@ -576,6 +633,7 @@ def export_attribute_object(obj: Object) -> dict:
     # （抽象/无无参构造函数），抛 NotSupportedException。已在 Blender 5.1 实测复现确认。
     attr_dict = {"$type": obj.efx_attr_type}
     attr_dict.update(model.children_to_dict(obj.efx_fields))
+    _refresh_derived_sizes(attr_dict, obj.efx_version)
     attr_dict.update(model.load_opaque(obj))  # 目前只可能有 efxrSize
     attr_dict["UniqueID"] = obj.efx_unique_id
     attr_dict["Version"] = obj.efx_version

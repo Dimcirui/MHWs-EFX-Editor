@@ -186,6 +186,14 @@ _STRINGS: dict[str, dict[str, str]] = {
     "category.basic":            {"EN": "Basic",             "ZH": "基础"},
     "category.misc":             {"EN": "Misc",              "ZH": "杂项"},
 
+    # 材质参数覆盖表（TypeMesh 系列 attribute 的 properties）
+    "mdf.add_property":       {"EN": "Add from Material",   "ZH": "从材质添加"},
+    "mdf.no_material_path":   {"EN": "(no material path)",  "ZH": "（没有材质路径）"},
+    "mdf.load_reference":     {"EN": "Load Reference .mdf2", "ZH": "载入参考 .mdf2"},
+    "mdf.unknown_shape":      {"EN": "(expand to edit)",     "ZH": "（展开编辑）"},
+    "mdf.mismatch_count":     {"EN": "{0} not in the reference material",
+                               "ZH": "{0} 条和参考材质对不上"},
+
     # 重命名
     "name.label":             {"EN": "Name",                "ZH": "名称"},
     "name.hint":              {"EN": "Written to the EFX string table; nameHash follows automatically.",

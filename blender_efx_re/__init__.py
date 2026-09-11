@@ -15,6 +15,7 @@ from . import io_tree
 from . import attribute_types
 from . import bitfield
 from . import transform3d_view
+from . import mdf_catalog
 from . import operators
 from . import copy_paste
 from . import structure_ops
@@ -34,7 +35,8 @@ from . import file_menu
 
 __all__ = [
     "bridge", "i18n", "semantics", "model", "coords", "io_tree", "transform3d_view",
-    "attribute_types", "bitfield", "operators", "copy_paste", "structure_ops", "entry_presets",
+    "attribute_types", "bitfield", "mdf_catalog", "operators", "copy_paste", "structure_ops",
+    "entry_presets",
     "panels", "asset_index", "asset_browser",
     "uvs_model", "uvs_io", "uvs_operators", "uvs_panels", "uvs_image_editor",
     "wilds_vecfield_io", "wilds_vecfield_ops", "wilds_vecfield_visualizer",

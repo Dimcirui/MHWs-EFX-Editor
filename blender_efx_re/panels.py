@@ -29,6 +29,7 @@ blender_efx_re/panels.py —— 面板层
 from __future__ import annotations
 
 import json
+import os
 
 import bpy
 from bpy.props import BoolProperty, EnumProperty, PointerProperty, StringProperty
@@ -141,6 +142,17 @@ _SCALAR_PROP_ATTR = {
 }
 
 
+def _wants_degrees(entry) -> bool:
+    """知识表 unit == "angle_radians" + Scene.efx_re_angle_degrees 开关同时命中，才把弧度制
+    角度字段的 FLOAT 子节点改画 degrees_value（按度显示/输入，底层仍存弧度）。三处调用点
+    （XYZ 三分量、via.Range 的 s/r 静态-随机对、通用单值兜底）共用同一个判据，见 draw_node()
+    里各分支的调用处；不判断 node.data_type，调用方各自只在 FLOAT 子节点上传 True 的结果。"""
+    return (
+        entry is not None and entry.get("unit") == "angle_radians"
+        and getattr(bpy.context.scene, "efx_re_angle_degrees", False)
+    )
+
+
 def _draw_scalar_prop(layout, node, text: str = "", prop_name: str | None = None) -> None:
     """画一个标量节点自身的值控件（不画字段名标签）。XYZ/static-random 并排列布局和普通单行
     布局共用这个函数，只是传的 layout/text 不同——单行布局传 text=""（标签已经在旁边画过），
@@ -166,6 +178,41 @@ def _draw_scalar_prop(layout, node, text: str = "", prop_name: str | None = None
     layout.prop(node, attr, text=text)
 
 
+# 纯记账字段：数组长度 / 字节大小 / 字符串长度 / 由别处重建的汇总副本。用户改了也不算数，
+# 摆在界面上只会让人以为能改，一律不画（**只是不画，照常导出**，见 io_tree 的导出路径）。
+#
+# 这份名单不是照着 vendor 的 `[Rsz*Field]` 标注抄的——那些标注不可靠：`RszByteSizeField`
+# 压根没进代码生成器（`propertiesDataSize` 就是这么栽的），而有的字段靠手写 `DoWrite()` 重建。
+# 名单是 2026-09-10 用 `tools/scan_derived_fields.py` 在 70 个语料文件、141 个字段落点上逐个
+# **投毒实测**出来的：往 JSON 里塞一个错值，写出再读回来，看谁的值赢。只收"每一个落点都被
+# 覆盖回原值"的名字。
+#
+# **"投毒值留下来了"不等于"这是真实数据"**——也可能只是 vendor 忘了刷新它。两者要靠语料
+# 分辨：`unknDataSize` 投毒值确实留着，但全语料 392/392 个实例都满足
+# `unknDataSize == len(unknData)`，说明它是长度前缀而不是独立数据。这类"没人算但确实是推出来
+# 的"由我们自己在 `io_tree._refresh_derived_sizes()` 里补算，照样藏起来。
+#
+# 唯一一个刻意排除在外的是 `mdfPropertyIndex`：只有贴图类型的那条被 vendor 强制成 -1、其余
+# 原样保留，一半一半，不能按名字一刀切；它在材质覆盖表那套 UI 里单独按只读处理。
+_DERIVED_FIELD_KEYS = frozenset({
+    # 数组长度 / 字节大小（Clip 子结构）
+    "clipCount", "clipDataSize", "frameCount", "frameDataSize",
+    "interpolationDataCount", "interpolationDataSize",
+    # Expression 子结构
+    "componentsCount", "parameterCount", "indicesCount",
+    "matExpressionCount", "matExpressionSize", "materialExpressionsCount",
+    # PtBehavior
+    "behaviorStringLength", "varCount", "varCount_mhws",
+    # 材质 / 贴图（TypeMesh 系列）——texPaths 是各条 property 的 texturePath 的汇总副本，
+    # 贴图路径本身仍然在每条 property 自己那一行上可编辑
+    "texCount", "texBlockLength", "texPathBlockLength", "texPaths",
+    # PtColorMixer
+    "colorCount",
+    # 这两个 vendor 不管，是我们自己在 io_tree._refresh_derived_sizes() 里算的，见上面说明
+    "propertiesDataSize", "unknDataSize",
+})
+
+
 def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_owner=None) -> None:
     """递归绘制一个 EFXValueNode：标量画一行 prop()，OBJECT/ARRAY 如果只有 1~3 个标量子项就
     并排画在同一行（不值得折叠），否则画一个可折叠 box 递归绘制 children。ui_expand 只影响
@@ -177,6 +224,11 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
     prop_search 时定位 efx_bones 列表；递归到子字段时不需要，因为骨骼引用字段结构上必然只出现
     在 attribute 的顶层内容字段，不会嵌套在子对象里（见 model.is_bone_reference_field()）。
     """
+    # 记账字段直接不画。放在递归入口而不是只在顶层过滤——clipData/expressions 这类没被专属
+    # 编辑器接管的子结构里也有一堆同样的 count/size，它们嵌在下一层。
+    if node.key in _DERIVED_FIELD_KEYS:
+        return
+
     entry = semantics.get_field_entry(attr_type, node.key) if attr_type else None
     label_text = _field_label(entry, node.key)
 
@@ -244,14 +296,10 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
         # 之间还带着列对齐的空隙，比原来的裸数字滑条明显松散。关掉它，X/Y/Z 标签自己用
         # label() 画（见下面的 axis_enum_items 分支），不依赖 prop() 的隐式标签列。
         cols.use_property_split = False
-        # 弧度制角度字段（知识表 unit == "angle_radians"，目前只标注了 Transform3D.
-        # LocalRotation）+ Scene.efx_re_angle_degrees 开关同时命中时，X/Y/Z 分量改画
-        # degrees_value（Blender ANGLE 子类型代理属性，按度显示/输入，内部仍存弧度，见
-        # model.py EFXValueNode 的说明），不改变 float_value 本身。
-        show_degrees = (
-            entry is not None and entry.get("unit") == "angle_radians"
-            and getattr(bpy.context.scene, "efx_re_angle_degrees", False)
-        )
+        # 弧度制角度字段（知识表 unit == "angle_radians"）+ Scene.efx_re_angle_degrees 开关
+        # 同时命中时，X/Y/Z 分量改画 degrees_value（Blender ANGLE 子类型代理属性，按度显示/
+        # 输入，内部仍存弧度，见 model.py EFXValueNode 的说明），不改变 float_value 本身。
+        show_degrees = _wants_degrees(entry)
         # 分轴枚举（`ParentOptions.RelationPos/RelationRot/RelationScl` 这类"X/Y/Z 每个分量
         # 各自是同一张选项表里的单选枚举"）：知识表按字段整体标注一张共享的 axis_enum_items，
         # 三个分量各画一个内联下拉，不再画裸数字——0-3 的编号谁也记不住哪个是哪个。
@@ -333,10 +381,21 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
         _draw_label(split, label_text)
         by_key = {c.key: c for c in node.children}
         cols = split.row(align=True)
-        _draw_scalar_prop(cols, by_key["s"], text="Static")
-        _draw_scalar_prop(cols, by_key["r"], text="Random")
+        # 弧度制角度字段的 via.Range 形状（如 TypeMeshV2.RotationX/Velocity3D.Spread）：s/r
+        # 两个分量都是角度值，同样按 XYZ 分支那套规则改画 degrees_value——见 _wants_degrees()。
+        show_degrees = _wants_degrees(entry)
+        s_prop = "degrees_value" if show_degrees and by_key["s"].data_type == "FLOAT" else None
+        r_prop = "degrees_value" if show_degrees and by_key["r"].data_type == "FLOAT" else None
+        _draw_scalar_prop(cols, by_key["s"], text="Static", prop_name=s_prop)
+        _draw_scalar_prop(cols, by_key["r"], text="Random", prop_name=r_prop)
         _draw_field_help_icon(row, entry)
         return
+
+    if dtype == "ARRAY" and node.key == "properties" and attr_owner is not None:
+        properties_node, material_path = structure_ops.resolve_mdf_properties(attr_owner)
+        if properties_node is not None and properties_node == node:
+            _draw_mdf_properties(layout, node, label_text, entry, attr_owner, material_path)
+            return
 
     if dtype == "OBJECT" or dtype == "ARRAY":
         small_list = (
@@ -373,9 +432,189 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
     split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
     _draw_label(split, label_text)
     value_row = split.row(align=True)
-    _draw_scalar_prop(value_row, node)
+    # 弧度制角度字段里不是 XYZ/via.Range 形状、本身就是孤立标量的那一批（如
+    # Transform3DModifier.unkn7~unkn12）：同样按 _wants_degrees() 改画 degrees_value。
+    scalar_prop = "degrees_value" if node.data_type == "FLOAT" and _wants_degrees(entry) else None
+    _draw_scalar_prop(value_row, node, prop_name=scalar_prop)
     _draw_hash_name(value_row, node)
     _draw_field_help_icon(row, entry)
+
+
+# 一条 MdfProperty 里"不该手改"的字段：要么由参考材质决定（改了就和材质对不上，而且不会有
+# 任何报错），要么 vendor 写出时会重算（改了也是白改）。展开时按只读画出来供核对，不隐藏——
+# 隐藏会让"为什么下标是这个"变得不可查。
+#
+# 没列进来的两个（`flags`、`value.uknInt`）语义未知、全语料恒为 0 和 1：它们既不是派生量也
+# 不会被重算，保持可编辑，只是挪进展开区不占主行。
+_MDF_DERIVED_KEYS = frozenset({
+    "Version", "parameterType", "PropertyNameUTF8Hash", "mdfPropertyIndex",
+    "mdfParameterValueCount",
+})
+_MDF_DERIVED_VALUE_KEYS = frozenset({"pathLength", "textureIndex", "_padding"})
+
+
+def _mdf_property_name(child) -> str:
+    """一条 MdfProperty 的显示名：名字哈希查得到就显示原名，查不到就显示裸哈希（不编故事）。"""
+    for sub in child.children:
+        if sub.key == "PropertyNameUTF8Hash":
+            value = model.node_to_value(sub)
+            if isinstance(value, int):
+                return semantics.lookup_name_hash(value) or str(value)
+    return child.key
+
+
+def is_color_param_name(name: str) -> bool:
+    """一个 4 分量材质参数该不该画成色块。
+
+    照抄 RE Mesh Editor 的判据（`modules/mdf/blender_re_mdf.py:184`，`addPropsToPropList`）：
+    名字里有 `color` 或 `_col_`、且没有 `rate`，全部不区分大小写。它没有权威数据源可查
+    （mdf2 里没有任何字段标记颜色，`extraValue` 全是 0），纯靠名字猜——那就跟它保持一致，
+    不另造一套，免得同一个参数在两个工具里长得不一样。
+
+    这条规则会把 `ColorBlendRate` 判成非颜色（有 `rate`）、把 `UVTransform` 判成非颜色
+    （没有 `color`），和 RE Mesh Editor 的实际表现一致。
+    """
+    lower = name.lower()
+    return ("color" in lower or "_col_" in lower) and "rate" not in lower
+
+
+def _draw_mdf_property_value(layout, child, kind: str, name: str) -> bool:
+    """主行上的值控件：只画这条 property 真正该编辑的那部分，其余字段留给展开区。
+
+    - `Texture`：一个 `texturePath` 文本框（`value` 里那四个数全是重算量/常量）
+    - `Float`：`value` 的 X/Y/Z/W 四个数（就是材质里那个 float4），名字看着像颜色的画色块
+    - `Range`：只画 Z/W。`Range` 的布局是 `(min_a, min_b, max_a, max_b)`，全语料 346 个实例
+      的 X/Y 恒为 0，真正的取值区间是后两个
+
+    形状不认识时返回 False，由调用方退回"展开看原始字段"。
+    """
+    by_key = {c.key: c for c in child.children}
+    if kind == "Texture":
+        path_node = by_key.get("texturePath")
+        if path_node is not None and path_node.data_type == "STRING":
+            layout.prop(path_node, "string_value", text="")
+            return True
+        return False
+
+    value = by_key.get("value")
+    if value is None or value.data_type != "OBJECT":
+        return False
+    if kind == "Float" and is_color_param_name(name) and model.float4_children(value) is not None:
+        layout.prop(value, "float4_color_value", text="")
+        return True
+    comps = {c.key: c for c in value.children}
+    keys = ("Z", "W") if kind == "Range" else ("X", "Y", "Z", "W")
+    if not all(comps.get(k) is not None and comps[k].data_type == "FLOAT" for k in keys):
+        return False
+    row = layout.row(align=True)
+    for key in keys:
+        row.prop(comps[key], "float_value", text="")
+    return True
+
+
+def _mdf_property_hash(child):
+    for sub in child.children:
+        if sub.key == "PropertyNameUTF8Hash":
+            value = model.node_to_value(sub)
+            if isinstance(value, int):
+                return value
+    return None
+
+
+def _draw_mdf_property(box, child, index: int, attr_owner, mismatched: set = frozenset()) -> None:
+    """一条 property 一行：展开箭头 + 参数名 + 值 + 删除。展开后是全部原始字段，派生的那些
+    画成只读（对齐 RE Mesh Editor 的 mdf2 界面：平时只看到"参数名 = 值"，结构字段不占地方）。
+
+    `mismatched` 是载入参考材质时算出来的"和材质对不上"的参数名哈希集合，命中的整行标红
+    （`alert`）+ 一个错误图标，方便一眼挑出来删掉。
+    """
+    kind = ""
+    for sub in child.children:
+        if sub.key == "parameterType":
+            kind = str(model.node_to_value(sub))
+            break
+
+    name = _mdf_property_name(child)
+    row = box.row(align=True)
+    row.alert = _mdf_property_hash(child) in mismatched
+    icon = "TRIA_DOWN" if child.ui_expand else "TRIA_RIGHT"
+    row.prop(child, "ui_expand", icon=icon, icon_only=True, emboss=False)
+    split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
+    label_row = split.row(align=True)
+    if row.alert:
+        label_row.label(text="", icon="ERROR")
+    _draw_label(label_row, name)
+    value_row = split.row(align=True)
+    if not _draw_mdf_property_value(value_row, child, kind, name):
+        # 形状超出已验证的三种（Float/Range/Texture）——不猜怎么画，指回展开区看原始字段。
+        # 不在这里替用户展开：draw() 里写属性是 Blender 明令禁止的（会炸重绘循环）。
+        disabled = value_row.row()
+        disabled.enabled = False
+        disabled.label(text=T("mdf.unknown_shape"))
+    row.operator("efx_re.mdf_property_remove", text="", icon="X", emboss=False).index = index
+
+    if not child.ui_expand:
+        return
+    sub_box = box.box()
+    for sub in child.children:
+        if sub.key == "value" and sub.data_type == "OBJECT":
+            value_box = sub_box.box()
+            _draw_label(value_box.row(), sub.key)
+            for comp in sub.children:
+                comp_row = value_box.row()
+                comp_row.enabled = comp.key not in _MDF_DERIVED_VALUE_KEYS
+                draw_node(comp_row, comp, attr_type="MdfProperty", attr_owner=attr_owner)
+            continue
+        sub_row = sub_box.row()
+        sub_row.enabled = sub.key not in _MDF_DERIVED_KEYS
+        draw_node(sub_row, sub, attr_type="MdfProperty", attr_owner=attr_owner)
+
+
+def _draw_mdf_properties(layout, node, label_text, entry, attr_owner, material_path) -> None:
+    """`properties`（材质参数覆盖表）的专用画法：条目按参数名显示、每条带删除按钮、底下一个
+    "从材质里添加"。
+
+    和通用 ARRAY 画法的区别在于这是**可增删**的，而"能加哪些、下标填几"只有 .mdf2 知道
+    （见 mdf_catalog.py）——所以增删入口和参考材质的载入/清除都收在这个框里，不做成全局设置：
+    同一个文件里不同 mesh attribute 引用的是不同材质，一个全局路径服务不了它们。
+    """
+    header = layout.row(align=True)
+    icon = "TRIA_DOWN" if node.ui_expand else "TRIA_RIGHT"
+    header.prop(node, "ui_expand", icon=icon, icon_only=True, emboss=False)
+    _draw_label(header, f"{label_text}  ({len(node.children)} {T('common.items_suffix')})")
+    _draw_field_help_icon(header, entry)
+    if not node.ui_expand:
+        return
+
+    box = layout.box()
+    mismatched = structure_ops.mismatched_hashes(attr_owner)
+    for index, child in enumerate(node.children):
+        _draw_mdf_property(box, child, index, attr_owner, mismatched)
+    if mismatched:
+        alert = box.row()
+        alert.alert = True
+        alert.label(text=T("mdf.mismatch_count").format(len(mismatched)), icon="ERROR")
+
+    # attribute 自己声明引用哪个材质（只读展示，真正决定候选的是下面那个参考文件）。
+    info = box.row()
+    info.enabled = False
+    info.label(text=material_path or T("mdf.no_material_path"), icon="MATERIAL")
+
+    # 参考材质行。解析要跑一次 EfxBridge 子进程，绝不能放在 draw() 里（每次重绘都会跑），
+    # 所以这里只显示路径，解析结果等用户点「添加」时再说。
+    reference = attr_owner.efx_mdf_reference
+    ref_row = box.row(align=True)
+    if reference:
+        ref_row.label(text=os.path.basename(reference), icon="FILE_BLANK")
+        ref_row.operator("efx_re.mdf_reference_clear", text="", icon="X")
+    else:
+        ref_row.operator(
+            "efx_re.mdf_reference_load", text=T("mdf.load_reference"), icon="FILEBROWSER",
+            translate=False,
+        )
+    box.operator(
+        "efx_re.mdf_property_add", text=T("mdf.add_property"), icon="ADD", translate=False,
+    )
 
 
 def _draw_bitfield_row(layout, node, label_text, entry, segs, attr_owner) -> None:

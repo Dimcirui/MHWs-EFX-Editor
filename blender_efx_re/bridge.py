@@ -129,6 +129,20 @@ def convert_tex_to_dds(tex_path: str | Path, dds_out_path: str | Path) -> None:
     _run("tex2dds", str(tex_path), str(dds_out_path))
 
 
+def dump_mdf(mdf_path: str | Path) -> dict:
+    """读一个磁盘上的 .mdf2，返回它声明的参数表/贴图槽。
+
+    形状 `{sourcePath, fileVersion, materials: [{name, masterMaterial, parameters: [...],
+    textures: [...]}]}`，每个 parameter 带 `index`（就是 EFX `MdfProperty.mdfPropertyIndex`
+    要填的值）、`utf8Hash`（对应 `PropertyNameUTF8Hash`）、`componentCount`、`value`。
+    """
+    with tempfile.TemporaryDirectory(prefix="mhws_mdf_dump_") as tmpdir:
+        json_path = Path(tmpdir) / "dump.json"
+        _run("mdfdump", str(mdf_path), str(json_path))
+        with open(json_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+
 def check_expression(formula: str) -> str | None:
     """校验一条 Expression 公式文本（`EfxExpressionStringParser.Parse` 的语法），合法返回
     None，否则返回错误信息。给 panels.py 的"Validate"按钮用，让用户不用跑一次完整导出就能

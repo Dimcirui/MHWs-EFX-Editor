@@ -29,10 +29,11 @@ get_attribute_defaults()`——全语料众数统计出来的"合理默认值"�
 from __future__ import annotations
 
 import bpy
-from bpy.props import EnumProperty
+from bpy.props import EnumProperty, IntProperty, StringProperty
 from bpy.types import Object, Operator
+from bpy_extras.io_utils import ImportHelper
 
-from . import attribute_types, bridge, io_tree, model, semantics
+from . import attribute_types, bridge, io_tree, mdf_catalog, model, semantics
 
 # 能承载 attribute 的父类型
 _ATTRIBUTE_PARENTS = (model.TYPE_ENTRY, model.TYPE_ACTION)
@@ -316,6 +317,315 @@ class EFX_RE_OT_attribute_add_search(Operator):
         return bpy.ops.efx_re.attribute_add(attr_type=self.attr_type)
 
 
+# ---------------------------------------------------------------------------
+# MdfProperty —— TypeMesh 系列 attribute 的 `properties` 数组（材质参数覆盖表）
+# ---------------------------------------------------------------------------
+
+# 材质路径字段在不同 TypeMesh 变体里叫法不同：V2 是 `MaterialPath`（EfxTypeMesh.cs:127），
+# 老的那几个叫 `mdfPath`（同文件 :53 / :643）。
+_MATERIAL_PATH_KEYS = ("MaterialPath", "mdfPath")
+
+
+def resolve_mdf_properties(obj: Object):
+    """一个 attribute 对象如果是"带材质参数覆盖表"的那种，返回 `(properties 节点, 材质路径)`，
+    否则 `(None, None)`。
+
+    判据是"同时有 `properties` 数组字段和材质路径字段"，不按 `$type` 精确匹配——同一套
+    `List<MdfProperty>` 挂在好几个 TypeMesh 变体上（语料里实际用到的只有
+    `EFXAttributeTypeMeshV2`，但没必要把判断写死在那一个类名上）。**空数组也要能命中**，
+    否则"一条 property 都还没有"的 attribute 就永远加不了第一条，所以不能靠
+    `model.is_mdf_property_node()` 认子节点形状。
+    """
+    if obj is None or obj.get("~TYPE") != model.TYPE_ATTRIBUTE:
+        return None, None
+    node = model.find_field(obj.efx_fields, "properties")
+    if node is None or node.data_type != "ARRAY":
+        return None, None
+    for key in _MATERIAL_PATH_KEYS:
+        path_node = model.find_field(obj.efx_fields, key)
+        if path_node is not None and path_node.data_type == "STRING":
+            return node, path_node.string_value
+    return None, None
+
+
+def _present_hashes(properties_node) -> set:
+    """`properties` 里已经有的 `PropertyNameUTF8Hash`——同一个参数覆盖两遍没有意义，
+    候选列表里要过滤掉。"""
+    present = set()
+    for child in properties_node.children:
+        for sub in child.children:
+            if sub.key == "PropertyNameUTF8Hash":
+                present.add(model.node_to_value(sub))
+    return present
+
+
+def reference_mismatches(properties_node, entries: list) -> list[tuple[int, str]]:
+    """拿覆盖表里**已经有的**条目去核对参考材质，返回 `[(参数名哈希, 说明), ...]`。
+
+    检查的是**结构**：这个参数在参考材质里存不存在、下标和分量数对不对得上。数值差异不算
+    ——覆盖表的存在意义就是"把材质的默认值改掉"，值不一样才是正常的。
+
+    指错材质的典型后果就是下标错，而下标错不会有任何报错，只会让游戏改到另一个参数上。比对
+    文件名没用（用户从 pak 里捞出来的文件想叫什么叫什么），比对真实数据才有意义。
+
+    覆盖表是空的（一条都还没有）时返回空列表：这时候没有任何可核对的证据，不能因此就声称
+    材质是对的，但也没有理由拦——直接放行，别编造结论（铁律 #7）。
+    """
+    by_hash = {e["utf8Hash"]: e for e in entries}
+    issues: list[tuple[int, str]] = []
+    for child in properties_node.children:
+        values = model.node_to_value(child)
+        name_hash = values.get("PropertyNameUTF8Hash")
+        if not isinstance(name_hash, int):
+            continue
+        entry = by_hash.get(name_hash)
+        known = semantics.lookup_name_hash(name_hash) or str(name_hash)
+        if entry is None:
+            issues.append((name_hash, f"'{known}' 在参考材质里不存在"))
+            continue
+        # 贴图类型的 mdfPropertyIndex 恒为 -1（vendor 写死），没有可比的下标。
+        if entry["kind"] == "param" and values.get("mdfPropertyIndex") != entry["index"]:
+            issues.append((name_hash, (
+                f"'{known}' 的下标对不上（表里 {values.get('mdfPropertyIndex')}，"
+                f"参考材质里 {entry['index']}）"
+            )))
+        elif values.get("mdfParameterValueCount") != entry["componentCount"]:
+            issues.append((name_hash, (
+                f"'{known}' 的分量数对不上（表里 {values.get('mdfParameterValueCount')}，"
+                f"参考材质里 {entry['componentCount']}）"
+            )))
+    return issues
+
+
+def mismatched_hashes(obj: Object) -> set:
+    """`Object.efx_mdf_mismatched` 存的那串哈希，解析成集合供面板逐行标记。
+
+    为什么存下来而不是画的时候现算：现算要拿到解析好的材质，而 draw() 里绝不能跑
+    EfxBridge 子进程（每次重绘都会跑）。载入参考材质时算一次、存成字符串，之后画多少次都
+    不花钱，还能跟着 .blend 一起存下来。新加的条目按定义就是对得上的（就是从这份材质里挑
+    出来的），删条目也不影响别人，所以这份结果不会因为增删而过时。
+    """
+    raw = getattr(obj, "efx_mdf_mismatched", "")
+    return {int(part) for part in raw.split(",") if part}
+
+
+def _renumber_array_keys(node) -> None:
+    """ARRAY 节点的子项 key 是它的下标字符串（见 model.populate_node）。导出只看顺序、不看
+    key，但面板上是照 key 画标签的，增删之后要重排，否则显示的序号会和实际位置对不上。"""
+    for index, child in enumerate(node.children):
+        child.key = str(index)
+
+
+# EnumProperty 的 items 回调返回的元组必须由 Python 侧持有（Blender 只存指针，见
+# attribute_types.py 里同一个坑的说明）。按材质路径缓存。
+_candidate_items_cache: dict = {}
+
+
+def _candidate_enum_items(self, context):
+    obj = getattr(context, "object", None)
+    properties_node, _ = resolve_mdf_properties(obj)
+    if properties_node is None:
+        return [("", "（当前不是带材质参数表的 attribute）", "")]
+
+    try:
+        entries = mdf_catalog.candidates(obj.efx_mdf_reference)
+    except mdf_catalog.CatalogError as ex:
+        # 下拉里塞不下多行错误，这里只给一条能看出"为什么是空的"的占位；真正完整的报错在
+        # execute() 里 report 出来。
+        return [("", str(ex)[:120], "")]
+
+    present = _present_hashes(properties_node)
+    items = []
+    for entry in entries:
+        if entry["utf8Hash"] in present:
+            continue
+        if entry["kind"] == "texture":
+            label = f"{entry['name']}  (贴图)"
+            desc = entry.get("path") or ""
+        else:
+            label = f"{entry['name']}  ({entry['componentCount']} 分量)"
+            desc = f"mdfPropertyIndex {entry['index']}"
+        items.append((str(entry["utf8Hash"]), label, desc))
+
+    if not items:
+        items = [("", "（这个材质的参数已经全部覆盖了）", "")]
+    _candidate_items_cache[obj.efx_mdf_reference or ""] = items
+    return items
+
+
+class EFX_RE_OT_mdf_reference_load(Operator, ImportHelper):
+    """给当前 attribute 指一个参考 .mdf2。
+
+    路径存在 attribute 自己身上（`Object.efx_mdf_reference`），不做成全局设置——同一个文件里
+    不同 mesh attribute 引用的是不同材质。这里顺手解析一遍：解析不了就不记路径，免得用户以为
+    指好了、点添加才发现是空的。
+    """
+
+    bl_idname = "efx_re.mdf_reference_load"
+    bl_label = "Load Reference Material"
+    bl_description = "指一个参考 .mdf2，之后添加参数时只列这个材质里真实存在的那些"
+    bl_options = {"REGISTER", "UNDO"}
+
+    filter_glob: StringProperty(default="*.mdf2;*.mdf2.*", options={"HIDDEN"})
+
+    @classmethod
+    def poll(cls, context):
+        node, _ = resolve_mdf_properties(getattr(context, "object", None))
+        return node is not None
+
+    def execute(self, context):
+        obj = context.object
+        node, _ = resolve_mdf_properties(obj)
+        if node is None:
+            self.report({"ERROR"}, "当前 attribute 没有材质参数覆盖表")
+            return {"CANCELLED"}
+
+        try:
+            entries = mdf_catalog.candidates(self.filepath)
+        except mdf_catalog.CatalogError as ex:
+            self.report({"ERROR"}, str(ex))
+            return {"CANCELLED"}
+
+        obj.efx_mdf_reference = self.filepath
+        params = sum(1 for e in entries if e["kind"] == "param")
+        message = f"已载入参考材质（{params} 个参数 + {len(entries) - params} 个贴图槽）"
+
+        # 拿已有条目核对一遍，对不上的记下来给面板逐行标红。只警告不拦——用户完全可能是在给一个
+        # 还没写进 MaterialPath 的新材质配参数。但"指错材质"的后果（下标算错、游戏改到另一个
+        # 参数上）不会有任何其它提示，必须在这里说出来。
+        issues = reference_mismatches(node, entries)
+        obj.efx_mdf_mismatched = ",".join(str(name_hash) for name_hash, _ in issues)
+        if issues:
+            detail = "；".join(text for _, text in issues[:3]) + ("……" if len(issues) > 3 else "")
+            self.report({"WARNING"}, f"{message}，{len(issues)} 条和材质对不上：{detail}")
+        else:
+            self.report({"INFO"}, message)
+        return {"FINISHED"}
+
+
+class EFX_RE_OT_mdf_reference_clear(Operator):
+    """清掉当前 attribute 的参考 .mdf2"""
+
+    bl_idname = "efx_re.mdf_reference_clear"
+    bl_label = "Clear Reference Material"
+    bl_description = "清掉参考材质，清掉之后就不能再往覆盖表里加参数了"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = getattr(context, "object", None)
+        return obj is not None and bool(getattr(obj, "efx_mdf_reference", ""))
+
+    def execute(self, context):
+        context.object.efx_mdf_reference = ""
+        # 标记是"相对某个参考材质"才成立的结论，材质一撤这些红点就没有依据了。
+        context.object.efx_mdf_mismatched = ""
+        return {"FINISHED"}
+
+
+class EFX_RE_OT_mdf_property_add(Operator):
+    """从参考 .mdf2 里挑一个参数/贴图槽，作为新的一条 MdfProperty 加进 `properties`。
+
+    候选和初值全部来自那个 .mdf2（见 mdf_catalog.py 的说明）——不让用户手填
+    `mdfPropertyIndex`，那个下标填错不会报错，只会静默改到另一个参数上。
+    """
+
+    bl_idname = "efx_re.mdf_property_add"
+    bl_label = "Add Material Property"
+    bl_description = "从参考材质里挑一个参数加进覆盖表，下标和初值按材质自动填"
+    bl_options = {"REGISTER", "UNDO"}
+    bl_property = "candidate"
+
+    candidate: EnumProperty(
+        name="Property",
+        description="要新增的材质参数",
+        items=_candidate_enum_items,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        obj = getattr(context, "object", None)
+        node, _ = resolve_mdf_properties(obj)
+        if node is None:
+            return False
+        if not obj.efx_mdf_reference:
+            try:
+                cls.poll_message_set("先用「载入参考材质」指一个 .mdf2——能加哪些参数只有材质本身知道")
+            except Exception:
+                pass
+            return False
+        return True
+
+    def invoke(self, context, event):
+        # 单个材质的参数表可以有一百多条（语料里见过 156 条），分类浏览没意义，直接上
+        # 模糊搜索弹窗——同 EFX_RE_OT_attribute_add_search 的理由。
+        context.window_manager.invoke_search_popup(self)
+        return {"RUNNING_MODAL"}
+
+    def execute(self, context):
+        obj = context.object
+        properties_node, _ = resolve_mdf_properties(obj)
+        if properties_node is None:
+            self.report({"ERROR"}, "当前 attribute 没有材质参数覆盖表")
+            return {"CANCELLED"}
+        if not self.candidate:
+            self.report({"ERROR"}, "没有选中任何参数")
+            return {"CANCELLED"}
+
+        try:
+            entries = mdf_catalog.candidates(obj.efx_mdf_reference)
+        except mdf_catalog.CatalogError as ex:
+            self.report({"ERROR"}, str(ex))
+            return {"CANCELLED"}
+
+        wanted = int(self.candidate)
+        entry = next((e for e in entries if e["utf8Hash"] == wanted), None)
+        if entry is None:
+            self.report({"ERROR"}, f"参考材质里没有哈希为 {wanted} 的参数")
+            return {"CANCELLED"}
+        if wanted in _present_hashes(properties_node):
+            self.report({"ERROR"}, f"'{entry['name']}' 已经在覆盖表里了")
+            return {"CANCELLED"}
+
+        new_dict = mdf_catalog.build_property_dict(entry, obj.efx_version)
+        child = properties_node.children.add()
+        model.populate_node(child, str(len(properties_node.children) - 1), new_dict)
+        properties_node.ui_expand = True
+
+        self.report({"INFO"}, f"已新增材质属性 '{entry['name']}'")
+        return {"FINISHED"}
+
+
+class EFX_RE_OT_mdf_property_remove(Operator):
+    """从 `properties` 覆盖表里删掉一条"""
+
+    bl_idname = "efx_re.mdf_property_remove"
+    bl_label = "Remove Material Property"
+    bl_description = "把这一条材质参数从覆盖表里删掉（材质本身的默认值会重新生效）"
+    bl_options = {"REGISTER", "UNDO"}
+
+    index: IntProperty(name="Index", default=-1, options={"HIDDEN"})
+
+    @classmethod
+    def poll(cls, context):
+        node, _ = resolve_mdf_properties(getattr(context, "object", None))
+        return node is not None and len(node.children) > 0
+
+    def execute(self, context):
+        properties_node, _ = resolve_mdf_properties(context.object)
+        if properties_node is None:
+            self.report({"ERROR"}, "当前 attribute 没有材质参数覆盖表")
+            return {"CANCELLED"}
+        if not (0 <= self.index < len(properties_node.children)):
+            self.report({"ERROR"}, f"下标越界：{self.index}")
+            return {"CANCELLED"}
+
+        properties_node.children.remove(self.index)
+        _renumber_array_keys(properties_node)
+        self.report({"INFO"}, "已删除一条材质属性")
+        return {"FINISHED"}
+
+
 class EFX_RE_OT_delete(Operator):
     """删除当前选中的 Entry / Action / Attribute（连同它的子对象）"""
 
@@ -390,6 +700,10 @@ _CLASSES = (
     EFX_RE_OT_action_add,
     EFX_RE_OT_attribute_add,
     EFX_RE_OT_attribute_add_search,
+    EFX_RE_OT_mdf_reference_load,
+    EFX_RE_OT_mdf_reference_clear,
+    EFX_RE_OT_mdf_property_add,
+    EFX_RE_OT_mdf_property_remove,
     EFX_RE_OT_delete,
 )
 

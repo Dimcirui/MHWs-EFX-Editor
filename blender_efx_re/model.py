@@ -284,6 +284,37 @@ def _set_rgba_color(self, value) -> None:
         child.int_value = raw
 
 
+_FLOAT4_KEYS = ("X", "Y", "Z", "W")
+
+
+def float4_children(node: "EFXValueNode"):
+    """一个 OBJECT 节点如果恰好是 `Vector4` 的序列化形状（X/Y/Z/W 四个浮点子键），返回
+    `{键: 子节点}`，否则 None。目前只有 `MdfProperty.value` 用得上（材质参数那个 float4）。"""
+    if node.data_type != "OBJECT" or len(node.children) != 4:
+        return None
+    by_key = {child.key: child for child in node.children}
+    if set(by_key) != set(_FLOAT4_KEYS):
+        return None
+    if any(by_key[key].data_type != "FLOAT" for key in _FLOAT4_KEYS):
+        return None
+    return by_key
+
+
+def _get_float4_color(self) -> tuple:
+    by_key = float4_children(self)
+    if by_key is None:
+        return (0.0, 0.0, 0.0, 1.0)
+    return tuple(by_key[key].float_value for key in _FLOAT4_KEYS)
+
+
+def _set_float4_color(self, value) -> None:
+    by_key = float4_children(self)
+    if by_key is None:
+        return
+    for key, component in zip(_FLOAT4_KEYS, value):
+        by_key[key].float_value = component
+
+
 def _promote_null_to_string(self, context) -> None:
     """`string_value` 的 `update` 回调：`data_type == "NULL"` 的节点被用户往里面打字，就地
     转正成 `STRING`。
@@ -410,12 +441,23 @@ class EFXValueNode(PropertyGroup):
         get=_get_rgba_color, set=_set_rgba_color,
     )
 
-    # 只在这个节点是弧度制角度字段的标量子节点（如 Transform3D.LocalRotation 的 X/Y/Z）时才
-    # 有意义——纯 UI 层的角度显示代理，get/set 直接读写 float_value 本身（原始存储值不变，
-    # 弧度），subtype="ANGLE" 让 Blender 的属性控件自动按度显示/接受输入、内部仍以弧度传给
-    # get/set，不需要手动 math.degrees()/radians() 转换。是否使用这个属性而不是
-    # float_value 由 panels.py 按 Scene.efx_re_angle_degrees 开关 + 字段知识表的
-    # unit == "angle_radians" 标注决定，见 panels.py draw_node() 的说明。
+    # 只在这个节点是 `MdfProperty.value` 的 float4 形状、且参数名看着是个颜色时才有意义
+    # （判据见 panels.is_color_param_name()）。和上面 via.Color 那个的区别：那边底层是打包成
+    # uint32 的 0-255 分量，天然就在 0-1 内；这里底层是四个裸 float，**不设硬上下限**——材质
+    # 里的颜色可以超出 0-1（HDR），钉死 max=1.0 会让 Blender 在调用 set 之前就把值夹掉，
+    # 等于用户点一下颜色轮就静默改坏了原始数据。soft_min/soft_max 只影响滑条手感，不夹值。
+    float4_color_value: FloatVectorProperty(
+        name="Color", subtype="COLOR", size=4, soft_min=0.0, soft_max=1.0,
+        get=_get_float4_color, set=_set_float4_color,
+    )
+
+    # 只在这个节点是弧度制角度字段的标量子节点时才有意义——覆盖三种形状：Transform3D.
+    # LocalRotation 这类 Vector3 的 X/Y/Z、TypeMeshV2.RotationX 这类 via.Range 的 s/r、
+    # Transform3DModifier.unkn7 这类孤立标量。纯 UI 层的角度显示代理，get/set 直接读写
+    # float_value 本身（原始存储值不变，弧度），subtype="ANGLE" 让 Blender 的属性控件自动
+    # 按度显示/接受输入、内部仍以弧度传给 get/set，不需要手动 math.degrees()/radians() 转换。
+    # 是否使用这个属性而不是 float_value 由 panels.py 按 Scene.efx_re_angle_degrees 开关 +
+    # 字段知识表的 unit == "angle_radians" 标注决定，见 panels.py _wants_degrees() 的说明。
     degrees_value: FloatProperty(
         name="Value", subtype="ANGLE",
         get=lambda self: self.float_value,
@@ -1188,6 +1230,23 @@ def register():
         description="PlayEmitter 内嵌的 efxrData 对应的根集合",
     )
 
+    # EFX_ATTRIBUTE 专属（只对 TypeMesh 系列有意义）：参考 .mdf2 的磁盘路径。
+    # `properties` 是一张"覆盖了材质第几号参数"的稀疏表，能加哪些、下标填几只有材质本身知道
+    # （见 mdf_catalog.py），所以增删这张表之前要先指一个参考材质。挂在 attribute 上而不是做成
+    # 全局设置：不同 mesh attribute 引用的是不同材质。**不参与导出**——
+    # `io_tree.export_attribute_object()` 只读 efx_fields 那几样，这里纯粹是编辑期状态。
+    Object.efx_mdf_reference = StringProperty(
+        name="Reference Material",
+        description="参考 .mdf2 的路径，决定这张覆盖表能加哪些参数",
+        subtype="FILE_PATH",
+    )
+    # 载入参考材质时算出来的"和材质对不上的条目"，存成逗号分隔的参数名哈希，供面板逐行标红。
+    # 存结果而不是每次画的时候现算：现算要解析 .mdf2，而 draw() 里不能跑子进程。同样不参与导出。
+    Object.efx_mdf_mismatched = StringProperty(
+        name="Mismatched Properties",
+        description="和参考材质对不上的条目（参数名哈希），载入参考材质时算出来",
+    )
+
     # EFX_ENTRY/EFX_ACTION/EFX_ATTRIBUTE 通用：记录 import 时在所属列表（Entries/Actions/
     # Attributes）里的原始下标，导出时按这个值排序还原顺序——不依赖 Blender children/collection
     # 的迭代顺序（未必稳定），沿用 EFX-Editor build_local_index_map 的做法。当前阶段没有做
@@ -1333,6 +1392,8 @@ def unregister():
     del Object.efx_groups
     del Object.efx_index
     del Object.efx_name
+    del Object.efx_mdf_mismatched
+    del Object.efx_mdf_reference
     del Object.efx_nested_root
     del Collection.efx_opaque_text
     del Object.efx_opaque_text
