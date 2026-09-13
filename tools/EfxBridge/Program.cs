@@ -167,6 +167,10 @@ if (args.Length >= 1 && args[0] == "ptbehaviorcatalog")
 {
     return RunPtBehaviorCatalog(args);
 }
+if (args.Length >= 1 && args[0] == "dumploadsweep")
+{
+    return RunDumpLoadSweep(args);
+}
 
 if (args.Length < 2 || args[0] != "roundtrip")
 {
@@ -187,6 +191,7 @@ if (args.Length < 2 || args[0] != "roundtrip")
     Console.WriteLine("  dotnet <dll> fieldstatsbatch <语料目录> <逗号分隔的类型名列表> <json 输出路径> [每字段保留的不同取值数，默认 40]");
     Console.WriteLine("  dotnet <dll> condstats <语料目录> <attribute 类型名> <条件字段名> <json 输出路径> [每字段保留的不同取值数，默认 40]");
     Console.WriteLine("  dotnet <dll> ptbehaviorcatalog <语料目录> <json 输出路径>");
+    Console.WriteLine("  dotnet <dll> dumploadsweep <目录或文件路径>");
     return 1;
 }
 
@@ -385,8 +390,14 @@ static int RunLoad(string[] args)
         // 数组级顺序（EffectGroups 本身谁在前谁在后）已经靠"不传空数组"绕开了，但组内成员的
         // 相对顺序这条绕不过去，只能记下 Write() 之前的原始顺序，写完之后原地把这几个 int
         // 换回去（见 PatchEffectGroupMemberOrder()）。
-        var originalGroupOrder = efx.EffectGroups.ToDictionary(
-            g => g.groupName, g => (int[])(g.efxEntryIndexes ?? Array.Empty<int>()).Clone());
+        // 按对象引用配对，不按 groupName：groupName 不保证唯一（实测语料里存在同名的两个
+        // EffectGroup，比如 11_hit_arrow_000.efx.5571972 里两个都叫 "ShinZaku"），name 键的
+        // Dictionary 在这种文件上直接 ToDictionary 抛重复键异常。UpdateEffectGroups()
+        // （EfxFile.cs:1316）对已存在的组是原地改 efxEntryIndexes、不改列表顺序/不换对象，
+        // 新组才 Add 到末尾，所以 Write() 前后同一个 EffectGroup 实例引用不变，可以拿引用当键。
+        var originalGroupOrder = efx.EffectGroups
+            .Select(g => (group: g, original: (int[])(g.efxEntryIndexes ?? Array.Empty<int>()).Clone()))
+            .ToList();
 
         efx.WriteTo(efxOutPath);
         PatchEffectGroupMemberOrder(efxOutPath, efx, originalGroupOrder);
@@ -402,21 +413,116 @@ static int RunLoad(string[] args)
     }
 }
 
+// 全语料 dump→load 批量复核——走的是 Blender 实际用的那条路（JSON 序列化/反序列化 +
+// CompileExpressions + PatchEffectGroupMemberOrder），不是 `roundtrip` 那条纯内存二进制
+// 往返。CLAUDE.md 验证纪律 #8：`roundtrip` 全绿不代表这条路径全绿——Func18-20（vendor-patches
+// #6）、material（#7）、TypeMeshClip 只读属性重复填充（#8）、这次的 EffectGroups 同名
+// ToDictionary 崩溃，全都是这条路径独有、`roundtrip` 测不出来的问题。这里只做"会不会崩"
+// 的批量扫描（异常即报告文件+阶段+异常信息），不做与 `roundtrip` 产物的逐字节比较——
+// 那个比较对存在 Expression 属性的文件天然会有出入（CompileExpressions 从解析树重新摊平
+// 后缀栈，和原始 Read() 出来的栈不保证字节相同，是两套独立的表示，非本命令要处理的问题）。
+static int RunDumpLoadSweep(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.WriteLine("用法: dotnet <dll> dumploadsweep <目录或文件路径>");
+        return 1;
+    }
+    var target = args[1];
+
+    List<string> files;
+    if (Directory.Exists(target))
+    {
+        files = Directory.EnumerateFiles(target, "*.efx.*", SearchOption.AllDirectories).ToList();
+    }
+    else if (File.Exists(target))
+    {
+        files = new List<string> { target };
+    }
+    else
+    {
+        Console.WriteLine($"路径不存在: {target}");
+        return 1;
+    }
+
+    Console.WriteLine($"共 {files.Count} 个文件待测（dump→load，实际 Blender 路径）。\n");
+
+    int ok = 0, errored = 0;
+    var erroredFiles = new List<(string file, string stage, string error)>();
+    var opts = CreateBridgeJsonOptions();
+    // 版本号后缀只影响 FileHandler 读取时的解析，写出侧不看输出路径（已知机关 #13），
+    // 这里所有文件复用同一个临时输出路径没问题。
+    var tmpOut = Path.Combine(Path.GetTempPath(), $"efxbridge_dumploadsweep_{Guid.NewGuid():N}.efx.99999999");
+
+    try
+    {
+        foreach (var path in files)
+        {
+            var stage = "read+dump";
+            try
+            {
+                var handler = new FileHandler(path);
+                var efx = new EfxFile(handler);
+                efx.Read();
+                efx.ParseExpressions();
+                var json = JsonSerializer.Serialize(efx, opts);
+
+                stage = "load";
+                var efx2 = JsonSerializer.Deserialize<EfxFile>(json, opts)
+                    ?? throw new Exception("反序列化结果为 null");
+                CompileExpressions(efx2);
+
+                var originalGroupOrder = efx2.EffectGroups
+                    .Select(g => (group: g, original: (int[])(g.efxEntryIndexes ?? Array.Empty<int>()).Clone()))
+                    .ToList();
+
+                efx2.WriteTo(tmpOut);
+                PatchEffectGroupMemberOrder(tmpOut, efx2, originalGroupOrder);
+
+                ok++;
+            }
+            catch (Exception ex)
+            {
+                errored++;
+                erroredFiles.Add((path, stage, $"{ex.GetType().Name}: {ex.Message}"));
+                Console.WriteLine($"[ERROR:{stage}] {path}");
+                Console.WriteLine($"       {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+    }
+    finally
+    {
+        try { File.Delete(tmpOut); } catch { /* 临时文件，删不掉不影响结果 */ }
+    }
+
+    Console.WriteLine();
+    Console.WriteLine("===== 汇总 =====");
+    Console.WriteLine($"成功 : {ok}");
+    Console.WriteLine($"异常 : {errored}");
+    Console.WriteLine($"总计 : {files.Count}");
+    if (erroredFiles.Count > 0)
+    {
+        Console.WriteLine("\n异常文件列表：");
+        foreach (var (f, s, e) in erroredFiles)
+            Console.WriteLine($"  [{s}] {f}\n      -> {e}");
+    }
+
+    return errored == 0 ? 0 : 1;
+}
+
 // 把 UpdateEffectGroups() 重新排过的组内成员顺序（efxEntryIndexes）改回"原始相对顺序 +
 // 新成员追加到末尾"——不改变集合内容（还是同一组 entry 下标），只调整这几个 int 在文件里的
 // 排列顺序。定位靠 `EffectGroup.Start`（BaseModel 公开属性，Write() 时记的这个对象在流里的
 // 起始位置，见 Models.cs），不是靠猜整个文件的偏移布局：一个 EffectGroup 的二进制布局固定是
 // hash16(4B) + hash8(4B) + valueCount(4B) + efxEntryIndexes(valueCount * 4B)，见 EfxFile.cs
 // 的字段声明顺序，所以下标数组总是从 `Start + 12` 开始。
-static void PatchEffectGroupMemberOrder(string path, EfxFile efx, Dictionary<string, int[]> originalOrder)
+static void PatchEffectGroupMemberOrder(string path, EfxFile efx, List<(EffectGroup group, int[] original)> originalOrder)
 {
     byte[]? bytes = null;
-    foreach (var grp in efx.EffectGroups)
+    foreach (var (grp, original) in originalOrder)
     {
-        // 新增的组（UpdateEffectGroups() 里"unaccounted"分支现造的）在 Write() 之前的快照里
-        // 没有对应项，本来就是 vendor 刚生成的顺序，不需要改。
-        if (!originalOrder.TryGetValue(grp.groupName, out var original)) continue;
-
+        // originalOrder 只包含 Write() 之前就存在的组（按对象引用配对），
+        // UpdateEffectGroups() 新增的组不在这个列表里，本来就是 vendor 刚生成的顺序，不需要改。
         var current = grp.efxEntryIndexes ?? Array.Empty<int>();
         var finalSet = new HashSet<int>(current);
         // 原顺序里还在的，保持相对顺序；原顺序里没有的（这次新加入这个组的成员），按升序
