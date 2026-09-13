@@ -85,7 +85,7 @@ def _field_tooltip(entry: dict | None) -> str:
 
     只取 `label_*`/`tooltip_*`。表里的 `confidence`/`evidence`/`tester`/`date` **不进界面**：
     这几项是给我们自己排查用的元数据，使用者需要知道的是"这个字段干什么"，不是"这条结论谁验的、
-    验没验过"（CLAUDE.md 第 23 条，姊妹项目 EFX-Editor 的同一条规则是其 CLAUDE.md §4.1）。
+    验没验过"（CLAUDE.md 第 25 条，姊妹项目 EFX-Editor 的同一条规则是其 CLAUDE.md §4.1）。
     """
     if entry is None:
         return ""
@@ -181,6 +181,31 @@ def _draw_scalar_prop(layout, node, text: str = "", prop_name: str | None = None
     layout.prop(node, attr, text=text)
 
 
+def _draw_sr_pair(cols, node, primary_text: str, secondary_text: str, entry=None) -> bool:
+    """把一个 `{s,r}` 节点画成两列并排：**主值在左，副值在右**。画不了返回 False。
+
+    主值是哪个子节点由 `model.sr_children_ordered()` 定（`Range` 是 `s`、`RangeI` 是 `r`），
+    **不要在这里写死 `s`** ——`Range`/`RangeI` 的 key 集合完全相同，写死会让全部 46 个
+    `RangeI` 字段的两列标签反过来（`Spawn.LoopNum` 的 `(r=1,s=0)` 会显示成"静态 0 / 随机 1"，
+    而真实语义是"循环 1 次、不随机"）。依据见 model.sr_children_ordered() 与
+    docs/SIM_PORT_PLAN.md §8.6。
+
+    `entry` 给了就按"角度显示"开关把 FLOAT 分量改画 `degrees_value`——弧度制角度字段的
+    `via.Range` 形状（如 `TypeMeshV2.RotationX` / `Velocity3D.Spread`）两个分量都是角度值，
+    和 XYZ 分支同一套规则，见 `_wants_degrees()`。
+    """
+    ordered = model.sr_children_ordered(node)
+    if ordered is None:
+        return False
+    primary, secondary = ordered
+    show_degrees = _wants_degrees(entry) if entry is not None else False
+    p_prop = "degrees_value" if show_degrees and primary.data_type == "FLOAT" else None
+    s_prop = "degrees_value" if show_degrees and secondary.data_type == "FLOAT" else None
+    _draw_scalar_prop(cols, primary, text=primary_text, prop_name=p_prop)
+    _draw_scalar_prop(cols, secondary, text=secondary_text, prop_name=s_prop)
+    return True
+
+
 # 纯记账字段：数组长度 / 字节大小 / 字符串长度 / 由别处重建的汇总副本。用户改了也不算数，
 # 摆在界面上只会让人以为能改，一律不画（**只是不画，照常导出**，见 io_tree 的导出路径）。
 #
@@ -247,6 +272,18 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
         _draw_label(split, label_text)
         split.prop_search(node, "string_value", root_obj, "efx_bones", text="", icon="BONE_DATA")
         _draw_field_help_icon(row, entry)
+        return
+
+    if attr_owner is not None and model.is_inline_bone_name_field(node, attr_type, attr_owner):
+        # 内联骨骼名：和上面那个 ParentBone 是同一个值的两种编码，两处都会写进文件。
+        # 画成只读，编辑入口统一收到 ParentBone 的骨骼选择器上（改那个会自动同步到这里），
+        # 免得用户改了这一处、以为重新绑定了，实际绑定纹丝不动。
+        row = layout.row(align=True)
+        row.enabled = False
+        split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
+        _draw_label(split, label_text)
+        split.prop(node, "string_value", text="")
+        _draw_field_help_icon(layout.row(align=True), entry)
         return
 
     segs = bitfield.segments(entry)
@@ -344,53 +381,39 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
             warn.label(text=T("attribute.min_max_crash_warning"), icon="ERROR", translate=False)
         return
 
+    # `{s,r}` 形状的四种语义。**主值（左列）由 model.sr_children_ordered() 定**，
+    # 四个分支都不许写死 `s`——见 _draw_sr_pair() 的说明。
     if dtype == "OBJECT" and model.is_sr_index_node(node):
-        # SequenceNo：形状和 static/random 一样是 {s,r}，但实测 s 恒等于 r+1(或+4)、随机只在
-        # [0,r] 里选——画成 UnknIndex(s)/Index(r)，不是 Static/Random（见 model.py 的说明）。
+        # SequenceNo：实测 s 恒等于 r+1(或+4)、随机只在 [0,r] 里选——r 才是实际生效的索引，
+        # s 疑似只是配套计数。它是 RangeI，主值正好也是 r，和统一规律自洽。
         row = layout.row(align=True)
         split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
         _draw_label(split, label_text)
-        by_key = {c.key: c for c in node.children}
-        cols = split.row(align=True)
-        _draw_scalar_prop(cols, by_key["r"], text="Index")
-        _draw_scalar_prop(cols, by_key["s"], text="UnknIndex")
+        _draw_sr_pair(split.row(align=True), node, "Index", "UnknIndex")
         _draw_field_help_icon(row, entry)
         return
 
-    if dtype == "OBJECT" and model.is_sr_min_max_node(node):
-        # PatternNo/PlaySpeed：形状和 static/random 一样是 {s,r}，但实测是 min/max 范围。
-        # PatternNo 是 s=Max/r=Min（顺序和 is_min_max_node 的 x/y 相反），PlaySpeed 是
-        # s=Min/r=Max（顺序本来就对）——按字段名分别决定哪个是 Min 哪个是 Max。
+    if dtype == "OBJECT" and (model.is_sr_min_max_node(node)
+                              or model.is_pair_min_max_node(node, attr_type)):
+        # 两类 min/max：
+        #   PatternNo / PlaySpeed —— 早先实测出来的（model._SR_MIN_MAX_FIELD_NAMES）
+        #   Life 的四个 Frame     —— 全语料 r<=s 恒成立（model._PAIR_MIN_MAX_FIELDS）
+        # 不需要按字段名决定哪个是 Min：**主值恒为 Min**，两类都符合。
         row = layout.row(align=True)
         split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
         _draw_label(split, label_text)
-        by_key = {c.key: c for c in node.children}
-        cols = split.row(align=True)
-        if node.key == "PatternNo":
-            min_child, max_child = by_key["r"], by_key["s"]
-        else:
-            min_child, max_child = by_key["s"], by_key["r"]
-        _draw_scalar_prop(cols, min_child, text="Min")
-        _draw_scalar_prop(cols, max_child, text="Max")
+        _draw_sr_pair(split.row(align=True), node, "Min", "Max", entry)
         _draw_field_help_icon(row, entry)
         return
 
-    if dtype == "OBJECT" and model.is_static_random_node(node):
-        # via.Range{s,r} 画成两列并排：Static（对应 s）/ Random（对应 r）。用户明确要求用这组
-        # REE 惯例命名而不是 MHWI 社区惯用的 Value/Jitter——这套命名以后计划回哺到 EFX-Editor，
-        # 两边统一用 REE 这边的说法（不是反过来）。
+    if dtype == "OBJECT" and model.is_static_random_node(node, attr_type):
+        # 画成两列并排：Static / Random。用户明确要求用这组 REE 惯例命名而不是 MHWI 社区惯用
+        # 的 Value/Jitter——这套命名以后计划回哺到 EFX-Editor，两边统一用 REE 这边的说法
+        # （不是反过来）。
         row = layout.row(align=True)
         split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
         _draw_label(split, label_text)
-        by_key = {c.key: c for c in node.children}
-        cols = split.row(align=True)
-        # 弧度制角度字段的 via.Range 形状（如 TypeMeshV2.RotationX/Velocity3D.Spread）：s/r
-        # 两个分量都是角度值，同样按 XYZ 分支那套规则改画 degrees_value——见 _wants_degrees()。
-        show_degrees = _wants_degrees(entry)
-        s_prop = "degrees_value" if show_degrees and by_key["s"].data_type == "FLOAT" else None
-        r_prop = "degrees_value" if show_degrees and by_key["r"].data_type == "FLOAT" else None
-        _draw_scalar_prop(cols, by_key["s"], text="Static", prop_name=s_prop)
-        _draw_scalar_prop(cols, by_key["r"], text="Random", prop_name=r_prop)
+        _draw_sr_pair(split.row(align=True), node, "Static", "Random", entry)
         _draw_field_help_icon(row, entry)
         return
 
@@ -1378,11 +1401,8 @@ def _draw_axis_group(layout, attr_type: str, label_zh: str, label_en: str, axes,
         split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
         _draw_label(split, axis_label)
         cols = split.row(align=True)
-        if model.is_static_random_node(node):
-            by_key = {c.key: c for c in node.children}
-            _draw_scalar_prop(cols, by_key["s"], text="Static")
-            _draw_scalar_prop(cols, by_key["r"], text="Random")
-        else:
+        if not (model.is_static_random_node(node, attr_type)
+                and _draw_sr_pair(cols, node, "Static", "Random", entry)):
             _draw_scalar_prop(cols, node, text="")
         _draw_field_help_icon(row, entry)
 
@@ -1492,6 +1512,16 @@ class EFX_RE_PT_main(Panel):
         row.operator("efx_re.export", text=T("main.export"), icon="EXPORT", translate=False)
 
         layout.prop(context.scene, "efx_re_active_root", text=T("main.active_efx"))
+
+        # 骨架选择器挂在 EFX_ROOT 集合上（不是 Scene）：同时开着猎人和怪物的多个 efx 时各绑
+        # 各的骨架。没有当前 EFX 时整段不画——集合级属性没有宿主可画。
+        root = io_tree.resolve_root(context)
+        if root is not None:
+            layout.prop(root, "efx_re_armature", text=T("main.armature"))
+            layout.operator(
+                "efx_re.sync_bone_binding", text=T("main.sync_bone"),
+                icon="BONE_DATA", translate=False,
+            )
 
         row = layout.row(align=True)
         row.operator(

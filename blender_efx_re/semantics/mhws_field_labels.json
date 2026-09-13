@@ -177,11 +177,20 @@
         "date": "2026-07-04"
       },
       "ParentBone": {
-        "label_zh": "父级骨骼绑定",
-        "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
-        "tester": "assistant",
-        "date": "2026-09-10"
+        "label_zh": "父骨骼",
+        "label_en": "Parent Bone",
+        "tooltip_zh": "特效挂在哪根骨骼上。名字必须在 Root 面板的骨骼表里，留空则不绑定。",
+        "tooltip_en": "Bone this effect is attached to. The name must exist in the Bones list on the Root panel; empty means unbound.",
+        "confidence": "confirmed",
+        "evidence": "全语料 9175 个文件 / 11927 个作用域用 EfxBridge bonealign 核对：索引表解析出来的骨骼名与内联字段逐实例比对 95204 次，不一致只有 1 次（`11_em0162_00_063`，Capcom 自己的数据）。写出侧只根据 ParentBone 重建 BoneRelations（EfxFile.cs:1398-1406），内联字段单独原样写回。详见 KNOWN_UPSTREAM_ISSUES.md #9。"
+      },
+      "BoneName": {
+        "label_zh": "父骨骼（内联副本）",
+        "label_en": "Parent Bone (inline copy)",
+        "tooltip_zh": "父骨骼名在文件里的第二处存储，跟随上方的父骨骼自动写入，不单独编辑。",
+        "tooltip_en": "Second copy of the parent bone name stored in this attribute. Follows Parent Bone automatically; not edited directly.",
+        "confidence": "confirmed",
+        "evidence": "全语料 9175 个文件 / 11927 个作用域用 EfxBridge bonealign 核对：索引表解析出来的骨骼名与内联字段逐实例比对 95204 次，不一致只有 1 次（`11_em0162_00_063`，Capcom 自己的数据）。写出侧只根据 ParentBone 重建 BoneRelations（EfxFile.cs:1398-1406），内联字段单独原样写回。详见 KNOWN_UPSTREAM_ISSUES.md #9。"
       }
     },
     "ReeLib.Efx.Structs.Transforms.EFXAttributeTransform3D": {
@@ -2561,10 +2570,20 @@
     },
     "ReeLib.Efx.Structs.Misc.EFXAttributeAttractor": {
       "boneName": {
-        "confidence": "unknown",
-        "evidence": "机器挖掘表把这个字段的 tooltip 猜成 \"实际取值：16\"——那是字符串长度统计的误挖，不是有意义的取值分布（boneName 是骨骼名字符串，字段本身已自解释）。显式留空盖掉挖掘表的噪声猜测。",
-        "tester": "assistant",
-        "date": "2026-09-10"
+        "label_zh": "父骨骼（内联副本）",
+        "label_en": "Parent Bone (inline copy)",
+        "tooltip_zh": "父骨骼名在文件里的第二处存储，跟随上方的父骨骼自动写入，不单独编辑。",
+        "tooltip_en": "Second copy of the parent bone name stored in this attribute. Follows Parent Bone automatically; not edited directly.",
+        "confidence": "confirmed",
+        "evidence": "全语料 9175 个文件 / 11927 个作用域用 EfxBridge bonealign 核对：索引表解析出来的骨骼名与内联字段逐实例比对 95204 次，不一致只有 1 次（`11_em0162_00_063`，Capcom 自己的数据）。写出侧只根据 ParentBone 重建 BoneRelations（EfxFile.cs:1398-1406），内联字段单独原样写回。详见 KNOWN_UPSTREAM_ISSUES.md #9。"
+      },
+      "ParentBone": {
+        "label_zh": "父骨骼",
+        "label_en": "Parent Bone",
+        "tooltip_zh": "特效挂在哪根骨骼上。名字必须在 Root 面板的骨骼表里，留空则不绑定。",
+        "tooltip_en": "Bone this effect is attached to. The name must exist in the Bones list on the Root panel; empty means unbound.",
+        "confidence": "confirmed",
+        "evidence": "全语料 9175 个文件 / 11927 个作用域用 EfxBridge bonealign 核对：索引表解析出来的骨骼名与内联字段逐实例比对 95204 次，不一致只有 1 次（`11_em0162_00_063`，Capcom 自己的数据）。写出侧只根据 ParentBone 重建 BoneRelations（EfxFile.cs:1398-1406），内联字段单独原样写回。详见 KNOWN_UPSTREAM_ISSUES.md #9。"
       }
     },
     "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonFixEndExpression": {
@@ -3454,11 +3473,20 @@
         "date": "2026-09-10"
       },
       "JointName": {
-        "label_zh": "绑定骨骼名",
-        "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译",
-        "tester": "assistant",
-        "date": "2026-09-10"
+        "label_zh": "父骨骼（内联副本）",
+        "label_en": "Parent Bone (inline copy)",
+        "tooltip_zh": "父骨骼名在文件里的第二处存储，跟随上方的父骨骼自动写入，不单独编辑。",
+        "tooltip_en": "Second copy of the parent bone name stored in this attribute. Follows Parent Bone automatically; not edited directly.",
+        "confidence": "confirmed",
+        "evidence": "全语料 9175 个文件 / 11927 个作用域用 EfxBridge bonealign 核对：索引表解析出来的骨骼名与内联字段逐实例比对 95204 次，不一致只有 1 次（`11_em0162_00_063`，Capcom 自己的数据）。写出侧只根据 ParentBone 重建 BoneRelations（EfxFile.cs:1398-1406），内联字段单独原样写回。详见 KNOWN_UPSTREAM_ISSUES.md #9。"
+      },
+      "ParentBone": {
+        "label_zh": "父骨骼",
+        "label_en": "Parent Bone",
+        "tooltip_zh": "特效挂在哪根骨骼上。名字必须在 Root 面板的骨骼表里，留空则不绑定。",
+        "tooltip_en": "Bone this effect is attached to. The name must exist in the Bones list on the Root panel; empty means unbound.",
+        "confidence": "confirmed",
+        "evidence": "全语料 9175 个文件 / 11927 个作用域用 EfxBridge bonealign 核对：索引表解析出来的骨骼名与内联字段逐实例比对 95204 次，不一致只有 1 次（`11_em0162_00_063`，Capcom 自己的数据）。写出侧只根据 ParentBone 重建 BoneRelations（EfxFile.cs:1398-1406），内联字段单独原样写回。详见 KNOWN_UPSTREAM_ISSUES.md #9。"
       }
     },
     "ReeLib.Efx.Structs.Pt.EFXAttributePtColor": {
@@ -6114,14 +6142,46 @@
             "label_zh": "种子表选择组",
             "label_en": "Table Selection Group",
             "items": [
-              [1, "表0", "Table 0"],
-              [2, "表1", "Table 1"],
-              [4, "表2", "Table 2"],
-              [8, "表3", "Table 3"],
-              [16, "表4", "Table 4"],
-              [32, "表5", "Table 5"],
-              [64, "表6", "Table 6"],
-              [128, "表7", "Table 7"]
+              [
+                1,
+                "表0",
+                "Table 0"
+              ],
+              [
+                2,
+                "表1",
+                "Table 1"
+              ],
+              [
+                4,
+                "表2",
+                "Table 2"
+              ],
+              [
+                8,
+                "表3",
+                "Table 3"
+              ],
+              [
+                16,
+                "表4",
+                "Table 4"
+              ],
+              [
+                32,
+                "表5",
+                "Table 5"
+              ],
+              [
+                64,
+                "表6",
+                "Table 6"
+              ],
+              [
+                128,
+                "表7",
+                "Table 7"
+              ]
             ]
           }
         ],
@@ -6300,6 +6360,42 @@
         "evidence": "字段名本身几乎只是重复了结构体名 EmitMask，没有更多信息；具体是按位遮罩还是数值阈值未知",
         "tester": "assistant",
         "date": "2026-09-10"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeLightning3D": {
+      "ParentBone": {
+        "label_zh": "父骨骼",
+        "label_en": "Parent Bone",
+        "tooltip_zh": "特效挂在哪根骨骼上。名字必须在 Root 面板的骨骼表里，留空则不绑定。",
+        "tooltip_en": "Bone this effect is attached to. The name must exist in the Bones list on the Root panel; empty means unbound.",
+        "confidence": "confirmed",
+        "evidence": "全语料 9175 个文件 / 11927 个作用域用 EfxBridge bonealign 核对：索引表解析出来的骨骼名与内联字段逐实例比对 95204 次，不一致只有 1 次（`11_em0162_00_063`，Capcom 自己的数据）。写出侧只根据 ParentBone 重建 BoneRelations（EfxFile.cs:1398-1406），内联字段单独原样写回。详见 KNOWN_UPSTREAM_ISSUES.md #9。"
+      },
+      "boneName": {
+        "label_zh": "父骨骼（内联副本）",
+        "label_en": "Parent Bone (inline copy)",
+        "tooltip_zh": "父骨骼名在文件里的第二处存储，跟随上方的父骨骼自动写入，不单独编辑。",
+        "tooltip_en": "Second copy of the parent bone name stored in this attribute. Follows Parent Bone automatically; not edited directly.",
+        "confidence": "confirmed",
+        "evidence": "全语料 9175 个文件 / 11927 个作用域用 EfxBridge bonealign 核对：索引表解析出来的骨骼名与内联字段逐实例比对 95204 次，不一致只有 1 次（`11_em0162_00_063`，Capcom 自己的数据）。写出侧只根据 ParentBone 重建 BoneRelations（EfxFile.cs:1398-1406），内联字段单独原样写回。详见 KNOWN_UPSTREAM_ISSUES.md #9。"
+      }
+    },
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeStrainRibbonV3": {
+      "ParentBone": {
+        "label_zh": "父骨骼",
+        "label_en": "Parent Bone",
+        "tooltip_zh": "特效挂在哪根骨骼上。名字必须在 Root 面板的骨骼表里，留空则不绑定。",
+        "tooltip_en": "Bone this effect is attached to. The name must exist in the Bones list on the Root panel; empty means unbound.",
+        "confidence": "confirmed",
+        "evidence": "全语料 9175 个文件 / 11927 个作用域用 EfxBridge bonealign 核对：索引表解析出来的骨骼名与内联字段逐实例比对 95204 次，不一致只有 1 次（`11_em0162_00_063`，Capcom 自己的数据）。写出侧只根据 ParentBone 重建 BoneRelations（EfxFile.cs:1398-1406），内联字段单独原样写回。详见 KNOWN_UPSTREAM_ISSUES.md #9。"
+      },
+      "boneName": {
+        "label_zh": "父骨骼（内联副本）",
+        "label_en": "Parent Bone (inline copy)",
+        "tooltip_zh": "父骨骼名在文件里的第二处存储，跟随上方的父骨骼自动写入，不单独编辑。",
+        "tooltip_en": "Second copy of the parent bone name stored in this attribute. Follows Parent Bone automatically; not edited directly.",
+        "confidence": "confirmed",
+        "evidence": "全语料 9175 个文件 / 11927 个作用域用 EfxBridge bonealign 核对：索引表解析出来的骨骼名与内联字段逐实例比对 95204 次，不一致只有 1 次（`11_em0162_00_063`，Capcom 自己的数据）。写出侧只根据 ParentBone 重建 BoneRelations（EfxFile.cs:1398-1406），内联字段单独原样写回。详见 KNOWN_UPSTREAM_ISSUES.md #9。"
       }
     }
   }

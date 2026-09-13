@@ -167,6 +167,10 @@ if (args.Length >= 1 && args[0] == "ptbehaviorcatalog")
 {
     return RunPtBehaviorCatalog(args);
 }
+if (args.Length >= 1 && args[0] == "bonealign")
+{
+    return RunBoneAlign(args);
+}
 
 if (args.Length < 2 || args[0] != "roundtrip")
 {
@@ -187,6 +191,7 @@ if (args.Length < 2 || args[0] != "roundtrip")
     Console.WriteLine("  dotnet <dll> fieldstatsbatch <语料目录> <逗号分隔的类型名列表> <json 输出路径> [每字段保留的不同取值数，默认 40]");
     Console.WriteLine("  dotnet <dll> condstats <语料目录> <attribute 类型名> <条件字段名> <json 输出路径> [每字段保留的不同取值数，默认 40]");
     Console.WriteLine("  dotnet <dll> ptbehaviorcatalog <语料目录> <json 输出路径>");
+    Console.WriteLine("  dotnet <dll> bonealign <语料目录> <json 输出路径> [--extra 类型名,类型名]");
     return 1;
 }
 
@@ -1376,6 +1381,204 @@ static int RunAttrIndex(string[] args)
 //
 // 复用 fieldstats 同一套单进程扫全部文件的遍历（含 PlayEmitter.efxrData 递归），不按
 // attribute 类型过滤——这两种"双值字段"横跨了几十种 attribute 类型。
+// ===== bonealign 子命令 =====
+//
+// 校核 BoneRelations 索引流的对齐：Bones/BoneRelations 是"按遇到顺序消费"的位置制下标数组
+// （EfxFile.SetupBoneReferences()），只要 vendor 认得的"消费者" attribute 类型集合和游戏侧
+// 实际写入时用的那一套对不上，整条流就从第一个差异处起整体错位——表现是 ParentBone 被解析成
+// 别的骨骼，而且导出时 BoneRelations 会按错误的（更短的）消费者数量重新生成，**静默丢槽位**。
+//
+//   bonealign <语料目录> <json 输出路径> [--extra 类型名,类型名]
+//
+// 判据有两条，都不依赖"我们猜它该是什么"：
+//   1. 数量：消费者个数必须 == BoneRelations 长度（后者来自 Header.boneAttributeEntryCount，
+//      是游戏自己的导出器写进文件的数字）。
+//   2. 取值：按下标查出来的骨骼名，必须 == 该 attribute 自己内联存的骨骼名字段
+//      （ParentOptions.BoneName / Attractor.boneName / VanishArea3D.JointName /
+//      TypeLightning3D.boneName）。这两处是同一个值的两种编码，对齐正确时必然一致。
+//
+// 同时按 vendor 当前集合（IBoneRelationAttribute）和 --extra 补充后的集合各算一遍，便于对比。
+// 对"补充后仍然对不上"的作用域输出完整类型直方图，外加"从未出现在任何已对齐作用域里的类型"
+// 清单——这两样就是继续找漏网消费者类型的原料。
+//
+// 作用域 = 一个 EfxFile（顶层文件，或 PlayEmitter.efxrData 内嵌文件），各有自己的
+// BoneRelations；嵌套作用域的骨骼名要用外层文件的 Bones 表解析（同 SetupBoneReferences）。
+static int RunBoneAlign(string[] args)
+{
+    if (args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> bonealign <语料目录> <json 输出路径> [--extra 类型名,类型名]");
+        return 1;
+    }
+    var dir = args[1];
+    var jsonOutPath = args[2];
+    var extraIdx = Array.IndexOf(args, "--extra");
+    var extraNames = extraIdx >= 0 && extraIdx + 1 < args.Length
+        ? args[extraIdx + 1].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet()
+        : new HashSet<string> { "EFXAttributeTypeStrainRibbonV3", "EFXAttributeFluidParticle2DSimulator" };
+
+    if (!Directory.Exists(dir))
+    {
+        Console.WriteLine($"目录不存在: {dir}");
+        return 1;
+    }
+
+    // 内联骨骼名字段的反射缓存：四个已知实现类各自叫 BoneName / boneName / JointName，
+    // 按名字找，不维护硬编码的"类型 -> 字段名"表（新增实现类自动覆盖）。
+    var inlineCache = new Dictionary<Type, System.Reflection.MemberInfo?>();
+    string? InlineBoneName(EFXAttribute attr)
+    {
+        var t = attr.GetType();
+        if (!inlineCache.TryGetValue(t, out var member))
+        {
+            member = null;
+            foreach (var name in new[] { "BoneName", "boneName", "JointName" })
+            {
+                var f = t.GetField(name);
+                if (f != null && f.FieldType == typeof(string)) { member = f; break; }
+                var pr = t.GetProperty(name);
+                if (pr != null && pr.PropertyType == typeof(string)) { member = pr; break; }
+            }
+            inlineCache[t] = member;
+        }
+        return inlineCache[t] switch
+        {
+            System.Reflection.FieldInfo f => f.GetValue(attr) as string,
+            System.Reflection.PropertyInfo pr => pr.GetValue(attr) as string,
+            _ => null,
+        };
+    }
+
+    var files = Directory.EnumerateFiles(dir, "*.efx.*", SearchOption.AllDirectories).ToList();
+    int scanned = 0, failed = 0, scopes = 0;
+    int curCountBad = 0, newCountBad = 0;
+    int curAgree = 0, curDisagree = 0, newAgree = 0, newDisagree = 0;
+    var stillBad = new List<object>();
+    var allTypes = new HashSet<string>();
+    var typesInAlignedScope = new HashSet<string>();
+
+    (int consumers, int agree, int disagree) Walk(
+        List<EFXEntry> entries, List<short> relations, List<EFXBone> bones, HashSet<string> consumerExtra)
+    {
+        int i = 0, agree = 0, disagree = 0;
+        foreach (var entry in entries)
+        {
+            foreach (var attr in entry.Attributes)
+            {
+                var typeName = attr.GetType().Name;
+                var isConsumer = attr is IBoneRelationAttribute || consumerExtra.Contains(typeName);
+                if (!isConsumer) continue;
+                short idx = i < relations.Count ? relations[i] : (short)-1;
+                i++;
+                if (attr is not IBoneRelationAttribute) continue;   // 补充类型没有内联名可比
+                var resolved = idx >= 0 && idx < bones.Count ? bones[idx].name : null;
+                var inline = InlineBoneName(attr);
+                var a = string.IsNullOrEmpty(resolved) ? null : resolved;
+                var b = string.IsNullOrEmpty(inline) ? null : inline;
+                if (a == b) agree++; else disagree++;
+            }
+        }
+        return (i, agree, disagree);
+    }
+
+    void VisitScope(string path, string scopeName, EfxFile efx, List<EFXBone> outerBones)
+    {
+        var bones = efx.Bones.Count > 0 ? efx.Bones : outerBones;
+        scopes++;
+        foreach (var entry in efx.Entries)
+            foreach (var attr in entry.Attributes)
+                allTypes.Add(attr.GetType().Name);
+
+        var cur = Walk(efx.Entries, efx.BoneRelations, bones, new HashSet<string>());
+        var neu = Walk(efx.Entries, efx.BoneRelations, bones, extraNames);
+        curAgree += cur.agree; curDisagree += cur.disagree;
+        newAgree += neu.agree; newDisagree += neu.disagree;
+        if (cur.consumers != efx.BoneRelations.Count) curCountBad++;
+
+        var newOk = neu.consumers == efx.BoneRelations.Count && neu.disagree == 0;
+        if (newOk)
+        {
+            foreach (var entry in efx.Entries)
+                foreach (var attr in entry.Attributes)
+                    typesInAlignedScope.Add(attr.GetType().Name);
+        }
+        else
+        {
+            newCountBad++;
+            var hist = new Dictionary<string, int>();
+            foreach (var entry in efx.Entries)
+                foreach (var attr in entry.Attributes)
+                    hist[attr.GetType().Name] = hist.GetValueOrDefault(attr.GetType().Name) + 1;
+            if (stillBad.Count < 400)
+            {
+                stillBad.Add(new
+                {
+                    file = path,
+                    scope = scopeName,
+                    declared = efx.BoneRelations.Count,
+                    consumers = neu.consumers,
+                    deficit = efx.BoneRelations.Count - neu.consumers,
+                    nameDisagree = neu.disagree,
+                    types = hist,
+                });
+            }
+        }
+
+        int ai = 0;
+        foreach (var action in efx.Actions)
+        {
+            foreach (var attr in action.Attributes)
+            {
+                if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
+                    VisitScope(path, $"{scopeName}/Actions[{ai}].PlayEmitter", pe.efxrData, bones);
+            }
+            ai++;
+        }
+    }
+
+    foreach (var path in files)
+    {
+        try
+        {
+            var efx = new EfxFile(new FileHandler(path));
+            efx.Read();
+            scanned++;
+            VisitScope(path, path, efx, efx.Bones);
+        }
+        catch (Exception)
+        {
+            failed++;
+        }
+        if (scanned > 0 && scanned % 1000 == 0)
+            Console.WriteLine($"  ... 已扫 {scanned}/{files.Count}");
+    }
+
+    var neverAligned = allTypes.Except(typesInAlignedScope).OrderBy(x => x).ToList();
+    var result = new
+    {
+        directory = dir,
+        extraConsumerTypes = extraNames.OrderBy(x => x).ToList(),
+        filesTotal = files.Count,
+        filesScanned = scanned,
+        filesFailed = failed,
+        scopes,
+        vendorCurrent = new { countMismatchScopes = curCountBad, nameAgree = curAgree, nameDisagree = curDisagree },
+        withExtra = new { countMismatchScopes = newCountBad, nameAgree = newAgree, nameDisagree = newDisagree },
+        typesNeverInAlignedScope = neverAligned,
+        stillMismatched = stillBad,
+    };
+    File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(result,
+        new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
+
+    Console.WriteLine($"扫描 {scanned} 个文件（失败 {failed}），{scopes} 个作用域");
+    Console.WriteLine($"  vendor 当前:  数量对不上的作用域 {curCountBad}，名字一致 {curAgree} / 不一致 {curDisagree}");
+    Console.WriteLine($"  补充 [{string.Join(", ", extraNames)}] 后:");
+    Console.WriteLine($"                数量对不上的作用域 {newCountBad}，名字一致 {newAgree} / 不一致 {newDisagree}");
+    Console.WriteLine($"  从未出现在任何已对齐作用域里的类型: {neverAligned.Count} 个");
+    Console.WriteLine($"结果写入 {jsonOutPath}");
+    return newCountBad == 0 && newDisagree == 0 ? 0 : 1;
+}
+
 static int RunRelStats(string[] args)
 {
     if (args.Length < 3)

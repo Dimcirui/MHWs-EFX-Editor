@@ -113,6 +113,8 @@ _STRINGS: dict[str, dict[str, str]] = {
     "main.export":            {"EN": "Export EFX",          "ZH": "导出 EFX"},
     "main.active_efx":        {"EN": "Active EFX",          "ZH": "当前 EFX"},
     "main.sync_transform":    {"EN": "Sync Transform3D",    "ZH": "刷新特效体位置"},
+    "main.armature":          {"EN": "Armature",            "ZH": "骨架"},
+    "main.sync_bone":         {"EN": "Sync Bone Binding",   "ZH": "刷新骨骼绑定"},
     "main.validate":          {"EN": "Validate",            "ZH": "校验"},
     "main.angle_degrees":     {"EN": "Angles in degrees",   "ZH": "角度按度显示"},
 
@@ -262,6 +264,15 @@ _STRINGS: dict[str, dict[str, str]] = {
 
 
 _CLASSES = (EFX_RE_OT_set_language,)
+
+
+def add_strings(mapping: dict) -> None:
+    """往文案表里补一批词条（给独立子模块用，避免所有词条都堆在这个文件里）。
+
+    重名直接覆盖并不报错——同一个 key 在两处定义本来就是 bug，但界面文案不值得为它
+    拖垮加载；真撞了会在界面上看到后注册的那份，比抛异常让整个插件装不上强。
+    """
+    _STRINGS.update(mapping)
 
 
 def register():

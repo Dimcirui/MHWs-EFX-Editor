@@ -195,10 +195,18 @@ class EFX_RE_OT_import(Operator, ImportHelper):
             except bridge.BridgeError as ex:
                 # 逐个文件独立处理：一个坏文件不该让同批拖进来的其它文件都白导
                 # （单文件时行为和以前一样——报错 + CANCELLED）。
-                failed.append((bpy.path.basename(path), str(ex).strip().split("\n")[0]))
+                failed.append((bpy.path.basename(path),
+                               "EfxBridge dump 失败：" + str(ex).strip().split("\n")[0]))
                 continue
 
             name = bpy.path.basename(path)
+            # 建树之前先验骨骼绑定索引表对不对得上——对不上就整文件拒绝，别把错位的绑定
+            # 塞进场景（见 io_tree.check_bone_relation_alignment() 的说明）。
+            try:
+                io_tree.check_bone_relation_alignment(data)
+            except io_tree.BoneRelationAlignmentError as ex:
+                failed.append((bpy.path.basename(path), str(ex).strip().split("\n")[0]))
+                continue
             root_col = io_tree.build_root_from_efxfile(data, context.scene.collection, name)
             # 记住带版本号后缀的原始文件名，给 Export 当默认文件名用（见模块头部说明）。
             root_col.efx_source_filename = name
@@ -213,7 +221,9 @@ class EFX_RE_OT_import(Operator, ImportHelper):
         # ERROR 报告转成异常），部分成功却抛异常，脚本调用方没法处理。全军覆没时才是真错误。
         level = {"ERROR"} if not imported else {"WARNING"}
         for basename, first_line in failed:
-            self.report(level, f"EfxBridge dump 失败，拒绝导入 '{basename}'：{first_line}")
+            # 失败原因由各个 append 点自带（dump 失败 / 骨骼索引表对不上 / ……），
+            # 这里只负责拼"拒绝导入了哪个文件"。
+            self.report(level, f"拒绝导入 '{basename}'：{first_line}")
         if not imported:
             return {"CANCELLED"}
 

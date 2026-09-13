@@ -810,6 +810,75 @@ def check_bone_references(root_col: Collection) -> None:
         )
 
 
+class BoneRelationAlignmentError(Exception):
+    """check_bone_relation_alignment() 校验失败时抛出：文件声明的 BoneRelations 槽位数和
+    vendor 认出来的骨骼引用 attribute 数量对不上。整文件拒绝导入，见该函数的说明。"""
+
+
+def _bone_relation_scopes(efxfile_dict: dict, path: str):
+    """枚举 (作用域路径, EfxFile 字典)。一个"作用域"= 一个独立的 BoneRelations 索引流：顶层
+    文件一个，每个内嵌 `PlayEmitter.efxrData` 各一个（vendor `SetupBoneReferences()` 对嵌套
+    文件是递归调用、各消费各自的数组）。识别嵌套同 build_root_from_efxfile()：看 attribute
+    字典里有没有 `efxrData` 键，不按 $type 类名列举。"""
+    yield path, efxfile_dict
+    for key in ("Entries", "Actions"):
+        for i, container in enumerate(efxfile_dict.get(key) or []):
+            for attr in container.get("Attributes") or []:
+                nested = attr.get("efxrData")
+                if isinstance(nested, dict):
+                    yield from _bone_relation_scopes(nested, f"{path}/{key}[{i}].efxrData")
+
+
+def _bone_relation_consumers(scope: dict) -> int:
+    """一个作用域里"会消费 BoneRelations 槽位"的 attribute 个数。判据是 JSON 里有没有
+    `ParentBone` 键——这个键只由 vendor 的 `IBoneRelationAttribute` 实现类产生，所以这个计数
+    恰好等于 vendor 读文件时实际消费掉的槽位数。只数 Entries，不数 Actions：
+    `SetupBoneReferences()` 本身就只遍历 Entries。"""
+    return sum(
+        1
+        for entry in scope.get("Entries") or []
+        for attr in entry.get("Attributes") or []
+        if "ParentBone" in attr
+    )
+
+
+def check_bone_relation_alignment(efxfile_dict: dict) -> None:
+    """导入前校验：每个作用域里，`BoneRelations` 的长度必须等于会消费它的 attribute 个数。
+
+    `Bones`/`BoneRelations` 是**位置制**的——`BoneRelations` 是一个扁平下标数组，vendor 按
+    "遇到顺序"给每个骨骼引用 attribute 分配下一个下标。这意味着"谁是消费者"这个集合必须和
+    游戏侧完全一致：**差一个，整条流就从那里起全体错位**，后面每个 attribute 都被绑到别人的
+    骨头上，而且导出时 `BoneRelations` 会按（更少的）消费者数量整体重建，静默少写若干个
+    槽位、永久丢掉绑定关系。
+
+    `BoneRelations` 的长度来自 `Header.boneAttributeEntryCount`，是游戏自己的导出器写进文件
+    的数字，所以这个比对不依赖任何我们这边的猜测。历史上真的漏过两个类型
+    （`TypeStrainRibbonV3` / `FluidParticle2DSimulator`，全语料 2.4% 的文件受影响，见
+    KNOWN_UPSTREAM_ISSUES.md #9，已由 vendor-patches/0004-* 修复）——这道校验就是为了下次
+    再冒出第三个时当场拒绝导入，而不是让用户拿着错位的绑定改完再导出。
+
+    按铁律 #1 整文件拒绝：错位是全局性的，没有"只坏了这一个 attribute"这种局部降级可言。
+    """
+    problems = []
+    for path, scope in _bone_relation_scopes(efxfile_dict, ""):
+        relations = scope.get("BoneRelations")
+        if relations is None:
+            continue          # 拿不到就不判（正常 MHWs 文件不会走到这里）
+        consumers = _bone_relation_consumers(scope)
+        if len(relations) != consumers:
+            where = path or "顶层文件"
+            problems.append(
+                f"  {where}: 文件声明 {len(relations)} 个骨骼绑定槽位，实际只认出 {consumers} 个"
+            )
+    if problems:
+        raise BoneRelationAlignmentError(
+            "骨骼绑定索引表对不上，已拒绝导入整个文件——继续导入会把特效绑到错误的骨骼上，"
+            "导出时还会丢掉绑定关系：\n"
+            + "\n".join(problems)
+            + "\n这说明有一类 attribute 会占用骨骼绑定槽位但当前还没被识别出来。"
+        )
+
+
 class ClipBitError(Exception):
     """check_clip_bits() 校验失败时抛出：某个 Clip attribute 的曲线 bit_index 越界（超出
     efx_clip_bit_count）或重复（两条曲线用了同一个 bit）。不在这里静默截断/去重——越界会让

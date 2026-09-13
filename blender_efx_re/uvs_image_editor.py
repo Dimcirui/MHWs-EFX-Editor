@@ -24,7 +24,6 @@ V 轴方向：Blender 的 Image Editor 是 V=0 在下、V=1 在上（标准 Open
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 import bpy
@@ -34,7 +33,7 @@ from bpy.types import Operator, Panel, UIList
 from bpy_extras.io_utils import ImportHelper
 from gpu_extras.batch import batch_for_shader
 
-from . import bridge, uvs_io, uvs_model
+from . import tex_image, uvs_io, uvs_model
 from .i18n import T
 
 _ACTIVE_COLOR = (1.0, 0.95, 0.1, 1.0)
@@ -122,21 +121,27 @@ _draw_handle = None
 
 
 class EFX_UVS_OT_load_texture_preview(Operator, ImportHelper):
-    """弹出文件选择框加载预览图。`.tex` 走 EfxBridge 转成 `.dds` 再加载（游戏原生格式）；
-    其余扩展名（.png/.tga/.dds/...）是 Blender 自己认得的格式，直接 `bpy.data.images.load()`，
-    不经过 tex->dds 转换那条链路——2026-09-09 发现这条转换链路对某些贴图会转花（`.tex` 内部
-    格式/mipmap 处理跟这条转换路径没有完整对应过），让用户自己拿 DDS/PNG 之类的原图绕开它。
+    """弹出文件选择框加载预览图。
+
+    `.tex` 走 `tex_image.load_image()`（TEX 容器 + GDeflate 解压 + 包成 DDS 交给 Blender 解
+    BC7/BC1），其余扩展名直接 `bpy.data.images.load()`。
+
+    这里原来走的是 `bridge.convert_tex_to_dds()`，产物对**所有** MHWs 游戏贴图都是噪声——
+    载荷是 GDeflate 压缩的，vendor 的 `ConvertToDDS()` 把压缩字节直接套了个 DDS 头。旧注释
+    说"对某些贴图会转花"低估了范围：MHWs 的 tex 全都压缩，所以是全都转花。
+    顺带修掉第二个 bug：真实文件叫 `xxx.tex.241106027`，`Path.suffix` 是 `.241106027`，
+    **按后缀判断的话 `.tex` 分支对真实文件从来没触发过**；改成按魔数判断。
     """
 
     bl_idname = "efx_uvs.load_texture_preview"
     bl_label = "Load Texture Preview"
-    bl_description = "加载一张预览图（.tex 会自动转成 .dds）。转换对某些贴图会失真，可以直接选 PNG/DDS 原图绕开"
+    bl_description = "加载一张预览图。游戏原生 .tex 会自动解码，也可以直接选 PNG/DDS"
     bl_options = {"REGISTER"}
 
     filename_ext = ".png"
     filepath: StringProperty(subtype="FILE_PATH", options={"SKIP_SAVE"})
     filter_glob: StringProperty(
-        default="*.tex;*.png;*.tga;*.dds;*.jpg;*.jpeg;*.bmp;*.exr;*.tif;*.tiff",
+        default="*.tex;*.tex.*;*.png;*.tga;*.dds;*.jpg;*.jpeg;*.bmp;*.exr;*.tif;*.tiff",
         options={"HIDDEN"},
     )
 
@@ -151,28 +156,23 @@ class EFX_UVS_OT_load_texture_preview(Operator, ImportHelper):
             self.report({"ERROR"}, f"文件不存在：{src_path}")
             return {"CANCELLED"}
 
-        if src_path.suffix.lower() == ".tex":
-            with tempfile.TemporaryDirectory(prefix="mhws_uvs_preview_") as tmpdir:
-                dds_path = Path(tmpdir) / "preview.dds"
-                try:
-                    bridge.convert_tex_to_dds(src_path, dds_path)
-                except bridge.BridgeError as ex:
-                    self.report({"ERROR"}, f"贴图转换失败，拒绝加载：\n{ex}")
-                    return {"CANCELLED"}
-                img = bpy.data.images.load(str(dds_path))
-                # 加载用的临时文件这个 with 块结束就没了，必须 pack 进 .blend，不然 Blender
-                # 下次想重新读像素数据时找不到源文件，图会变红叉。
-                img.pack()
-        else:
-            # Blender 原生支持的格式，不经过 tex->dds 转换，直接加载并 pack（同上，避免临时
-            # 目录之外的路径变了/文件被删了导致后续找不到源文件）。
-            img = bpy.data.images.load(str(src_path))
-            img.pack()
-
-        img.name = src_path.name
+        try:
+            # 是不是 .tex 由 tex_image 按魔数判断，不看扩展名；两条路都会 pack 进 .blend
+            # （临时 DDS 用完即删、外部原图路径也可能变，不 pack 下次要像素数据时会变红叉）。
+            img = tex_image.load_image(src_path)
+        except tex_image.TexDecodeError as ex:
+            # 宁可拒绝，也不交一张噪声图——噪声和正确图像在统计上分不开，用户发现不了。
+            self.report({"ERROR"}, f"贴图解码失败，拒绝加载：\n{ex}")
+            return {"CANCELLED"}
+        except Exception as ex:   # noqa: BLE001
+            self.report({"ERROR"}, f"贴图加载失败：\n{ex}")
+            return {"CANCELLED"}
         root_col.efx_uvs_preview_image = img
         context.space_data.image = img
-        self.report({"INFO"}, f"已加载预览：{img.name}（{img.size[0]}x{img.size[1]}）")
+        meta = tex_image.describe(src_path)
+        suffix = f"，{meta['format_name']}" if meta else ""
+        self.report({"INFO"},
+                    f"已加载预览：{img.name}（{img.size[0]}x{img.size[1]}{suffix}）")
         return {"FINISHED"}
 
 

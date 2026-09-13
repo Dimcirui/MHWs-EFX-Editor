@@ -69,6 +69,25 @@ attribute body 当不透明字节数组读写"的类，不解释字段、不暴�
 `PtColorMixerClip` 解析失败挡住，本次修复后才第一次暴露出来，跟 0003 patch 无关。已经记进
 `KNOWN_UPSTREAM_ISSUES.md #8`，没有一并修。
 
+## 0004-efx-bonerelation-strainribbon-fluidsim.patch
+
+对应 `KNOWN_UPSTREAM_ISSUES.md` #9。`Bones`/`BoneRelations` 是**位置制**索引流：`SetupBoneReferences()`
+按"遇到顺序"给每个 `IBoneRelationAttribute` 分配下一个下标——**"谁是消费者"这个集合差一个，整条流就
+从那里起全体错位**。语料证明 MHWilds 下除了 vendor 认的 4 个类型，还有 `EFXAttributeTypeStrainRibbonV3`
+和 `EFXAttributeFluidParticle2DSimulator` 也各消费一个槽位。后果不只是读错：导出时 `BoneRelations` 按（更少的）
+消费者数量整体重建，**每个受影响文件都会静默少写若干个 short**，绑定关系永久丢失。
+
+判据不靠猜：`Header.boneAttributeEntryCount` 是游戏自己写进文件的槽位数。全语料 9175 个文件、
+11927 个作用域里有 220 个和 vendor 的消费者数量对不上、且永远是 vendor 少；补上这两个类型后降到 **0**，
+同时"按下标查出来的骨骼名 vs attribute 自己内联存的骨骼名"不一致数从 **1158 降到 1**。
+独立确证（没参与推导）：`TypeStrainRibbonV3` 自己也有一个内联 `boneName`，补丁生效后这 916 个实例
+的内联名也进入比对，**916/916 全部与新对齐的下标解析结果一致**。
+
+改动就是给两个类各加一个接口声明 + 一行 `public string? ParentBone { get; set; }`（这个自动属性
+不带任何 `[Rsz*]` 标注，源生成器不会给它生成读写代码，字节布局不变），共 4 行有效改动，和
+`EFXAttributeTypeStrainRibbonV2` 现成的写法逐字同构。Program.cs 层面没有挂钩点——C# 没法从外部给一个类
+追加接口实现，而 `SetupBoneReferences()` 和写出侧都是靠 `is IBoneRelationAttribute` 做类型判断的。
+
 ## 怎么用
 
 **vendor 是 submodule，工作区改动不会随 `git submodule update` 保留**——每次重新 checkout /
@@ -78,6 +97,7 @@ attribute body 当不透明字节数组读写"的类，不解释字段、不暴�
 git apply tools/vendor-patches/0001-efx-expression-func18-19-20-args2-dispatch.patch --directory=vendor/RE-Engine-Lib
 git apply tools/vendor-patches/0002-efx-rszfixedsizearray-implicit-length-write.patch --directory=vendor/RE-Engine-Lib
 git apply tools/vendor-patches/0003-efx-opaque-unknown-attribute-types.patch --directory=vendor/RE-Engine-Lib
+git apply tools/vendor-patches/0004-efx-bonerelation-strainribbon-fluidsim.patch --directory=vendor/RE-Engine-Lib
 ```
 
 （`git apply` 认不出就说明补丁跟当前 vendor commit 对不上下文了，去对应源文件里手动照着补丁
@@ -99,3 +119,8 @@ git apply tools/vendor-patches/0003-efx-opaque-unknown-attribute-types.patch --d
 里 `ExpectedByteSize` 那几行、`KNOWN_UPSTREAM_ISSUES.md` #4/#5 标一下已解决即可——注意上游一旦
 自己实现了，大概率跟我们这个"整块当字节数组"的粗糙版本字段完全对不上，不能指望平滑过渡，直接
 换成上游的类。
+
+**0004**：跑一遍
+`dotnet tools/EfxBridge/bin/Debug/net8.0/EfxBridge.dll bonealign <语料目录> <输出.json> --extra __NONE__`，
+如果不打补丁"数量对不上的作用域"已经是 0，说明上游自己修好了，删掉这个文件、撤掉那两个类上的
+改动、`KNOWN_UPSTREAM_ISSUES.md` #9 标一下已解决即可。

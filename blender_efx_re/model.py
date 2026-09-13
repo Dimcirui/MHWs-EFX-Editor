@@ -315,6 +315,60 @@ def _set_float4_color(self, value) -> None:
         by_key[key].float_value = component
 
 
+# `IBoneRelationAttribute` 各实现类里"内联存的那份骨骼名"字段名（`ParentOptions.BoneName` /
+# `Attractor.boneName` / `VanishArea3D.JointName` / `TypeLightning3D.boneName` /
+# `TypeStrainRibbonV3.boneName`）。它和 `ParentBone` 是**同一个值的两种编码**：一个内联在
+# attribute 自己的字节里，一个走文件级 `Bones`/`BoneRelations` 索引表，官方文件里两者永远一致
+# （见 docs/TOPLEVEL_STRUCTURE.md 的订正段）。按名字判断，不维护"类型 -> 字段名"硬编码表。
+_INLINE_BONE_NAME_KEYS = frozenset({"BoneName", "boneName", "JointName"})
+
+# 批量填充字段树时抑制 update 回调里的联动写入（见 suppress_field_updates()）。
+_suppress_field_updates = False
+
+
+class suppress_field_updates:
+    """上下文管理器：期间 `string_value` 的 update 回调不做任何**联动写入**（目前只有
+    ParentBone -> 内联骨骼名这一处）。
+
+    ⚠ 这不是性能优化，是正确性要求。Blender 的 update 回调在 Python 赋值时同样会触发，
+    导入/粘贴/新建时 `populate_node()` 逐个写 `string_value` 会把联动一起带起来——那等于
+    "只是打开了一个文件，字节就被我们改了"。官方语料里确实存在一个两者不一致的文件
+    （`11_em0162_00_063`，Capcom 自己改了一边没改另一边），它过一遍 Blender 就会产生额外
+    字节差异，直接违反"和纯 CLI 往返产物逐字节相同"这条判据。联动只在**用户真的在面板里改
+    ParentBone**时发生。
+    """
+
+    def __enter__(self):
+        global _suppress_field_updates
+        self._prev = _suppress_field_updates
+        _suppress_field_updates = True
+        return self
+
+    def __exit__(self, *exc):
+        global _suppress_field_updates
+        _suppress_field_updates = self._prev
+        return False
+
+
+def _mirror_parent_bone_to_inline(node: "EFXValueNode") -> None:
+    """把 `ParentBone` 的新值同步写进同一个 attribute 的内联骨骼名字段。
+
+    面板上 `ParentBone` 是唯一的编辑入口（骨骼选择器），内联字段画成只读——两处都是真实存储、
+    都会写进文件，让用户分别编辑只会造出官方文件里从不出现的不一致状态，其中"只改内联名"
+    那种还特别坑：看着像重新绑定了，实际绑定完全没变（写出侧只认 `ParentBone`）。
+    """
+    fields = getattr(node.id_data, "efx_fields", None)
+    if fields is None:
+        return
+    for sibling in fields:
+        if sibling.key in _INLINE_BONE_NAME_KEYS and sibling.data_type in ("STRING", "NULL"):
+            if sibling.data_type == "NULL":
+                sibling.data_type = "STRING"
+            if sibling.string_value != node.string_value:
+                sibling.string_value = node.string_value
+            return
+
+
 def _promote_null_to_string(self, context) -> None:
     """`string_value` 的 `update` 回调：`data_type == "NULL"` 的节点被用户往里面打字，就地
     转正成 `STRING`。
@@ -341,6 +395,8 @@ def _promote_null_to_string(self, context) -> None:
     fixed = _normalize_path_separators(self.string_value)
     if fixed != self.string_value:
         self.string_value = fixed
+    if self.key == "ParentBone" and not _suppress_field_updates:
+        _mirror_parent_bone_to_inline(self)
 
 
 def _read_packed_int(node: "EFXValueNode") -> int:
@@ -518,19 +574,96 @@ def xyz_child_order(node: EFXValueNode):
     return None
 
 
-def is_static_random_node(node: EFXValueNode) -> bool:
-    """一个 OBJECT 节点如果恰好是 `via.Range{s,r}` 的序列化形状（vendor `RszValueType.cs`），
-    返回 True。`s`=Static（静态值）、`r`=Random（随机值）——用 REE 惯例命名，不是姊妹项目
-    EFX-Editor（MHWI）社区习惯用的 Value/Jitter（这套 REE 命名以后计划回哺到 EFX-Editor，
-    是两边统一的方向）。供 panels.py 画成两列并排，不画成"2 items"折叠框。
-
-    `SequenceNo`/`PatternNo` 走 `is_sr_index_node()`/`is_sr_min_max_node()`，不算在这里——
-    见那两个函数的说明。"""
+def is_sr_shaped(node: EFXValueNode) -> bool:
+    """一个 OBJECT 节点是不是 `{s, r}` 这个序列化形状（`via.Range` 或 `via.RangeI`，
+    vendor `RszValueType.cs`）。**只判形状，不判语义**——语义分四种，见
+    `sr_children_ordered()` / `is_static_random_node()` / `is_pair_min_max_node()` /
+    `is_sr_index_node()` / `is_sr_min_max_node()`。"""
     if node.data_type != "OBJECT" or len(node.children) != 2:
+        return False
+    return {c.key for c in node.children} == {"s", "r"}
+
+
+def sr_children_ordered(node: EFXValueNode):
+    """`{s,r}` 节点 -> `(主值子节点, 副值子节点)`。形状不对时返回 `None`。
+
+    **主值是二进制首字段，不是固定的 `s`。** vendor 的两个结构体字段声明顺序相反
+    （`RszValueType.cs:226` / `:264`）：`Range`(float) 是 `{s, r}`、`RangeI`(int) 是
+    `{r, s}`，而全语料证据表明**首字段恒为主值**（静态值 / min），第二个是副值
+    （随机量 / max）：
+
+    - `Spawn.LoopNum`（RangeI）：高频对 `(r=1,s=0)` 占 55%，`s != 0` 只占 1.4%——主值在 `r`。
+      若按 `s` 当主值，98.6% 的发射器都成了"循环 0 次"。
+    - `Velocity3D.SpeedCoef`（Range）：高频对 `(s=1,r=0)` / `(s=0.99,r=0)`——主值在 `s`。
+
+    这条规律还统一了下面三个"例外"：`PatternNo`(RangeI, 主值 r = Min) 和
+    `PlaySpeed`(Range, 主值 s = Min) 的"s/r 顺序相反"其实就是两个结构体声明顺序相反的
+    表现，**主值恒为 min**，不是两套独立规则；`SequenceNo`(RangeI) 的"`r` 才是实际生效的
+    索引"同样自洽。详细数据见 docs/SIM_PORT_PLAN.md §8.6。
+
+    类型判定看子节点的 `data_type`：两个都是 `INT` 就是 `RangeI`。**不能看 key 集合**
+    ——`Range` 和 `RangeI` 的 key 集合完全相同，这正是这个 bug 藏了这么久的原因。
+    """
+    if not is_sr_shaped(node):
+        return None
+    by_key = {c.key: c for c in node.children}
+    s_child, r_child = by_key["s"], by_key["r"]
+    is_ranged_int = s_child.data_type == "INT" and r_child.data_type == "INT"
+    return (r_child, s_child) if is_ranged_int else (s_child, r_child)
+
+
+#: `{s,r}` 但语义是 **(min, max)** 而不是 (静态值, 随机量) 的字段，键是 `(短类型名, 字段名)`。
+#:
+#: 必须按 (类型, 字段) 而不是裸字段名——`VanishFrame` 在 `Life` 上是 `RangeI`、在
+#: `VanishArea3D` 上是 `Range`，裸名会误伤后者。
+#:
+#: 语料判据（`EfxBridge condstats`，91178 个 `Life` 实例）：四个字段**全部 100% 满足
+#: `r <= s`，`r > s` 出现 0 次**。而同为 `RangeI` 的 `Spawn.LoopNum` 有 74.7% 是 `r > s`、
+#: `Velocity3D.GravityDelayFrame` 9.6%、`Spawn.SpawnFrame` 11.5%——所以这不是 `RangeI` 的
+#: 通性，是 `Life` 独有的硬不变式，只有 min/max 语义能强制它。非相等的取值对也长得像区间
+#: 而不像"基值+浮动"：`VanishFrame` 的 `(30,40) (60,80) (80,100) (100,120)`、`KeepFrame`
+#: 的 `(150,200)`，而 `r==s`（两端填一样 = 不随机）占 71~99.8%。
+#:
+#: ⚠ 只有 `Life` 这四个是语料验证过的。`RgbCommon.GreenChAppearFrame` /
+#: `TexelChannelOperator.Appear` 等同概念字段**没验**，按铁律 #7 不先斩后奏地加进来。
+#:
+#: 镜像在 `efx_sim/shapes.py::PAIR_MIN_MAX_FIELDS`，由 `tests/test_sim_core.py` 钉住一致。
+_PAIR_MIN_MAX_FIELDS = frozenset({
+    ("Life", "AppearFrame"),
+    ("Life", "KeepFrame"),
+    ("Life", "VanishFrame"),
+    ("Life", "KeepHoldFrame"),
+})
+
+
+def is_pair_min_max_node(node: EFXValueNode, attr_type: str | None) -> bool:
+    """`{s,r}` 形状但语义是 (min, max) 的字段（见 `_PAIR_MIN_MAX_FIELDS`）。
+    供 panels.py 画成 Min/Max 两列而不是 Static/Random。"""
+    if not is_sr_shaped(node) or not attr_type:
+        return False
+    return (short_attr_name(attr_type), node.key) in _PAIR_MIN_MAX_FIELDS
+
+
+def is_static_random_node(node: EFXValueNode, attr_type: str | None = None) -> bool:
+    """一个 OBJECT 节点是不是"(静态值, 随机量)"语义的 `{s,r}`。供 panels.py 画成两列并排，
+    不画成"2 items"折叠框。
+
+    Static/Random 是 REE 惯例命名，不是姊妹项目 EFX-Editor（MHWI）社区习惯用的 Value/Jitter
+    （这套 REE 命名以后计划回哺到 EFX-Editor，是两边统一的方向）。
+
+    ⚠ **哪个子节点是 Static 不是固定的**，走 `sr_children_ordered()`，别写死 `s`。
+
+    三类例外不算在这里：`SequenceNo` 走 `is_sr_index_node()`、`PatternNo`/`PlaySpeed` 走
+    `is_sr_min_max_node()`、`Life` 的四个 Frame 走 `is_pair_min_max_node()`。
+    `attr_type` 省略时不做最后那一类的排除（那类必须知道属性类型才能判）。
+    """
+    if not is_sr_shaped(node):
         return False
     if node.key in _SR_INDEX_FIELD_NAMES or node.key in _SR_MIN_MAX_FIELD_NAMES:
         return False
-    return {c.key for c in node.children} == {"s", "r"}
+    if is_pair_min_max_node(node, attr_type):
+        return False
+    return True
 
 
 # 2026-09-10 用户实机测试 + EfxBridge relstats 全语料复核（详细证据见
@@ -548,24 +681,41 @@ _SR_MIN_MAX_FIELD_NAMES = frozenset({"PatternNo", "PlaySpeed"})
 def is_sr_index_node(node: EFXValueNode) -> bool:
     """`SequenceNo` 专用：形状和 `is_static_random_node()` 一样是 `{s,r}`，但 s/r 不是
     静态/随机，是"配套计数(s)/实际生效的随机上限索引(r)"。供 panels.py 画成
-    UnknIndex(s)/Index(r) 两列。"""
-    if node.data_type != "OBJECT" or len(node.children) != 2:
+    Index / UnknIndex 两列——它是 `RangeI`，主值正好也是 `r`，和 `sr_children_ordered()`
+    的统一规律自洽，所以画的时候照样走主值在左。"""
+    if not is_sr_shaped(node):
         return False
-    if node.key not in _SR_INDEX_FIELD_NAMES:
-        return False
-    return {c.key for c in node.children} == {"s", "r"}
+    return node.key in _SR_INDEX_FIELD_NAMES
 
 
 def is_sr_min_max_node(node: EFXValueNode) -> bool:
     """`PatternNo`/`PlaySpeed` 专用：形状和 `is_static_random_node()` 一样是 `{s,r}`，但实测
-    是 min/max 范围而不是静态/随机。`PatternNo` 是 s=Max/r=Min（顺序和 `is_min_max_node()`
-    的 x/y 相反），`PlaySpeed` 是 s=Min/r=Max（顺序本来就对）——具体顺序在 panels.py 按字段名
-    分别处理，这个函数只负责结构判定。"""
-    if node.data_type != "OBJECT" or len(node.children) != 2:
+    是 min/max 范围而不是静态/随机。
+
+    **哪个是 Min 不需要按字段名分别处理**：`PatternNo` 是 `RangeI`（主值 `r`）、`PlaySpeed`
+    是 `Range`（主值 `s`），走 `sr_children_ordered()` 取主值即 Min。早先记的"两个字段 s/r
+    顺序相反"其实就是这两个结构体声明顺序相反的表现，不是两套独立规则。"""
+    if not is_sr_shaped(node):
         return False
-    if node.key not in _SR_MIN_MAX_FIELD_NAMES:
+    return node.key in _SR_MIN_MAX_FIELD_NAMES
+
+
+def is_inline_bone_name_field(node: EFXValueNode, attr_type: str | None, attr_obj) -> bool:
+    """一个字符串叶子字段是不是"内联存的那份骨骼名"（`BoneName`/`boneName`/`JointName`）。
+
+    只有在**同一个 attribute 上还存在 `ParentBone` 字段**时才算——这是结构性判据，不是类型
+    名单：`ParentBone` 只由 `IBoneRelationAttribute` 实现类产生，两个字段同时在场才构成
+    "同一个值的两种编码"这种关系。反过来，万一以后有哪个 attribute 只有内联名、没有索引表
+    绑定，它就该保持普通可编辑字符串字段，不该被这条规则锁住。
+    """
+    if attr_type is None or node.data_type not in ("STRING", "NULL"):
         return False
-    return {c.key for c in node.children} == {"s", "r"}
+    if node.key not in _INLINE_BONE_NAME_KEYS:
+        return False
+    fields = getattr(attr_obj, "efx_fields", None)
+    if fields is None:
+        return False
+    return any(sibling.key == "ParentBone" for sibling in fields)
 
 
 def is_bone_reference_field(node: EFXValueNode, attr_type: str | None) -> bool:
@@ -839,9 +989,10 @@ def populate_dict_as_children(collection, mapping: dict) -> None:
     用于 EFX_ATTRIBUTE.efx_fields：attribute 字典本身就是"内容字段的集合"，不需要额外包一层
     OBJECT 根节点。
     """
-    for key, value in mapping.items():
-        child = collection.add()
-        populate_node(child, key, value)
+    with suppress_field_updates():
+        for key, value in mapping.items():
+            child = collection.add()
+            populate_node(child, key, value)
 
 
 def children_to_dict(collection) -> dict:

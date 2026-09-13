@@ -11,16 +11,19 @@ from . import i18n
 from . import semantics
 from . import model
 from . import coords
+from . import tex_image
 from . import io_tree
 from . import attribute_types
 from . import bitfield
 from . import transform3d_view
+from . import bone_binding
 from . import mdf_catalog
 from . import operators
 from . import copy_paste
 from . import structure_ops
 from . import entry_presets
 from . import panels
+from . import sim_preview
 from . import asset_index
 from . import asset_browser
 from . import uvs_model
@@ -34,10 +37,10 @@ from . import wilds_vecfield_visualizer
 from . import file_menu
 
 __all__ = [
-    "bridge", "i18n", "semantics", "model", "coords", "io_tree", "transform3d_view",
-    "attribute_types", "bitfield", "mdf_catalog", "operators", "copy_paste", "structure_ops",
+    "bridge", "i18n", "semantics", "model", "coords", "tex_image", "io_tree", "transform3d_view",
+    "bone_binding", "attribute_types", "bitfield", "mdf_catalog", "operators", "copy_paste", "structure_ops",
     "entry_presets",
-    "panels", "asset_index", "asset_browser",
+    "panels", "sim_preview", "asset_index", "asset_browser",
     "uvs_model", "uvs_io", "uvs_operators", "uvs_panels", "uvs_image_editor",
     "wilds_vecfield_io", "wilds_vecfield_ops", "wilds_vecfield_visualizer",
     "file_menu",
@@ -51,11 +54,13 @@ def register():
     model.register()
     bitfield.register()
     transform3d_view.register()
+    bone_binding.register()
     operators.register()
     copy_paste.register()
     structure_ops.register()
     entry_presets.register()
     panels.register()
+    sim_preview.register()
     asset_browser.register()
     # UVS（Phase 2，PLAN.md）：独立的数据模型 + 侧栏标签页，不依赖上面的 EFX ~TYPE 对象树，
     # 但共用同一个 bridge.py（EfxBridge.dll 同时桥接 .efx 和 .uvs 两种格式）。
@@ -80,11 +85,13 @@ def unregister():
     uvs_operators.unregister()
     uvs_model.unregister()
     asset_browser.unregister()
+    sim_preview.unregister()
     panels.unregister()
     entry_presets.unregister()
     structure_ops.unregister()
     copy_paste.unregister()
     operators.unregister()
+    bone_binding.unregister()
     transform3d_view.unregister()
     bitfield.unregister()
     model.unregister()

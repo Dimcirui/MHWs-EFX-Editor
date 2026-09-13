@@ -56,10 +56,15 @@ paths_exclude_pattern = [
     "tools/*.py",
     "tools/*.json",
     "tools/*.csv",
+    # `efx_sim/` 的纯 Python 单测（`python -m unittest discover -s tests`），开发期文件。
+    # 注意被测的 `efx_sim/` 本身**要**进包——它是预览功能的核心，不在这个黑名单里。
+    "tests/",
     "tools/EfxBridge/*.cs",
     "tools/EfxBridge/*.csproj",
     "tools/EfxBridge/obj/",
     # 开发期给 vendor submodule 打的补丁文件（CLAUDE.md #5 的例外），最终用户用不上，
     # 只需要已经编译好、已经应用过这些补丁的 EfxBridge.dll。
     "tools/vendor-patches/",
+    # 给第三方插件（RE-Asset-Library）打的补丁，同理：最终用户用不上补丁文件本身。
+    "tools/third-party-patches/",
 ]

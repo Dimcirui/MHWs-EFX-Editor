@@ -1,0 +1,156 @@
+--- a/modules/pak/re_pak_utils.py
++++ b/modules/pak/re_pak_utils.py
+@@ -10,6 +10,8 @@
+ import subprocess
+ from io import BytesIO
+ import struct
++import re
++import shutil
+ timeFormat = "%d"
+ 
+ from ..gen_functions import progressBar,formatByteSize,read_ubyte,read_ushort,read_uint,read_uint64,write_ubyte,write_ushort,write_uint,write_uint64
+@@ -1513,6 +1515,8 @@
+ 						print(entry)
+ 				print(f"\nPak extracted to {outDir}")
+ 				print(f"All files extracted, {unknownCount} unknown paths.")
++				if unknownCount:
++					resolveUnknownFilesFromReferences(outDir)
+ 				unpackEndTime = time.time()
+ 				unpackTime =  unpackEndTime - unpackStartTime
+ 				unpackTimeInt = int(unpackTime*1000)
+@@ -1521,6 +1525,135 @@
+ 	else:
+ 		raise Exception("Pak path does not exist.")
+ 
++#=============================================================================
++# UNKNOWN 文件名反解（从已解出文件里的资源路径引用）
++#
++# RE 的资源文件里以明文存着它引用的其它资源的**内部路径**（.uvs 存贴图路径、
++# .efx 存 UVSPath 和材质贴图路径、.mdf2 存贴图路径……）。解包完成后把这些路径串按
++# pak 的哈希规则算一遍，就能反查出 UNKNOWN/ 里那些 #UNKN# 文件的真名并归位。
++#
++# 不解析任何格式，只扫字节里的字符串——所以 .uvs/.efx 这类本插件不解析的格式也覆盖得到。
++# 实测（MHWs 的一个 EFX mod，34 个未知文件）：27 个归位。
++#=============================================================================
++#: 只接受这些扩展名的引用——不设白名单的话，字节流里任何带点带斜杠的串都会被当候选，
++#: 纯属浪费哈希计算，还会把误报的概率抬上去。
++RESOURCE_REF_EXTENSIONS = frozenset([
++    "tex", "uvs", "mesh", "mdf2", "efx", "pfb", "scn", "user", "mot", "motlist",
++    "chain", "clsp", "rcol", "mcol", "fbxskel", "jmap", "sbnk", "bnk",
++])
++
++#: 资源路径长这样：字母数字下划线连字符点斜杠，至少 6 个字符
++_REF_TOKEN = re.compile(r"[A-Za-z0-9_\-./\\]{6,220}")
++
++#: `#UNKN#<hashLower>-<hashUpper><扩展名>`（`re_pak_utils` 自己写出来的格式）
++_UNKNOWN_NAME = re.compile(r"^#UNKN#(\d+)-(\d+)\.(.+)$")
++
++
++def scanResourceReferences(data):
++    """从原始字节里捞出引用到的资源内部路径（不解析格式）。
++
++    UTF-16LE 要扫**两个字节对齐**：起始于奇数偏移的字符串，整体从 0 解码会被错位切碎
++    （实测只扫一个对齐会漏掉 12/46 个路径）。再加一遍 UTF-8 兜底。
++    """
++    found = set()
++    for buf, enc in ((data, "utf-16-le"), (data[1:], "utf-16-le"), (data, "utf-8")):
++        try:
++            text = buf.decode(enc, errors="ignore")
++        except Exception:
++            continue
++        for match in _REF_TOKEN.finditer(text):
++            path = match.group(0).replace("\\", "/").lstrip("/")
++            if "/" not in path or "." not in path:
++                continue
++            if path.rsplit(".", 1)[-1].lower() in RESOURCE_REF_EXTENSIONS:
++                found.add(path)
++    return found
++
++
++def _detectNativesPrefixes(outDir):
++    """从已解出来的目录结构里认出 `natives/<平台>` 前缀，不写死 `natives/STM`。"""
++    prefixes = []
++    nativesDir = os.path.join(outDir, "natives")
++    if os.path.isdir(nativesDir):
++        for name in sorted(os.listdir(nativesDir)):
++            if os.path.isdir(os.path.join(nativesDir, name)):
++                prefixes.append(f"natives/{name}")
++    return prefixes or ["natives/STM"]
++
++
++def resolveUnknownFilesFromReferences(outDir, dryRun=False, verbose=True):
++    """用已解出文件里的路径引用，反解 `UNKNOWN/` 下的 `#UNKN#` 文件名并归位。
++
++    返回 (归位数, UNKNOWN 里的总数)。**只在两个哈希都精确命中时才动文件**——猜错一个名字
++    比留在 UNKNOWN 里更糟，那会让人以为这就是正确的资源路径。
++    """
++    unknownDir = os.path.join(outDir, "UNKNOWN")
++    if not os.path.isdir(unknownDir):
++        return (0, 0)
++
++    # 1. UNKNOWN 里现有的文件：(hashLower, hashUpper) -> (文件名, 扩展名含版本号)
++    unknownIndex = {}
++    extVersions = {}          # "tex" -> {"241106027", ...}
++    for name in os.listdir(unknownDir):
++        match = _UNKNOWN_NAME.match(name)
++        if not match:
++            continue
++        suffix = match.group(3)                     # 例如 "tex.241106027"
++        unknownIndex[(int(match.group(1)), int(match.group(2)))] = (name, suffix)
++        ext = suffix.split(".", 1)[0].lower()
++        extVersions.setdefault(ext, set()).add(suffix)
++    if not unknownIndex:
++        return (0, 0)
++
++    # 2. 把**所有**解出来的文件当路径字典扫一遍（已命名的和 UNKNOWN 的都扫：
++    #    一个 UNKNOWN 的 .uvs 照样能供出它引用的贴图路径）
++    candidates = set()
++    for root, _dirs, files in os.walk(outDir):
++        for name in files:
++            path = os.path.join(root, name)
++            try:
++                if os.path.getsize(path) > 64 * 1024 * 1024:
++                    continue                        # 超大文件（贴图/网格）里没有引用表
++                with open(path, "rb") as handle:
++                    candidates |= scanResourceReferences(handle.read())
++            except OSError:
++                continue
++
++    # 3. 逐候选路径算哈希。版本号后缀**不猜**——直接用 UNKNOWN 文件名里带的那个，
++    #    同一个扩展名有几个版本就各试一遍。
++    prefixes = _detectNativesPrefixes(outDir)
++    resolved = 0
++    for internalPath in sorted(candidates):
++        ext = internalPath.rsplit(".", 1)[-1].lower()
++        for suffix in extVersions.get(ext, ()):
++            base = internalPath[:-(len(ext))] + suffix   # 换成带版本号的扩展名
++            for prefix in prefixes:
++                assetPath = f"{prefix}/{base}"
++                key = (hashUTF16(assetPath.lower()), hashUTF16(assetPath.upper()))
++                hit = unknownIndex.get(key)
++                if hit is None:
++                    continue
++                srcPath = os.path.join(unknownDir, hit[0])
++                dstPath = os.path.join(outDir, assetPath.replace("/", os.sep))
++                if verbose:
++                    print(f"Resolved {hit[0]} -> {assetPath}")
++                if not dryRun:
++                    try:
++                        os.makedirs(os.path.split(dstPath)[0], exist_ok=True)
++                        shutil.move(srcPath, dstPath)
++                    except OSError as err:
++                        print(f"Failed to move {hit[0]}: {err}")
++                        continue
++                del unknownIndex[key]
++                resolved += 1
++                break
++
++    total = resolved + len(unknownIndex)
++    if verbose:
++        print(f"Resolved {resolved}/{total} unknown files from resource references.")
++    return (resolved, total)
++
++
+ def getGamePakSize(libDir,gameName):
+ 	extractInfoPath = os.path.join(libDir,f"ExtractInfo_{gameName}.json")
+ 	fileSizeDumpPath = os.path.join(libDir,f"PakSizeInfo_{gameName}.json")
