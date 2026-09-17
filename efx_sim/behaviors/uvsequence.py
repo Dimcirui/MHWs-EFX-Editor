@@ -245,7 +245,10 @@ class UVSequence(Behavior):
             return 0                    # 只显示起始帧，没有“一轮”可言
         seq_index, _companion = f.sr_index("SequenceNo")
         frames = em.resources.frames(int(seq_index))
-        if not frames:
+        if len(frames or ()) <= 1:
+            # 只有一帧的 `.uvs` 和 `PB_START_ONLY` 是一回事：画面根本不变，没有"一轮"
+            # 可言。**返回 1 会让它变成整段播放的长度**（见
+            # `Simulator.suggested_duration()` 里记的那个真实故障）。
             return 0
         speed_lo, _speed_hi = f.sr_min_max("PlaySpeed")
         speed = max(1e-6, abs(speed_lo))

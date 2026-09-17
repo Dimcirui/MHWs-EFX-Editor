@@ -21,7 +21,7 @@ tools/scan_derived_fields.py —— 普查"哪些字段是记账量（改了不�
 同一个字段名在不同 attribute 上可能判定不同（`mdfPropertyIndex`：贴图那条被强制成 -1、
 其余原样保留），所以按名字隐藏之前必须确认它**每一个**落点都是"自愈"。
 
-**vendor 升级后要重跑**（CLAUDE.md 铁律 #6 的同一个理由：上游行为变了，我们照着它定的结论
+**vendor 升级后要重跑**（CLAUDE.md 铁律 #5「每次 bump vendor commit 要重跑整批」的同一个理由：上游行为变了，我们照着它定的结论
 就得重新确认）。跑之前先 `dotnet build tools/EfxBridge -p:LangVersion=preview`，还要有
 `tools/attrindex_full.json`（`EfxBridge attrindex` 产出）。
 """

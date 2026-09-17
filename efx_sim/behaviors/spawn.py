@@ -37,7 +37,7 @@ docs/SIM_PORT_PLAN.md §8.6。
 约束：纯 Python，**禁 import bpy**；零第三方依赖。
 """
 
-from ..registry import Behavior, register
+from ..registry import DURATION_INFINITE, Behavior, register
 from ..rng import emitter_stream_rng
 from ..stages import FORCE
 
@@ -118,7 +118,7 @@ class Spawn(Behavior):
         static, random_amount = f.sr("LoopNum")
         loops = int(static + random_amount)
         if loops <= 0:
-            return 0                      # 无限：长度由播放器自己定
+            return DURATION_INFINITE      # 无限循环：没有自然终点
         delay = f.min_max("EmitterDelayFrame")[1]
         interval = f.min_max("IntervalFrame")[1]
         return int(delay + max(0, loops - 1) * interval)

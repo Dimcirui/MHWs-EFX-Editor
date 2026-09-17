@@ -18,10 +18,15 @@ blender_efx_re/expr_edit.py —— Expression 公式的结构化（模块化）�
    导出只读 `formula`（`io_tree._export_expression_attribute()`）。编辑器的最坏结果因此
    被限制成"吐出一段不同的文本"——桥接解析器会拒绝非法文本，字节门禁会抓住合法但不同的
    文本；没有任何路径能绕过文本去改二进制。
-2. **不做节点编辑器**（`bpy.types.NodeTree`）。语料实测公式极小：抽样 1044 个官方文件里
-   898 条不同公式，AST 深度中位 2、最大 7，节点数中位 7、最大 25，26.9% 是单变量/单常量。
-   节点图那套机械成本（节点类 + socket + 双向同步 + 独立编辑器空间）对这个尺寸完全不划算，
-   递归缩进的行就够，还能直接复用现有面板风格。
+2. **这个视图不是唯一的编辑入口**：节点视口在 `expr_nodes.py`，两边共用同一个 `formula`。
+   改这一层的同步逻辑时记得那边也挂在 `ON_ROWS_CHANGED` 上。
+
+   ⚠ 这一条**原本是"不做节点编辑器"**，依据是语料实测公式极小（抽样 1044 个官方文件里
+   898 条不同公式，AST 深度中位 2、最大 7，节点数中位 7、最大 25，26.9% 是单变量/单常量），
+   节点图的机械成本不划算。那个判断只覆盖了"要不要那么大能力"，**没覆盖"当前这个画法读不
+   读得懂"**——窄面板下每个槽位单独占一行再缩进一级，一条 4 层的公式摊成一道往右下滑的楼梯，
+   而且纵向只展开"根 -> 选中槽位"这一条链，兄弟分支永远看不见。用户实际用下来卡在后者，
+   所以加了节点视口。**行视图保留**，它在窄侧栏里仍然比节点图省地方。
 3. **树的变换逻辑全在 `efx_sim/expr.py`**（零 bpy、`python -m unittest` 覆盖得到），
    这一层只做三件事：PropertyGroup ↔ dict 行、算子壳、画。逻辑别往这儿挪，挪过来就脱离
    单测了。
@@ -35,7 +40,7 @@ blender_efx_re/expr_edit.py —— Expression 公式的结构化（模块化）�
 `Unary0~12` / `Func18~21` 语义未确认（vendor 注释原话只是"potential candidates"），
 `Lerp`/`InvLerp`/`Clamp` 是名字确认、参数顺序靠猜。抽样 910 条公式里只有 36.0% 完全确认，
 28.7% 只差参数顺序，35.3% 含未确认函数或未知变量。菜单里这三档分开列、选中未确认的函数时
-在面板上标出来——**不把猜测画成确定**（铁律 #7）。
+在面板上标出来——**不把猜测画成确定**（铁律 #6）。
 """
 
 from __future__ import annotations
@@ -84,6 +89,21 @@ class _Suspended(object):
         return False
 
 
+#: 行视图被重写之后要通知谁。`expr_nodes` 在 register() 时把自己挂进来——
+#: 属性面板和节点视口是同一个 `formula` 的两个视图，改哪边另一边都要立刻跟上。
+#: 用回调表而不是直接 import `expr_nodes`：那边 import 了本模块，直连就是循环 import。
+ON_ROWS_CHANGED = []
+
+
+def _notify_rows_changed(curve) -> None:
+    for callback in tuple(ON_ROWS_CHANGED):
+        try:
+            callback(curve)
+        except Exception as exc:                        # noqa: BLE001
+            # 派生视图的订阅者炸了不该拖垮编辑本身（公式文本已经写定了）
+            print(f"[MHWs EFX Editor] 结构变更通知失败：{exc}")
+
+
 def _curve_of_node(node):
     """从一个节点行反查它所属的曲线。`path_from_id()` 给的是
     `efx_expression_curves[3].nodes[7]` 这种完整 RNA 路径，从里面把曲线下标抠出来——
@@ -126,6 +146,7 @@ def write_rows(curve, rows) -> None:
             item.value = float(row.get("value", 0.0) or 0.0)
         curve.nodes_active_index = min(
             max(curve.nodes_active_index, 0), max(len(curve.nodes) - 1, 0))
+    _notify_rows_changed(curve)
 
 
 def rebuild_rows(curve) -> None:
@@ -259,8 +280,10 @@ def _call_label(name) -> str:
     `+ - * /` 这四个符号则**只能**靠语义说话——它们的名字本身就是错的（`+` 是乘、
     `-` 是除），见 `efx_sim/expr.py::CALL_SEMANTICS`。"""
     display = _expr.call_display_name(name)
+    operator = _expr.CANONICAL_OPERATORS.get(name)
     if name in _expr.BINARY_OPERATORS:
-        head = name
+        # 规范符号在前、vendor 写法的符号跟在方括号里——和函数那一支的 `Sin  [Unary0]` 同形
+        head = "%s  [%s]" % (operator[0], name) if operator else name
     else:
         head = "%s (%d)" % (display, _expr.call_arity(name))
         if display != name:
@@ -277,6 +300,35 @@ def file_parameter_names(context) -> list:
     if root is None:
         return []
     return [p.name for p in root.efx_expression_parameters if p.name]
+
+
+#: 解不出名字的占位前缀（`ext:<hash>` / `const:` / `p:` / `ukn:`）。这些**不算拼错**
+#: ——它们本来就不在任何名字表里，见 `EfxExpressionTreeUtils.KnownExternalHashes`。
+_PLACEHOLDER_VAR_PREFIXES = ("ext:", "const:", "p:", "ukn:")
+
+
+def unknown_variable_names(context, curve) -> list:
+    """这条公式里**既不是内置外部变量、也不在本文件具名参数表里**的变量名。
+
+    为什么要专门报出来：求值时未知变量按 `0.0` 处理（`expr._resolve_variable()` 会记一条
+    note），而 `0` 往往让公式**看起来仍然合理**——实测有人把 `PI` 打成小写 `pi`，
+    `Sin(TIMER/60 + pi/2) - Cos(TIMER/60)` 这条本该恒为 0 的式子退化成 `sin(t) - cos(t)`，
+    在游戏里画出一条漂亮的上升斜线，一点都不像出错。note 只在下面「数值可视化」那一节
+    显示，位置离公式框很远，所以这里单独给一份、画在公式框旁边。
+
+    ⚠ 大小写敏感，**不做"你是不是想打 PI"的自动纠正**：猜一个名字等于替用户改数据。
+    """
+    names = set(_expr.KNOWN_EXTERNAL_VARIABLES) | set(file_parameter_names(context))
+    unknown = []
+    for node in curve.nodes:
+        if node.kind != "VAR":
+            continue
+        name = (node.name or "").strip()
+        if not name or name in names or name.startswith(_PLACEHOLDER_VAR_PREFIXES):
+            continue
+        if name not in unknown:
+            unknown.append(name)
+    return unknown
 
 
 # ---------------------------------------------------------------------------

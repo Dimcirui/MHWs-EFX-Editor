@@ -27,7 +27,7 @@ blender_efx_re/expr_preview.py —— Expression 公式的数值可视化（读�
 - 代价是**没有缩放平移**，也不再往 .blend 里写自定义属性和 Action（连带不再需要"烘完
   导出字节不变"那条门禁）。
 
-门禁边界（CLAUDE.md 验证纪律 #10）
+门禁边界（CLAUDE.md 验证纪律）
 ----------------------------------
 `--background` 下没有 GPU 上下文，`_draw_hud()` 门禁跑不到。所以照 `sim_preview` 的分法
 拆两层：**几何全在 `efx_sim/plot.py`**（零 bpy，`python -m unittest` 覆盖：自动缩放、
@@ -102,7 +102,7 @@ def collect_expr_parameters(root_col) -> dict:
 
     `Float`/`Range`/`Float2` 取 `value1`（`Range` 的 vendor 注释推测是
     `{初始值, 最小值, 最大值}`，初始值就是 `value1`）。`Color` **不收**——公式里把它当
-    标量用的读法我们没有证据，收进来等于编一个数（铁律 #7）。
+    标量用的读法我们没有证据，收进来等于编一个数（铁律 #6）。
     """
     out = {}
     if root_col is None:

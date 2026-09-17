@@ -38,6 +38,16 @@ efx_sim/registry.py —— Behavior 协议 + 注册表
 
 from . import stages as _stages
 
+#: `Behavior.duration_hint()` 的哨兵返回值：**本 behavior 说这个效果没有自然终点**
+#: （无限循环的 `Spawn`、持续性的 `Life`）。
+#:
+#: 必须和 `0` 区分开。`0` 的意思是"我没有意见"（没有这个属性、或这个属性和播放长度无关），
+#: 而 `suggested_duration()` 是对全部提示取 **max**——两者混用会出现这种真实故障：一个
+#: 无限发射 + 持续寿命的 entry 里，`Spawn`/`Life` 都返回 0（本意是"无限"），全场唯一的
+#: 非零提示来自 `UVSequence` 的"一轮序列 1 帧"，于是整段播放长度被定成 1 帧，模拟每个
+#: tick 都在第 0 帧撞到终点然后重置回 -1 帧，面板上就是"帧数在 -1 上不停跳"、画面永远空。
+DURATION_INFINITE = -1
+
 
 # ---------------------------------------------------------------------------
 # Behavior 基类
@@ -78,6 +88,15 @@ class Behavior(object):
     def on_particle_death(self, p, em):
         """粒子死亡。返回 `[SpawnRequest]` 或 None（PtLife 将来住这儿）。"""
         return None
+
+    def duration_hint(self, em):
+        """『播放一次』该多长（帧）。`0`=没有意见，`DURATION_INFINITE`=没有自然终点。
+
+        ⚠ **周期性的修饰类 behavior（`UVSequence` 这种）返回的是『一轮多长』，不是『这个
+        效果多长』。** 它只配在别人都没有意见时垫个下限，不该独自决定播放长度——
+        `Simulator.suggested_duration()` 靠 `DURATION_INFINITE` 把这两类区分开。
+        """
+        return 0
 
     def build_render(self, p, em, view, item):
         """渲染 pass。RENDER_BODY 阶段 `item` 为 None、负责产出；RENDER_MOD 阶段 `item`

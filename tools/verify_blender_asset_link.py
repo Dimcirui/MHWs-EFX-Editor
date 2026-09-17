@@ -13,7 +13,7 @@ tools/verify_blender_asset_link.py —— 导入时资源联动（asset_link.py�
    这件事离 `typed_children()` 只有一个 `~TYPE` 判断的距离——判错了就是把一个网格对象当成
    attribute 导出去。现有的 `verify_blender_roundtrip.py` 是"导入->导出"、中间不经过联动，
    对这种错**完全免疫**。
-   第 3 项带**反例对照组**（铁律 #11）：把同一个挂上去的对象打上 `~TYPE = EFX_ATTRIBUTE`
+   第 3 项带**反例对照组**（验证纪律）：把同一个挂上去的对象打上 `~TYPE = EFX_ATTRIBUTE`
    标记，字节必须**变**——否则这条字节比较根本没有牙。
 2. **引用发现要和文件内容对得上。** `iter_mesh_refs()` / `iter_uvs_refs()` 走的是建好的
    属性树，拿 `bridge.dump_efx()` 的原始 JSON 当独立第二意见交叉核对。
@@ -110,7 +110,7 @@ def _pick_sample() -> pathlib.Path:
 
 def _export_bytes(root_col, tmpdir: pathlib.Path, tag: str) -> bytes:
     """走导出算子的数据路径写一份文件，读回字节。判据是"联动前后一致"，不是"和原文件一致"
-    （铁律 #9）。"""
+    （验证纪律）。"""
     data = io_tree.export_root_to_efxfile(root_col)
     out = tmpdir / f"{tag}.efx"
     path, _notice, fatal = operators._ensure_version_suffix(str(out), data)
@@ -168,7 +168,7 @@ def _json_sequence_numbers(sample: pathlib.Path) -> list[int]:
 
 
 def _import_sample(sample: pathlib.Path):
-    """走**真实的导入算子**（铁律 #8），不是直接调 build_root_from_efxfile()——
+    """走**真实的导入算子**（验证纪律），不是直接调 build_root_from_efxfile()——
     `efx_source_dir` 之类"只有算子才会填"的东西，绕过算子就测不到。
     两个联动开关留默认关，联动那一半在 check_readonly() 里单独跑。
 
@@ -235,7 +235,7 @@ def check_root_priority(sample: pathlib.Path, tmpdir: pathlib.Path) -> None:
            "resolve(near=...) 拿到的是 efx 旁边那份，不是语料/缓存那份",
            f"{got}（期望 {planted}）")
 
-    # 反例对照组（铁律 #11）：不给 near 就该退回原来那条路——不然上面那条等于没测
+    # 反例对照组（验证纪律）：不给 near 就该退回原来那条路——不然上面那条等于没测
     _check(pathlib.Path(asset_paths.resolve(rel)).resolve() != planted.resolve(),
            "反例对照：不给 near 时不会命中这棵临时树（说明上面那条确实是 near 起的作用）")
 
@@ -319,7 +319,7 @@ def check_readonly(root_col, tmpdir: pathlib.Path) -> None:
            f"{len(before)} vs {len(after)} 字节")
 
     # (c) 反例对照组：把顶替对象打上 attribute 标记，导出结果必须**不一样**——不变就说明
-    #     上面那条字节比较根本没有牙（铁律 #11）。
+    #     上面那条字节比较根本没有牙（验证纪律）。
     #     "不一样"包含两种：字节不同，或者干脆导不出去（多出来的那条 attribute 没有合法
     #     内容，C# 侧反序列化就会拒绝）。两种都证明这条路真的会被污染，都算通过。
     stand_in["~TYPE"] = model.TYPE_ATTRIBUTE

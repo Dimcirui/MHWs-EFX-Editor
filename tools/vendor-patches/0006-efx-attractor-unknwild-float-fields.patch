@@ -1,0 +1,27 @@
+diff --git a/REE-Lib/OtherFiles/EFX/EfxMiscStructs.cs b/REE-Lib/OtherFiles/EFX/EfxMiscStructs.cs
+index 9d5cdf6..12536e9 100644
+--- a/REE-Lib/OtherFiles/EFX/EfxMiscStructs.cs
++++ b/REE-Lib/OtherFiles/EFX/EfxMiscStructs.cs
+@@ -286,7 +286,12 @@ public partial class EFXAttributeAttractor : EFXAttribute, IBoneRelationAttribut
+ 	public float ForceResist;
+ 
+ 	[RszVersion(EfxVersion.MHWilds, EndAt = nameof(endwilds))]
+-	public UndeterminedFieldType unknWild1;
++	// MHWs-EFX-Editor 本地补丁：全语料 1105 个实例的取值分布证实这两个字段是 float，不是
++	// 未定型的裸 int——非零取值按 IEEE754 位模式解出来全是干净的十进制数（unknWild1: 0.1/
++	// 0.2/0.3/0.8/1.0/8.0/10.0；unknWild10 仅在 Flags==8 时非零，落在 -0.68~2.0 弧度），
++	// 按裸 int 读会是 1036831949 这种没有意义的天文数字。语义仍未知，先只订正数据类型，
++	// 不改字段名、不下语义结论。见 tools/vendor-patches/README.md。
++	public float unknWild1;
+ 	public UndeterminedFieldType unknWild2;
+ 	public via.Range unknWild3;
+ 	public via.Range unknWild4;
+@@ -295,7 +300,7 @@ public partial class EFXAttributeAttractor : EFXAttribute, IBoneRelationAttribut
+ 	public via.Range unknWild7;
+ 	public via.Range unknWild8;
+ 	public via.Range unknWild9;
+-	public UndeterminedFieldType unknWild10;
++	public float unknWild10;
+ 	public UndeterminedFieldType endwilds;
+ 
+ 	[RszInlineWString(ByteSize = true)] public string? boneName;

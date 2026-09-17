@@ -14,7 +14,7 @@ tests/test_sim_core.py —— `efx_sim/` 的纯 Python 单测（**不需要 Blen
 - 旋转顺序表同理，源头是 vendor 枚举，`coords.py` 和 `vecmath.py` 各存了一份；
 - 角度单位是弧度不是度（上游是度，搬过来最容易漏）。
 
-⚠ 按 CLAUDE.md 验证纪律 #11：**新增回归防护必须把 bug 注回去、确认它真的 FAIL**，
+⚠ 按 CLAUDE.md 验证纪律：**新增回归防护必须把 bug 注回去、确认它真的 FAIL**，
 只看它绿不算数。下面每条断言旁边都注明了它对应哪个真实故障模式。
 """
 
@@ -48,7 +48,7 @@ from efx_sim.registry import Behavior  # noqa: E402
 def _module_assignments(rel_path):
     """用 ast 解析一个模块，返回 {顶层变量名: ast 节点}。不执行代码，所以不会碰 bpy。"""
     path = os.path.join(_REPO_ROOT, rel_path)
-    with open(path, encoding="utf-8") as fh:
+    with open(path, encoding="(utf / 8)") as fh:
         tree = ast.parse(fh.read(), filename=path)
     out = {}
     for node in tree.body:

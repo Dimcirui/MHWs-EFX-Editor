@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 
 import bpy
 from bpy.types import Collection, Object
@@ -46,6 +47,11 @@ from . import model
 # transform3d_view 只在模块级 import model/coords，不 import io_tree（它对 io_tree 的调用是
 # 函数内延迟 import），所以这里正着 import 不成环。
 from . import transform3d_view
+
+try:
+    from ..efx_sim import expr as _expr
+except ImportError:  # pragma: no cover - 门禁/单测的顶层包布局
+    from efx_sim import expr as _expr
 
 _EMPTY_DISPLAY_SIZE = 0.1
 
@@ -152,6 +158,9 @@ def _populate_expression_attribute(obj: Object, attr_dict: dict) -> None:
         name = bit_names[bit_index] if bit_index < len(bit_names) else None
         curve.bit_name = name or model.resolve_expression_bit_name(attr_dict.get("$type", ""), bit_index)
         curve.formula = entry.get("expression", "0") or "0"
+        # 参数表原样存住。公式文本看不出一个标识符是外部变量还是文件里的具名常量，
+        # 只有这张表的 source/constantValue 知道——丢了就静默把 `PI` 从 π 变成 0。
+        curve.tree_parameters = json.dumps(entry.get("parameters") or [])
         # 显式建一次结构化视图，不指望 `formula` 的 update 回调——回调在"赋的值和原值
         # 相同"时会不会触发是 RNA 的实现细节，导入路径不能押在那上面（默认值恰好是 "0"，
         # 语料里 `formula == "0"` 的公式真实存在）。视图是派生量，重建一次不花钱。
@@ -588,17 +597,52 @@ def _export_clip_attribute(obj: Object) -> tuple[dict, dict]:
     return clip_data, clip_bits
 
 
+def _expression_tree_parameters(curve) -> list:
+    """一条公式要写回 JSON 的树参数表。
+
+    两部分：
+
+    1. **导入时存下来的原表原样带回去**（`curve.tree_parameters`）。公式文本看不出一个
+       标识符是外部变量还是文件里的具名常量，这张表是唯一的真相来源。
+    2. **补上公式里引用了、但表里没有的具名常量**（`expr.NAMED_CONSTANTS`）。用户在
+       界面上新打一个 `PI` 时表里当然没有它，不补的话解析器按名字回退成 External，
+       引擎没有东西绑给它、实机读成 0 —— 用户实测踩过这一脚。
+
+    只补、不改：表里已经有那个哈希就不动它（文件里写的值优先于我们的默认值）。
+    """
+    try:
+        params = json.loads(curve.tree_parameters or "[]")
+    except (TypeError, ValueError):
+        params = []
+    if not isinstance(params, list):
+        params = []
+    present = {p.get("parameterNameHash") for p in params if isinstance(p, dict)}
+    names = {(n.name or "").strip() for n in curve.nodes if n.kind == "VAR"}
+    for name, (name_hash, value) in _expr.NAMED_CONSTANTS.items():
+        if name in names and name_hash not in present:
+            params.append({"parameterNameHash": name_hash,
+                           "constantValue": value,
+                           "source": 1})   # ExpressionParameterSource.Constant
+    return params
+
 def _export_expression_attribute(obj: Object) -> tuple[dict, dict]:
     """_populate_expression_attribute() 的反函数。只写 parsedExpressions（文本公式），把
     expressions（真正参与二进制写出的后缀栈）留空——EfxBridge 的 load 会在反序列化后调用
     CompileExpressions()（tools/EfxBridge/Program.cs，逐个把公式文本摊平回 expressions，
-    同时规避三个 vendor bug，见 docs/TOPLEVEL_STRUCTURE.md）。parameters 留空数组：具名/
-    `p:`/`ext:` 前缀的标识符不需要预先提供，只有复用一个已存在 `const:` 参数的自定义
-    constantValue 时才用得上，v1 不处理这个边缘情况。"""
+    同时规避三个 vendor bug，见 docs/TOPLEVEL_STRUCTURE.md）。
+
+    ⚠ **parameters 必须原样带回去，不能留空数组。** 这里原来写的是"具名标识符不需要预先
+    提供，v1 不处理"——那个判断是错的：公式文本区分不了"引擎喂的外部变量"和"值存在文件里
+    的具名常量"（两者都只是一个名字），只有这张表的 `source`/`constantValue` 知道。留空的
+    后果实测过：导入用了 `PI` 的官方特效再导出，`source` 从 1(Constant) 退成 2(External)、
+    值从 3.1415927 变成 0，效果静默改掉（铁律 #2）。"""
     curves = sorted(obj.efx_expression_curves, key=lambda c: c.bit_index)
     expression_dict = {
         "version": obj.efx_version,
-        "parsedExpressions": [{"expression": c.formula, "parameters": []} for c in curves],
+        "parsedExpressions": [
+            {"expression": c.formula, "parameters": _expression_tree_parameters(c)}
+            for c in curves
+        ],
         "expressions": [],
     }
     expression_bits = {"bitCount": obj.efx_expression_bit_count, "bits": [c.bit_index for c in curves]}
@@ -1024,7 +1068,7 @@ def check_expression_bits(root_col: Collection) -> None:
 # 目前 #6（Func18/19/20 两参函数）、#7（material 字段反序列化）都已经修掉了——#7 在
 # EfxBridge 自己的 JSON 多态配置里修（`MaterialPolymorphismResolver`，
 # tools/EfxBridge/Program.cs），#6 是少见的、正式打了本地补丁的 vendor 例外
-# （tools/vendor-patches/，CLAUDE.md #5 的唯一例外）。两条都没剩下要在这里拦的构造，
+# （tools/vendor-patches/，CLAUDE.md 铁律 #4 的唯一例外）。两条都没剩下要在这里拦的构造，
 # 下面这个函数暂时是空的——**空是因为已知问题都解决了，不是没做**，下次撞上新的"能导入、
 # 改得动、但确定写不回去"的构造，就往 `_unwritable_in_attribute()` 里加一条分支。
 #

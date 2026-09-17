@@ -3,7 +3,7 @@
 efx_sim/plot.py —— 把一条采样序列变成"可以直接喂给 GPU 的折线几何"
 
 `blender_efx_re/expr_preview.py` 在 3D 视口里用 `gpu` + `blf` 画 Expression 公式的曲线。
-**`--background` 下没有 GPU 上下文，那条绘制路径门禁永远跑不到**（CLAUDE.md 验证纪律 #10），
+**`--background` 下没有 GPU 上下文，那条绘制路径门禁永远跑不到**（CLAUDE.md 验证纪律），
 所以这里照 `sim_preview` 已有的分法把两层拆开：
 
 - **本模块（几何层）**：采样、自动缩放、刻度选取、数值→归一化坐标映射、断点分段。

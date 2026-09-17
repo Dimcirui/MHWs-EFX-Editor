@@ -12,7 +12,7 @@ tests/test_sim_behaviors.py —— P0 五个 behavior + Simulator 的单测（**
 - `Velocity3D` 的 `Speed`/`GravityRate` 按秒、`SpeedCoef` 按帧，混一起就是量级灾难；
 - 未实现的 `VelocityType` 必须进 note 而不是按 Direction 糊过去。
 
-⚠ 按 CLAUDE.md 验证纪律 #11：每条断言都对应一个真实故障模式，且都实际注入验证过会 FAIL。
+⚠ 按 CLAUDE.md 验证纪律：每条断言都对应一个真实故障模式，且都实际注入验证过会 FAIL。
 """
 
 import math
@@ -333,14 +333,17 @@ class TestSpawn(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 def shape_block(shape, rx=(0.0, 1.0), ry=(0.0, 1.0), rz=(0.0, 1.0),
-                sh=(1.0, 0.0), sv=(1.0, 0.0)):
+                sh=(1.0, 0.0), sv=(1.0, 0.0), use_ext=False,
+                divide_axis=0, divide_num=0, divide_h=0, divide_v=0):
     return ("EmitterShape3D", {
         "ShapeType": shape,
         "RangeX": _range(*rx), "RangeY": _range(*ry), "RangeZ": _range(*rz),
         "ScaleHorizontal": _range(*sh), "ScaleVertical": _range(*sv),
+        "UseExtension": use_ext,
         "LocalRotation": {"X": 0.0, "Y": 0.0, "Z": 0.0}, "RotationOrder": 2,
-        "RangeDivideNum": 0, "RangeDivideHorizontalNum": 0,
-        "RangeDivideVerticalNum": 0, "RotationCorrect": 0,
+        "RangeDivideAxis": divide_axis, "RangeDivideNum": divide_num,
+        "RangeDivideHorizontalNum": divide_h,
+        "RangeDivideVerticalNum": divide_v, "RotationCorrect": 0,
     })
 
 
@@ -356,9 +359,46 @@ class TestEmitterShape3D(unittest.TestCase):
         return out
 
     def test_box_samples_inside_the_interval(self):
-        for p in self._positions(shape_block(0, rx=(0.2, 0.5))):
-            self.assertGreaterEqual(p.x, 0.2 - 1e-9)
-            self.assertLessEqual(p.x, 0.7 + 1e-9)      # static_random -> [s, s+r]
+        """Box 的 `RangeX/Y/Z` 是**以 0 为界的绝对值区间，符号独立随机**（2026-09-17 实机
+        确认），不是旧版"逐轴 `U(lo,hi)` 独立取的实心盒子"——`rx=(0.2,0.5)` 应该在 X 轴两侧
+        各出现，钳在 `±0.5`。⚠ 这里不测"避开 `(-0.2,0.2)`"：Y/Z 用默认的 `lo=0`（没有挖空），
+        三轴联合挖空需要三个轴同时落进各自的洞里才算数（见
+        `test_box_hollow_cube_excludes_the_joint_center`），单独一根轴有 `lo` 不构成有效
+        空腔。"""
+        pts = self._positions(shape_block(0, rx=(0.2, 0.5)))
+        for p in pts:
+            self.assertLessEqual(abs(p.x), 0.5 + 1e-9)
+        self.assertTrue(any(p.x > 0.0 for p in pts), "没有粒子落在 +X 一侧")
+        self.assertTrue(any(p.x < 0.0 for p in pts), "没有粒子落在 -X 一侧")
+
+    def test_box_negative_min_clamps_to_zero(self):
+        """负 `min` 不管多负都当 0——不是"允许负值的独立位置区间"（2026-09-17 实机确认：
+        `(-100, .2)` 和 `(0, .2)` 表现完全一样，不会长出一个从 -100 到 .2 的巨型盒子）。"""
+        far_negative = self._positions(shape_block(0, rx=(-100.0, 0.2), ry=(-100.0, 0.2),
+                                                    rz=(-100.0, 0.2)))
+        for p in far_negative:
+            for axis in ("x", "y", "z"):
+                self.assertLessEqual(abs(getattr(p, axis)), 0.2 + 1e-9,
+                                     "%s 轴跑出了 [-0.2, 0.2]，负 min 没有钳到 0" % axis)
+
+    def test_box_hollow_cube_excludes_the_joint_center(self):
+        """三轴同取非零 min 时，正中间的小立方体（三轴**同时**落进各自的 `(-lo,lo)`）整个
+        是空的——2026-09-17 实机确认：Box 的挖空是三轴联合判定（大盒子减去正中央的小盒子），
+        不是逐轴独立钳位（后者会切出 8 个不连通的角落小盒子）。
+
+        ⚠ 只测"不掉进中心空腔"区分不出两种读法——逐轴独立钳位下每根轴单独也**永远不会**
+        落进 `(-lo,lo)`，同样能通过那条断言。真正能区分的是**单根轴自己是不是也会落进它
+        自己的洞里**（只要别的轴够远、整体没掉进联合空腔就行）：联合读法下会，独立钳位读法
+        下永远不会。"""
+        pts = self._positions(shape_block(0, rx=(0.1, 0.2), ry=(0.1, 0.2), rz=(0.1, 0.2)))
+        for p in pts:
+            self.assertFalse(abs(p.x) < 0.1 - 1e-9 and abs(p.y) < 0.1 - 1e-9
+                             and abs(p.z) < 0.1 - 1e-9,
+                             "粒子 %r 掉进了正中间的空腔" % (p.as_tuple(),))
+            for axis in ("x", "y", "z"):
+                self.assertLessEqual(abs(getattr(p, axis)), 0.2 + 1e-9)
+        self.assertTrue(any(abs(p.x) < 0.1 - 1e-9 for p in pts),
+                        "X 轴自己从没落进过 (-0.1,0.1)——像是逐轴独立钳位，不是联合挖空")
 
     def test_sweep_gating_never_reads_the_neutral_default(self):
         """用不上 `Scale*` 的形状必须走整圈 / 全扫的兜底，**绝不能读那个 `(1.0, 0.0)`**。
@@ -370,6 +410,9 @@ class TestEmitterShape3D(unittest.TestCase):
         ⚠ 这条**直接测 `_sweep()`**，不通过采样结果间接测：Box 分支压根不调 `_sweep()`，
         Sphere 两个字段都在门控名单里——靠采样对比的话这个门控是够不到的，测了个寂寞。
         第一版就是这么写的，注入 bug 之后测试照样全绿才发现。
+
+        `use_ext=True` 固定传给所有调用，专测 `ShapeType` 这一层门控——`UseExtension` 那层
+        门控由 `test_sweep_requires_use_extension` 单独测，两层门控揉一起测会互相遮盖。
         """
         from efx_sim.behaviors.emittershape3d import (SHAPE_BOX, SHAPE_CYLINDER,
                                                       SHAPE_SPHERE, _sweep)
@@ -381,7 +424,7 @@ class TestEmitterShape3D(unittest.TestCase):
         # 用不上的组合 -> 兜底值，不是 (1.0, 0.0)
         for shape, key in ((SHAPE_BOX, "ScaleHorizontal"), (SHAPE_BOX, "ScaleVertical"),
                            (SHAPE_CYLINDER, "ScaleVertical")):
-            start, span = _sweep(f, key, shape)
+            start, span = _sweep(f, key, shape, True)
             self.assertNotEqual((start, span), (1.0, 0.0),
                                 "%s/%s 读到了中性默认值" % (shape, key))
             self.assertAlmostEqual(abs(span), 2 * math.pi if key == "ScaleHorizontal"
@@ -390,12 +433,49 @@ class TestEmitterShape3D(unittest.TestCase):
         # 用得上的组合 -> 如实读字段
         for shape, key in ((SHAPE_SPHERE, "ScaleHorizontal"), (SHAPE_SPHERE, "ScaleVertical"),
                            (SHAPE_CYLINDER, "ScaleHorizontal")):
-            self.assertEqual(_sweep(f, key, shape), (1.0, 0.0))
+            self.assertEqual(_sweep(f, key, shape, True), (1.0, 0.0))
 
-    def test_box_sampling_is_unaffected_by_scale_fields(self):
+    def test_sweep_requires_use_extension(self):
+        """`UseExtension` 关闭时，即使形状真的用得上这个字段，也必须走整圈/全扫兜底——
+        2026-09-17 全语料 `condstats ShapeType,UseExtension` 联合分桶确认：`UseExtension=
+        false` 时 Sphere/Cylinder 的 `ScaleHorizontal`/`ScaleVertical` 恒为中性/全扫默认值，
+        无一例外。"""
+        from efx_sim.behaviors.emittershape3d import SHAPE_CYLINDER, SHAPE_SPHERE, _sweep
+        from efx_sim.shapes import FieldView
+
+        f = FieldView({"ScaleHorizontal": _range(0.0, math.pi / 2),
+                       "ScaleVertical": _range(0.0, math.pi / 4)}, "EmitterShape3D")
+        for shape, key in ((SHAPE_SPHERE, "ScaleHorizontal"), (SHAPE_SPHERE, "ScaleVertical"),
+                           (SHAPE_CYLINDER, "ScaleHorizontal")):
+            start, span = _sweep(f, key, shape, False)
+            self.assertAlmostEqual(abs(span), 2 * math.pi if key == "ScaleHorizontal"
+                                   else math.pi, places=6,
+                                   msg="%s/%s 在 UseExtension=False 时没有走全扫兜底" % (shape, key))
+
+    def test_box_sampling_is_unaffected_by_scale_fields_when_extension_off(self):
         a = self._positions(shape_block(0, sh=(1.0, 0.0), sv=(1.0, 0.0)))
-        b = self._positions(shape_block(0, sh=(0.0, 2 * math.pi), sv=(-math.pi / 2, math.pi)))
+        b = self._positions(shape_block(0, sh=(0.5, 1.0), sv=(0.3, 0.7)))
         self.assertEqual([p.as_tuple() for p in a], [p.as_tuple() for p in b])
+
+    def test_box_taper_scales_x_and_z_independently_when_extension_on(self):
+        """`UseExtension` 打开后 `ScaleHorizontal`→X 轴锥度、`ScaleVertical`→Z 轴锥度
+        （2026-09-17 实机双向换算测试确认，见 emittershape3d 模块说明）。`(s,r)=(1,1)` 在
+        `t=1`（`+hi_y` 端）应该把该轴放大到 2 倍，`(1,0)` 的另一轴保持不变。"""
+        block = shape_block(0, rx=(0.0, 1.0), ry=(1.0, 1.0), rz=(0.0, 1.0),
+                            sh=(1.0, 1.0), sv=(1.0, 0.0), use_ext=True)
+        for p in self._positions(block):
+            self.assertLessEqual(abs(p.x), 2.0 + 1e-9, "X 轴没有按 ScaleHorizontal 放大到 2 倍")
+            self.assertLessEqual(abs(p.z), 1.0 + 1e-9, "Z 轴不该受 ScaleHorizontal 影响")
+
+    def test_height_taper_is_not_clamped_to_nonnegative(self):
+        """负缩放是真实存在的效果（2026-09-17 实机确认，Box 的水平/垂直锥度取负值有对应
+        视觉表现），不能钳到 `[0,+∞)`——早先钳过一版，被实机推翻。"""
+        from efx_sim.behaviors.emittershape3d import _height_taper
+        from efx_sim.shapes import FieldView
+
+        f = FieldView({"ScaleHorizontal": _range(1.0, -3.0)}, "EmitterShape3D")
+        scale = _height_taper(f, "ScaleHorizontal", True, 1.0)  # s=1, r=-3, t=1 -> -2
+        self.assertAlmostEqual(scale, -2.0, places=6, msg="负缩放被钳成了非负数")
 
     def test_sphere_is_bounded_by_outer_radius(self):
         pts = self._positions(shape_block(1, rx=(0.0, 2.0), ry=(0.0, 2.0), rz=(0.0, 2.0),
@@ -433,9 +513,10 @@ class TestEmitterShape3D(unittest.TestCase):
         self.assertTrue(all(-0.5001 <= p.y <= 0.5001 for p in pts), "粒子跑出了 [-0.5, 0.5]")
 
     def test_horizontal_sweep_limits_azimuth(self):
-        """半圈扫描时不应该出现在另外半圈里。"""
+        """半圈扫描时不应该出现在另外半圈里。半圈扫描要 `UseExtension` 打开才生效
+        （2026-09-17 实机+全语料确认）。"""
         pts = self._positions(shape_block(2, rx=(1.0, 1.0), ry=(0.0, 0.0), rz=(1.0, 1.0),
-                                          sh=(0.0, math.pi)))
+                                          sh=(0.0, math.pi), use_ext=True))
         self.assertTrue(all(p.z > -1e-6 for p in pts), "半圈扫描漏到了 z<0")
 
     def test_outline_is_non_empty_for_every_shape(self):
@@ -467,21 +548,89 @@ class TestEmitterShape3D(unittest.TestCase):
         self.assertTrue(any(abs(rad(a) - 0.5) < 0.05 and abs(rad(b) - 1.0) < 0.05
                             for a, b in segs), "没有一条棱从内层连到外层")
 
-    def test_box_outline_has_no_inner_shell(self):
-        """Box 是**实心**的（逐轴 U(lo,hi) 独立取），画内层会画出一个假空腔。"""
-        # 夹具就是 `(min, max)`：区间 [0.5, 1.5]，八个角点非 0.5 即 1.5
-        segs = self._outline(shape_block(0, rx=(0.5, 1.5), ry=(0.5, 1.5), rz=(0.5, 1.5)))
+    def test_box_outline_is_solid_when_min_is_zero(self):
+        """`lo=0` 时退化成实心盒子——对称"幅度+随机符号"模型下坐标只会落在 `±hi`。"""
+        segs = self._outline(shape_block(0, rx=(0.0, 1.5), ry=(0.0, 1.5), rz=(0.0, 1.5)))
         for seg in segs:
             for pt in seg:
                 for v in (pt.x, pt.y, pt.z):
-                    self.assertTrue(abs(v - 0.5) < 1e-6 or abs(v - 1.5) < 1e-6,
-                                    "Box 线框出现了不在角点上的坐标 %r" % v)
-        self.assertEqual(len(segs), 12, "Box 应该正好 12 条棱")
+                    self.assertLess(abs(abs(v) - 1.5), 1e-6,
+                                    "lo=0 时线框不该有 ±1.5 以外的坐标 %r" % v)
+        self.assertEqual(len(segs), 12, "实心 Box 应该正好 12 条棱")
+
+    def test_box_outline_has_inner_shell_when_min_is_nonzero(self):
+        """`lo` 非零时线框要有内层（2026-09-17 实机确认的空心方筒，见模块说明）——对称模型下
+        内层落在 `±lo`，不再是旧版"Box 恒实心，没有内层"的假设。"""
+        segs = self._outline(shape_block(0, rx=(0.5, 1.5), ry=(0.5, 1.5), rz=(0.5, 1.5)))
+        coords = [v for seg in segs for pt in seg for v in (pt.x, pt.y, pt.z)]
+        self.assertTrue(any(abs(abs(v) - 0.5) < 1e-6 for v in coords), "没有画出内层 (lo=0.5)")
+        self.assertTrue(any(abs(abs(v) - 1.5) < 1e-6 for v in coords), "没有画出外层 (hi=1.5)")
+
+    def _particles_fit_outline(self, block, n=120):
+        """粒子必须全部落在线框的包围盒里 —— 线框存在的全部意义就是这个。"""
+        pts = self._positions(block, n=n)
+        flat = [v for seg in self._outline(block) for v in seg]
+        self.assertTrue(flat, "线框是空的")
+        for axis in ("x", "y", "z"):
+            lo = min(getattr(v, axis) for v in flat)
+            hi = max(getattr(v, axis) for v in flat)
+            for p in pts:
+                value = getattr(p, axis)
+                self.assertGreaterEqual(value, lo - 1e-6,
+                                        "%s 轴上粒子 %.4f 跑到线框 [%.4f, %.4f] 外面"
+                                        % (axis, value, lo, hi))
+                self.assertLessEqual(value, hi + 1e-6,
+                                     "%s 轴上粒子 %.4f 跑到线框 [%.4f, %.4f] 外面"
+                                     % (axis, value, lo, hi))
+
+    def test_solid_shape_with_degenerate_sweep_still_shows_the_radial_extent(self):
+        """**实心 + 扫描跨度为 0**：粒子沿半径铺成一条从原点射出的线段，线框必须画出
+        这条线段，不能只剩最外端一个点。
+
+        径向棱原来只在"空心"（内半径 != 0）时才画，于是这种组合整个塌掉：实测球
+        `RangeXYZ=(0,2)`、`ScaleHorizontal=(360, 0)` 时，粒子占 `Y[0, 1.88]`，而线框
+        三条零长度线段全挤在 `(0.16, 1.92, -0.54)` 一个点上——"框和粒子对不对得上"
+        这个唯一用途直接失效。
+        """
+        for shape in (1, 2):
+            with self.subTest(shape=shape):
+                block = shape_block(shape, rx=(0.0, 2.0), ry=(0.0, 2.0), rz=(0.0, 2.0),
+                                    sh=(0.0, 0.0), sv=(0.0, 0.0), use_ext=True)
+                flat = [v for seg in self._outline(block) for v in seg]
+                reach = max(math.sqrt(v.x ** 2 + v.y ** 2 + v.z ** 2) for v in flat)
+                near = min(math.sqrt(v.x ** 2 + v.y ** 2 + v.z ** 2) for v in flat)
+                self.assertGreater(reach, 1.0, "线框没画到外边界")
+                self.assertLess(near, 1e-6, "线框没从原点画起（径向棱缺失）")
+
+    def test_particles_stay_inside_the_outline_for_every_sweep(self):
+        """整圈 / 半圈 / 零跨度 / 空心 都要成立，不能只在整圈那档对。"""
+        TAU, PI = 2 * math.pi, math.pi
+        cases = [
+            ("球 实心 整球", 1, (0.0, 2.0), (0.0, TAU), (-PI / 2, PI)),
+            ("球 实心 零扫描", 1, (0.0, 2.0), (360.0, 0.0), (360.0, 0.0)),
+            ("球 实心 90 度扇", 1, (0.0, 2.0), (0.0, PI / 2), (-PI / 2, PI)),
+            ("球 空心 整球", 1, (1.0, 2.0), (0.0, TAU), (-PI / 2, PI)),
+            ("柱 实心 零扫描", 2, (0.0, 2.0), (0.0, 0.0), (1.0, 0.0)),
+            ("柱 实心 90 度扇", 2, (0.0, 2.0), (0.0, PI / 2), (1.0, 0.0)),
+            ("柱 空心 整圈", 2, (1.0, 2.0), (0.0, TAU), (1.0, 0.0)),
+        ]
+        for label, shape, span, sh, sv in cases:
+            with self.subTest(case=label):
+                self._particles_fit_outline(
+                    shape_block(shape, rx=span, ry=span, rz=span, sh=sh, sv=sv, use_ext=True))
+
+    def test_full_solid_shape_gets_no_radial_spokes(self):
+        """整圈 + 实心时棱是噪声：外壳自己就是边界。加了棱这条会红。"""
+        segs = self._outline(shape_block(1, rx=(0.0, 1.0), ry=(0.0, 1.0), rz=(0.0, 1.0),
+                                         sh=(0.0, 2 * math.pi), sv=(-math.pi / 2, math.pi)))
+        origin = [seg for seg in segs
+                  if min(math.sqrt(v.x ** 2 + v.y ** 2 + v.z ** 2) for v in seg) < 1e-6]
+        self.assertEqual(origin, [], "整圈实心球不该有从原点出发的棱")
 
     def test_partial_sweep_is_capped_at_both_ends(self):
         """只扫一段时，线框必须在起点和终点封口，且不越界到没有粒子的方位角上。"""
         segs = self._outline(shape_block(2, rx=(0.0, 1.0), ry=(0.0, 1.0), rz=(0.0, 1.0),
-                                         sh=(0.0, math.pi / 2)))
+                                         sh=(0.0, math.pi / 2), use_ext=True))
         for seg in segs:
             for pt in seg:
                 if abs(pt.x) < 1e-9 and abs(pt.z) < 1e-9:
@@ -493,6 +642,83 @@ class TestEmitterShape3D(unittest.TestCase):
         self.assertTrue(any(abs(a.x) < 1e-6 and abs(a.z - 1.0) < 1e-6 and
                             abs(b.x) < 1e-6 and abs(b.z - 1.0) < 1e-6
                             for a, b in segs), "扫描终点没有封口竖棱")
+
+    def test_box_range_divide_snaps_axis_to_discrete_planes(self):
+        """`RangeDivideAxis`=X(0)、`RangeDivideNum`=3：X 不再连续取值，钉死在 3 个均分点
+        `{-1, 0, 1}` 之一（用户描述，2026-09-17）；Y/Z 不受影响，照旧连续。"""
+        pts = self._positions(shape_block(0, rx=(0.0, 1.0), ry=(0.0, 1.0), rz=(0.0, 1.0),
+                                          divide_axis=0, divide_num=3), n=200)
+        for p in pts:
+            self.assertTrue(any(abs(p.x - v) < 1e-6 for v in (-1.0, 0.0, 1.0)),
+                            "X=%.4f 不在 3 个均分点上" % p.x)
+        self.assertTrue(any(abs(p.x - (-1.0)) < 1e-6 for p in pts), "没有粒子落在 X=-1")
+        self.assertTrue(any(abs(p.x - 0.0) < 1e-6 for p in pts), "没有粒子落在 X=0")
+        self.assertTrue(any(abs(p.x - 1.0) < 1e-6 for p in pts), "没有粒子落在 X=1")
+        self.assertTrue(any(abs(p.y) > 1e-6 for p in pts), "Y 也被钉死了，不该受轴选择影响")
+
+    def test_sphere_range_divide_horizontal_snaps_azimuth(self):
+        """`RangeDivideHorizontalNum`=4：方位角钉在 4 个均分点上（不含重复的收尾点，
+        `0, π/2, π, 3π/2`），不是连续扫描。"""
+        pts = self._positions(shape_block(1, rx=(1.0, 1.0), ry=(0.0, 0.0), rz=(1.0, 1.0),
+                                          divide_h=4), n=200)
+        expected = [0.0, math.pi / 2, math.pi, 3 * math.pi / 2]
+        for p in pts:
+            az = math.atan2(p.z, p.x) % (2 * math.pi)
+            self.assertTrue(any(abs(az - e) < 1e-6 for e in expected),
+                            "方位角 %.4f 不在 4 个均分点上" % az)
+
+    def test_sphere_range_divide_vertical_degenerates_as_described(self):
+        """`RangeDivideVerticalNum`=3：均分点是两极 + 赤道（含两端），两极退化成穿过原点的
+        竖线，赤道是 XoZ 平面上的圆盘——用户描述的特例（2026-09-17），不是猜的分支逻辑，是
+        `_division_points(periodic=False)` 两端对齐后的自然结果。"""
+        pts = self._positions(shape_block(1, rx=(0.0, 1.0), ry=(0.0, 1.0), rz=(0.0, 1.0),
+                                          divide_v=3), n=300)
+        on_axis = [p for p in pts if abs(p.x) < 1e-6 and abs(p.z) < 1e-6]
+        on_equator = [p for p in pts if abs(p.y) < 1e-6]
+        self.assertTrue(on_axis, "没有粒子落在穿过原点的竖线上（两极退化）")
+        self.assertTrue(on_equator, "没有粒子落在赤道圆盘上")
+        self.assertEqual(len(on_axis) + len(on_equator), len(pts),
+                         "n=3 时粒子应该不在竖线上就在赤道上，没有第三种位置")
+
+    def test_cylinder_range_divide_vertical_snaps_height(self):
+        """`RangeDivideVerticalNum`=3：`RangeY=(-1,1)` 均分成 3 个高度 `{-1,0,1}`（含两端），
+        圆柱变成 3 片垂直于 Y 轴的圆环平面。"""
+        pts = self._positions(shape_block(2, rx=(1.0, 1.0), ry=(-1.0, 1.0), rz=(1.0, 1.0),
+                                          sh=(0.0, 2 * math.pi), divide_v=3), n=200)
+        for p in pts:
+            self.assertTrue(any(abs(p.y - v) < 1e-6 for v in (-1.0, 0.0, 1.0)),
+                            "Y=%.4f 不在 3 个均分点上" % p.y)
+        for v in (-1.0, 0.0, 1.0):
+            self.assertTrue(any(abs(p.y - v) < 1e-6 for p in pts), "没有粒子落在 Y=%.1f" % v)
+
+    def test_range_divide_outline_reflects_the_discrete_planes(self):
+        """`RangeDivide*` 生效时线框也要跟着变——**不能只测"粒子落在包围盒里"**，没分组时
+        的老线框（整个实心盒子 / 整个球面）本来就是分组情形的超集，包围盒这条对"线框根本没
+        跟着分组变"完全免疫，测了等于没测（CLAUDE.md 的"门禁可以全绿但什么都没测"那条）。
+        这里改成直接检查线框上真的出现了分组预期的那个中间位置——没跟着变的老线框会缺这个
+        点或者点数对不上。
+
+        Sphere 特意用 n=5（不是 3）：默认没分组时参考纬线正好也是 3 条（起点/中点/终点），
+        n=3 的分组会和这个默认参考线数量巧合重合，测不出区别；n=5 才能保证"线框只有 3 条
+        纬线"这种回退成默认行为的 bug 会被抓到。
+        """
+        box_segs = self._outline(shape_block(0, rx=(0.0, 1.0), ry=(0.0, 1.0), rz=(0.0, 1.0),
+                                             divide_axis=0, divide_num=3))
+        box_xs = {pt.x for seg in box_segs for pt in seg}
+        self.assertTrue(any(abs(x) < 1e-6 for x in box_xs),
+                        "Box 线框缺 X=0 那个中间切面——没跟着 RangeDivideAxis/Num 变")
+
+        sphere_segs = self._outline(shape_block(1, rx=(0.0, 1.0), ry=(0.0, 1.0), rz=(0.0, 1.0),
+                                                 divide_v=5))
+        sphere_ys = {round(pt.y, 4) for seg in sphere_segs for pt in seg}
+        self.assertTrue(any(abs(y - math.sin(math.pi / 4)) < 1e-3 for y in sphere_ys),
+                        "Sphere 线框缺 n=5 才有的中间纬线（y=sin(π/4)）——像是回退成了默认的 3 条参考线")
+
+        cyl_segs = self._outline(shape_block(2, rx=(0.0, 1.0), ry=(-1.0, 1.0), rz=(0.0, 1.0),
+                                             sh=(0.0, 2 * math.pi), divide_v=3))
+        cyl_ys = {round(pt.y, 4) for seg in cyl_segs for pt in seg}
+        self.assertTrue(any(abs(y) < 1e-6 for y in cyl_ys),
+                        "Cylinder 线框缺 Y=0 那个中间切面——没跟着 RangeDivideVerticalNum 变")
 
     def test_outline_follows_local_rotation(self):
         """线框必须和粒子出生位置转一样的角度。
@@ -533,15 +759,24 @@ class TestEmitterShape3D(unittest.TestCase):
 # Velocity3D
 # ---------------------------------------------------------------------------
 
-def vel_block(speed=1.0, coef=1.0, gravity=0.0, vtype=0, direction=(0.0, 1.0, 0.0)):
+def vel_block(speed=1.0, coef=1.0, gravity=0.0, vtype=0, direction=(0.0, 1.0, 0.0),
+              size=(1.0, 1.0, 1.0), offset=(0.0, 0.0, 0.0), spread=0.0):
     return ("Velocity3D", {
         "VelocityType": vtype,
         "DirectionVectorX": _range(direction[0]), "DirectionVectorY": _range(direction[1]),
         "DirectionVectorZ": _range(direction[2]),
+        "Size": {"X": size[0], "Y": size[1], "Z": size[2]},
+        "Offset": {"X": offset[0], "Y": offset[1], "Z": offset[2]},
         "Speed": _range(speed), "SpeedCoef": _range(coef), "GravityRate": _range(gravity),
         "SpeedDelayFrame": _rangei(0, 0), "GravityDelayFrame": _rangei(0, 0),
-        "InheritRate": _range(0.0), "InheritDistance": _range(0.0), "Spread": _range(0.0),
+        "InheritRate": _range(0.0), "InheritDistance": _range(0.0),
+        "Spread": _range(spread),
     })
+
+
+def vel_box_block():
+    """把粒子撒在一个盒子里，好让 `p.spawn_pos` 非零——Normal / Radial 两档全靠它。"""
+    return shape_block(0, rx=(-1.0, 1.0), ry=(-1.0, 1.0), rz=(-1.0, 1.0))
 
 
 class TestVelocity3D(unittest.TestCase):
@@ -585,15 +820,125 @@ class TestVelocity3D(unittest.TestCase):
         sim.run(30)
         self.assertGreater(sim.em.particles[0].pos.y, 0.0)
 
-    def test_non_direction_types_get_no_velocity_and_a_note(self):
-        """其余四档必须进 note 并按无初速处理，**不许按 Direction 近似**。"""
-        for vtype, name in ((1, "Normal"), (2, "Radial"), (3, "Spread")):
+    def test_unimplemented_types_get_no_velocity_and_a_note(self):
+        """`ScreenSpace`(4) / `Max`(5) 全语料零样本，必须进 note 并按无初速处理，
+        **不许按 Direction 近似**。"""
+        for vtype, name in ((4, "ScreenSpace"), (5, "Max")):
             sim = Simulator([spawn_block(loops=1), life_block(keep=100),
                              vel_block(speed=5.0, vtype=vtype)], SimConfig(seed=1))
             sim.run(10)
             self.assertEqual(sim.em.particles[0].pos.as_tuple(), (0.0, 0.0, 0.0),
                              "%s 档不该有位移" % name)
             self.assertTrue(any(name in n for n in sim.em.notes), "%s 档没记 note" % name)
+
+    def test_normal_spreads_outward_when_size_exceeds_one(self):
+        """Normal 档：`V_i = (Size_i-1)*生成坐标_i + Offset_i`。`Size>1` ⇒ 粒子沿自己的
+        生成坐标向外飞，离原点越来越远。"""
+        sim = Simulator([spawn_block(num=30, loops=1), life_block(keep=1000),
+                         vel_box_block(),
+                         vel_block(speed=3.0, vtype=1, size=(2.0, 2.0, 2.0))],
+                        SimConfig(seed=1))
+        sim.run(60)
+        self.assertTrue(sim.em.particles)
+        for part in sim.em.particles:
+            self.assertGreater(part.pos.length(), part.spawn_pos.length() + 1.0,
+                               "Size=2 应该把粒子推开，%r 却几乎没动" % (part.pos,))
+            # 各向同性的 Size ⇒ 纯径向，方向和生成坐标同侧
+            self.assertGreater(part.pos.dot(part.spawn_pos), 0.0)
+
+    def test_normal_converges_when_size_below_one(self):
+        """`Size<1` ⇒ `(Size-1)` 变号，粒子向内收拢并**穿过中心到对面**。"""
+        sim = Simulator([spawn_block(num=20, loops=1), life_block(keep=1000),
+                         vel_box_block(),
+                         vel_block(speed=3.0, vtype=1, size=(0.0, 0.0, 0.0))],
+                        SimConfig(seed=1))
+        sim.run(60)
+        self.assertTrue(sim.em.particles)
+        for part in sim.em.particles:
+            self.assertLess(part.pos.dot(part.spawn_pos), 0.0,
+                            "Size=0 应该让粒子朝原点反向飞，%r 却还在同侧" % (part.pos,))
+
+    def test_normal_reads_offset_not_direction_vector(self):
+        """`Size` 三轴全 1 时 `(Size-1)` 项消失，方向**只**剩 `Offset`——全体粒子同向。
+
+        这条钉的是一个具体的误读：把 `DirectionVector` 当成 Normal 档的基准方向。全语料
+        55.6% 的 Normal 实例把它留在编辑器默认的 `(1,0,0)` 上，照那么读会让一半的发散型
+        发射器整体往 +X 漂。这里故意给一个和 `Offset` 正交的 `DirectionVector`，它一旦
+        参与进来，粒子就会拐向 +X。
+        """
+        sim = Simulator([spawn_block(num=10, loops=1), life_block(keep=1000),
+                         vel_box_block(),
+                         vel_block(speed=2.0, vtype=1, direction=(1.0, 0.0, 0.0),
+                                   offset=(0.0, 1.0, 0.0))],
+                        SimConfig(seed=1))
+        sim.run(60)
+        self.assertTrue(sim.em.particles)
+        for part in sim.em.particles:
+            drift = part.pos - part.spawn_pos
+            self.assertAlmostEqual(drift.y, 2.0, delta=0.15)
+            self.assertAlmostEqual(drift.x, 0.0, places=9)
+            self.assertAlmostEqual(drift.z, 0.0, places=9)
+
+    def test_radial_ignores_direction_size_and_offset(self):
+        """Radial 档只看生成坐标，`DirectionVector`/`Size`/`Offset` 一律无效。"""
+        a = Simulator([spawn_block(num=15, loops=1), life_block(keep=1000),
+                       vel_box_block(), vel_block(speed=2.0, vtype=2)], SimConfig(seed=1))
+        b = Simulator([spawn_block(num=15, loops=1), life_block(keep=1000),
+                       vel_box_block(),
+                       vel_block(speed=2.0, vtype=2, direction=(1.0, 0.0, 0.0),
+                                 size=(3.0, 3.0, 3.0), offset=(0.0, -5.0, 0.0))],
+                      SimConfig(seed=1))
+        a.run(30)
+        b.run(30)
+        self.assertTrue(a.em.particles)
+        self.assertEqual([part.pos.as_tuple() for part in a.em.particles],
+                         [part.pos.as_tuple() for part in b.em.particles])
+        for part in a.em.particles:
+            self.assertGreater(part.pos.dot(part.spawn_pos), 0.0)
+
+    def test_radial_at_the_origin_falls_back_to_random_directions(self):
+        """没有 `EmitterShape3D` 时 `spawn_pos` 恒为原点，『向外』无从谈起——退回各向同性
+        的随机方向，而不是让粒子原地不动。"""
+        sim = Simulator([spawn_block(num=20, loops=1), life_block(keep=1000),
+                         vel_block(speed=2.0, vtype=2)], SimConfig(seed=1))
+        sim.run(30)
+        self.assertTrue(sim.em.particles)
+        dirs = {part.pos.normalized().as_tuple() for part in sim.em.particles}
+        self.assertGreater(len(dirs), 10, "退化回落应该是随机方向，不是一条线")
+        for part in sim.em.particles:
+            self.assertAlmostEqual(part.pos.length(), 1.0, delta=0.02)  # 2 m/s x 0.5 s
+
+    def test_spread_stays_inside_the_cone(self):
+        """Spread 档：以 `DirectionVector` 为轴、`Spread` 为**全**锥角的随机锥。"""
+        half = math.radians(30.0)
+        sim = Simulator([spawn_block(num=40, loops=1), life_block(keep=1000),
+                         vel_block(speed=2.0, vtype=3, direction=(0.0, 1.0, 0.0),
+                                   spread=2.0 * half)],
+                        SimConfig(seed=1))
+        sim.run(30)
+        self.assertTrue(sim.em.particles)
+        angles = []
+        for part in sim.em.particles:
+            d = part.pos.normalized()
+            angles.append(math.acos(max(-1.0, min(1.0, d.y))))
+            self.assertLessEqual(angles[-1], half + 1e-9,
+                                 "%r 跑出了半角 %.0f 度的锥" % (part.pos, math.degrees(half)))
+        self.assertGreater(max(angles), 0.5 * half, "锥内取样退化成了一条直线")
+
+    def test_spread_zero_angle_degenerates_to_direction(self):
+        """`Spread=0` 应该和 Direction 档完全一致——锥角为零就是一条射线。"""
+        a = Simulator([spawn_block(num=5, loops=1), life_block(keep=1000),
+                       vel_block(speed=2.0, vtype=3, direction=(0.0, 1.0, 0.0), spread=0.0)],
+                      SimConfig(seed=1))
+        b = Simulator([spawn_block(num=5, loops=1), life_block(keep=1000),
+                       vel_block(speed=2.0, vtype=0, direction=(0.0, 1.0, 0.0))],
+                      SimConfig(seed=1))
+        a.run(30)
+        b.run(30)
+        self.assertTrue(a.em.particles)
+        for pa, pb in zip(a.em.particles, b.em.particles):
+            for ca, cb in zip(pa.pos.as_tuple(), pb.pos.as_tuple()):
+                self.assertAlmostEqual(ca, cb, places=9)
 
     def test_delay_frames_hold_the_particle_still(self):
         block = ("Velocity3D", dict(vel_block(speed=2.0)[1],
@@ -1355,6 +1700,75 @@ def _resources(n_seq=2, n_frames=4, n_tex=2):
             seqs[s].append(Frame(i / n_frames, 0.0, (i + 1) / n_frames, 1.0,
                                  texture_index=s % n_tex))
     return SimResources(seqs, ["texA", "texB"][:n_tex], source="x.uvs")
+
+
+class TestSuggestedDuration(unittest.TestCase):
+    """真实故障（2026-09-17，用户场景里唯一的 entry）：`Spawn.LoopNum=0`（无限循环）
+    + `Life.Flags=1`（持续性）+ 一条**只有 1 帧**的 `.uvs`。
+
+    前两个 behavior 的『无限』当时是用返回 `0` 表达的，而 `suggested_duration()` 对全部
+    提示取 max 时把 `0` 当成『没有意见』——全场唯一的正数提示就是 `UVSequence` 的『一轮
+    1 帧』，播放长度被定成 **1 帧**。`sim_preview.tick()` 于是每个 tick 都在第 0 帧撞线、
+    重置回第 -1 帧：面板上帧数在 -1 上不停跳，视口里一个粒子都看不到。
+
+    ⚠ 下面每条**只留一个致因**。用原始场景（无限 + 无限 + 1 帧序列）写测试是空跑的：
+    两个修复互相遮蔽——`UVSequence` 改成返回 0 之后，就算『无限』的区分整个失效，
+    `best` 也是 0、照样落回 default 180。注回任一 bug 都还是绿的。
+    """
+
+    #: 一条 4 帧、1 倍速的序列 —— `duration_hint()` 会报 4，短到足以暴露『无限被压掉』。
+    SHORT_CYCLE = 4
+
+    def _short_uvs(self):
+        return uvs_block(speed=1.0), _resources(n_frames=self.SHORT_CYCLE)
+
+    def test_infinite_spawn_alone_beats_a_short_cycle(self):
+        """只有 `Spawn` 说无限（`Life` 不在场）——播放长度不能被 4 帧的序列周期定死。"""
+        uvs, res = self._short_uvs()
+        sim = Simulator([spawn_block(loops=0), uvs], SimConfig(seed=1), resources=res)
+        self.assertEqual(sim.suggested_duration(), 180)
+
+    def test_continuous_life_alone_beats_a_short_cycle(self):
+        """只有 `Life` 说持续性（`Spawn` 是有限的、而且提示比序列还短）。"""
+        uvs, res = self._short_uvs()
+        sim = Simulator([spawn_block(loops=1), life_block(flags=1), uvs],
+                        SimConfig(seed=1), resources=res)
+        self.assertEqual(sim.suggested_duration(), 180)
+
+    def test_a_one_frame_sequence_has_no_cycle_to_report(self):
+        """1 帧的序列和 `PB_START_ONLY` 是一回事：画面根本不变，没有『一轮』可言。
+
+        这条单独钉 `UVSequence.duration_hint()`，**不经过** `suggested_duration()`
+        ——经过它的话『无限』那条修复会把结果一起兜住，注回 bug 也是绿的。
+        """
+        sim = Simulator([spawn_block(loops=1), uvs_block()], SimConfig(seed=1),
+                        resources=_resources(n_frames=1))
+        hint = dict((b.type_name, b.behavior.duration_hint(sim.em)) for b in sim.bound)
+        self.assertEqual(hint["UVSequence"], 0)
+
+    def test_a_real_sequence_still_reports_its_cycle(self):
+        """反例对照：多帧序列照旧报『一轮多长』，这条修复没有把整个钩子关掉。"""
+        sim = Simulator([spawn_block(loops=1), uvs_block(speed=1.0)], SimConfig(seed=1),
+                        resources=_resources(n_frames=8))
+        hint = dict((b.type_name, b.behavior.duration_hint(sim.em)) for b in sim.bound)
+        self.assertEqual(hint["UVSequence"], 8)
+
+    def test_infinite_still_loses_to_a_longer_finite_hint(self):
+        """『无限』只保证**至少**放满默认长度，不该把更长的有限提示压掉——否则一个寿命
+        600 帧的持续性发射器会被截成 180 帧。（`max(best, default)` 写成 `default` 就红。）"""
+        sim = Simulator([spawn_block(loops=0),
+                         life_block(appear=200, keep=200, vanish=200)], SimConfig(seed=1))
+        self.assertEqual(sim.suggested_duration(), 600)
+
+    def test_all_finite_keeps_the_max(self):
+        """全都有限时行为不变：取最大值。"""
+        sim = Simulator([spawn_block(loops=3, interval=10),
+                         life_block(appear=0, keep=45, vanish=0)], SimConfig(seed=1))
+        self.assertEqual(sim.suggested_duration(), 45)
+
+    def test_nobody_has_an_opinion_falls_back_to_the_default(self):
+        sim = Simulator([shape_block(0)], SimConfig(seed=1))
+        self.assertEqual(sim.suggested_duration(), 180)
 
 
 class TestUVSequence(unittest.TestCase):

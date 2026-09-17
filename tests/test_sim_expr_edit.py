@@ -9,7 +9,7 @@ tests/test_sim_expr_edit.py —— `efx_sim/expr.py` 的结构化编辑支持（
 原来不同，产物字节就跟着不同——所以最要紧的断言只有一条：**没动过的公式，拆开再拼回去必须
 一字不差**。
 
-按 CLAUDE.md 验证纪律 #11，每条断言都对应一个真实故障模式，且都注入过确认会 FAIL：
+按 CLAUDE.md 验证纪律，每条断言都对应一个真实故障模式，且都注入过确认会 FAIL：
 
 - `_emit_rows()` 按优先级省略括号（vendor 那套 `AppendString()` 的规则）-> 和语料文本对不上，
   这里 `(1.5 - Length)` 一类的用例立刻红；
@@ -40,21 +40,21 @@ _REAL_FORMULAS = (
     "BloodColor",
     "0",
     "Length",
-    "(0.5 + BloodColor)",
-    "(1.5 - Length)",
-    "(20 - Length)",
-    "(Initial_Len - Current_Len)",
-    "Min(5, Length)",
-    "Max(0.2, GLength)",
-    "Func21(2, 20, 10, 0, TIMER)",
-    "Lerp(Clamp(TIMER, 180, 90), -0.5, 0)",
-    "Lerp(Clamp(TIMER, 8, 0), -0.1, -0.025)",
-    "Lerp(Clamp(ext:302732036, 6, 3), 0, 8)",
-    "Lerp(Unary11(Func21(90, 0, 20, 0, TIMER)), -1, 0)",
-    "(45 + -(Unary0((PI + Clamp(TIMER, 30, 0)))))",
-    "Lerp(Unary10(Min(2, Color_A)), GREEN_P, Lerp(Unary10(Min(1, Color_A)), YELLOW_P, "
-    "Lerp(Unary10(Color_A), WHITE_P, RED_P)))",
-    "Min(Clamp(ukn:1017435601, 0.7, 0.6), Clamp(ukn:1017435601, 0.3, 0.2))",
+    "(0.5 * BloodColor)",
+    "(1.5 / Length)",
+    "(20 / Length)",
+    "(Initial_Len / Current_Len)",
+    "(5 - Length)",
+    "PowOp(0.2, GLength)",
+    "Remap(2, 20, 10, 0, TIMER)",
+    "Lerp(SmoothStep(TIMER, 180, 90), -0.5, 0)",
+    "Lerp(SmoothStep(TIMER, 8, 0), -0.1, -0.025)",
+    "Lerp(SmoothStep(ext:302732036, 6, 3), 0, 8)",
+    "Lerp(SinDeg(Remap(90, 0, 20, 0, TIMER)), -1, 0)",
+    "(45 * -(Sin((PI * SmoothStep(TIMER, 30, 0)))))",
+    "Lerp(Saturate((2 - Color_A)), GREEN_P, Lerp(Saturate((1 - Color_A)), YELLOW_P, "
+    "Lerp(Saturate(Color_A), WHITE_P, RED_P)))",
+    "(SmoothStep(ukn:1017435601, 0.7, 0.6) - SmoothStep(ukn:1017435601, 0.3, 0.2))",
 )
 
 
@@ -75,9 +75,9 @@ class TestRoundTrip(unittest.TestCase):
 
     def test_second_branch_is_carried_through(self):
         """`a  |  b` 的第二支语义没证实，但不能丢（铁律 #2）。连接符是两边各两个空格。"""
-        text = "TIMER  |  Min(1, TIMER)"
+        text = "TIMER  |  (1 - TIMER)"
         parsed = expr.parse(text)
-        self.assertEqual(parsed.second_branch, "Min(1, TIMER)")
+        self.assertEqual(parsed.second_branch, "(1 - TIMER)")
         self.assertEqual(expr.emit_parsed(parsed), text)
         self.assertEqual(expr.from_rows(expr.to_rows(parsed), parsed.second_branch), text)
 
@@ -86,11 +86,11 @@ class TestNegationFolding(unittest.TestCase):
     """`-1` 折叠成一行带符号常量（`_collect_rows()`），以及它带出来的那个坑。"""
 
     def test_negative_literal_is_one_row(self):
-        rows = expr.to_rows(expr.parse("Lerp(Clamp(TIMER, 12, 0), 190, -30)"))
+        rows = expr.to_rows(expr.parse("Lerp(SmoothStep(TIMER, 12, 0), 190, -30)"))
         self.assertEqual([r["kind"] for r in rows],
                          ["CALL", "CALL", "VAR", "CONST", "CONST", "CONST", "CONST"])
         self.assertEqual(rows[-1]["value"], -30.0)
-        self.assertEqual(expr.from_rows(rows), "Lerp(Clamp(TIMER, 12, 0), 190, -30)")
+        self.assertEqual(expr.from_rows(rows), "Lerp(SmoothStep(TIMER, 12, 0), 190, -30)")
 
     def test_negated_variable_stays_two_rows(self):
         """`-TIMER` 折不了（没有"带符号的变量"这种东西），仍然是 NEG + VAR。"""
@@ -135,14 +135,14 @@ class TestFloatFormat(unittest.TestCase):
 class TestRowEncoding(unittest.TestCase):
     def test_depth_and_arity(self):
         # `-0.5` 折叠成一行带符号常量，所以是 7 行（见 TestNegationFolding）
-        rows = expr.to_rows(expr.parse("Lerp(Clamp(TIMER, 180, 90), -0.5, 0)"))
+        rows = expr.to_rows(expr.parse("Lerp(SmoothStep(TIMER, 180, 90), -0.5, 0)"))
         self.assertEqual([r["kind"] for r in rows],
                          ["CALL", "CALL", "VAR", "CONST", "CONST", "CONST", "CONST"])
         self.assertEqual([r["depth"] for r in rows], [0, 1, 2, 2, 2, 1, 1])
         self.assertEqual([r["arity"] for r in rows], [3, 3, 0, 0, 0, 0, 0])
 
     def test_subtree_span_and_parent(self):
-        rows = expr.to_rows(expr.parse("Lerp(Clamp(TIMER, 180, 90), -0.5, 0)"))
+        rows = expr.to_rows(expr.parse("Lerp(SmoothStep(TIMER, 180, 90), -0.5, 0)"))
         self.assertEqual(expr.subtree_span(rows, 0), 7)
         self.assertEqual(expr.subtree_span(rows, 1), 4)
         self.assertEqual(expr.subtree_span(rows, 5), 1)
@@ -151,11 +151,11 @@ class TestRowEncoding(unittest.TestCase):
 
     def test_arity_mismatch_is_rejected_not_padded(self):
         """行结构坏了就抛，不补零凑合——静默凑出一条合法但内容不对的公式正是铁律 #2 要防的。"""
-        rows = expr.to_rows(expr.parse("Min(1, 2)"))
+        rows = expr.to_rows(expr.parse("(1 - 2)"))
         rows[0]["arity"] = 3
         with self.assertRaises(expr.ExprError):
             expr.from_rows(rows)
-        rows = expr.to_rows(expr.parse("Min(1, 2)"))
+        rows = expr.to_rows(expr.parse("(1 - 2)"))
         rows[0]["arity"] = 1
         with self.assertRaises(expr.ExprError):
             expr.from_rows(rows)
@@ -168,26 +168,26 @@ class TestRowEncoding(unittest.TestCase):
 
 
 class TestMutations(unittest.TestCase):
-    SRC = "Lerp(Clamp(TIMER, 180, 90), -0.5, 0)"
+    SRC = "Lerp(SmoothStep(TIMER, 180, 90), -0.5, 0)"
 
     def _rows(self):
         return expr.to_rows(expr.parse(self.SRC))
 
     def test_convert_keeps_children_when_node_has_them(self):
         """`Clamp(a,b,c)` -> `Min` 留下前两个参数，不会把整棵子树塞进第一个参数。"""
-        rows = expr.convert_node(self._rows(), 1, "Min")
-        self.assertEqual(expr.from_rows(rows), "Lerp(Min(TIMER, 180), -0.5, 0)")
+        rows = expr.convert_node(self._rows(), 1, "-")
+        self.assertEqual(expr.from_rows(rows), "Lerp((TIMER - 180), -0.5, 0)")
 
     def test_convert_pads_missing_arguments(self):
-        rows = expr.convert_node(self._rows(), 1, "Func21")
+        rows = expr.convert_node(self._rows(), 1, "Remap")
         self.assertEqual(expr.from_rows(rows),
-                         "Lerp(Func21(TIMER, 180, 90, 0, 0), -0.5, 0)")
+                         "Lerp(Remap(TIMER, 180, 90, 0, 0), -0.5, 0)")
 
     def test_convert_leaf_keeps_itself_as_first_argument(self):
         """叶子换成函数时把自己留成第一个参数——手滑点错不会把已经填好的值弄丢。"""
-        rows = expr.convert_node(self._rows(), 2, "Unary10")
+        rows = expr.convert_node(self._rows(), 2, "Saturate")
         self.assertEqual(expr.from_rows(rows),
-                         "Lerp(Clamp(Unary10(TIMER), 180, 90), -0.5, 0)")
+                         "Lerp(SmoothStep(Saturate(TIMER), 180, 90), -0.5, 0)")
 
     def test_convert_to_leaf_drops_the_subtree(self):
         rows = expr.convert_node(self._rows(), 1, expr.KIND_CONST)
@@ -201,13 +201,13 @@ class TestMutations(unittest.TestCase):
 
     def test_nest_with_negation(self):
         rows = expr.wrap_node(self._rows(), 1, expr.KIND_NEG)
-        self.assertEqual(expr.from_rows(rows), "Lerp(-(Clamp(TIMER, 180, 90)), -0.5, 0)")
-        rows = expr.wrap_node(self._rows(), 0, "+")
+        self.assertEqual(expr.from_rows(rows), "Lerp(-(SmoothStep(TIMER, 180, 90)), -0.5, 0)")
+        rows = expr.wrap_node(self._rows(), 0, "*")
         self.assertEqual(expr.from_rows(rows),
-                         "(Lerp(Clamp(TIMER, 180, 90), -0.5, 0) + 0)")
+                         "(Lerp(SmoothStep(TIMER, 180, 90), -0.5, 0) * 0)")
         rows = expr.wrap_node(self._rows(), 2, "Lerp")
         self.assertEqual(expr.from_rows(rows),
-                         "Lerp(Clamp(Lerp(TIMER, 0, 0), 180, 90), -0.5, 0)")
+                         "Lerp(SmoothStep(Lerp(TIMER, 0, 0), 180, 90), -0.5, 0)")
 
     def test_delete_removes_one_layer_and_keeps_the_first_argument(self):
         """删除 = 去掉这一层、第 0 参顶上来。`Lerp(Clamp(TIMER, 180, 90), -0.5, 0)` 里
@@ -221,12 +221,12 @@ class TestMutations(unittest.TestCase):
 
     def test_delete_root_layer(self):
         rows = expr.delete_node(self._rows(), 0)
-        self.assertEqual(expr.from_rows(rows), "Clamp(TIMER, 180, 90)")
+        self.assertEqual(expr.from_rows(rows), "SmoothStep(TIMER, 180, 90)")
 
     def test_delete_is_the_inverse_of_nest(self):
         """内嵌和删除必须互为逆——用户点错了原地能撤回来。"""
         base = self._rows()
-        for target in ("Min", "Lerp", "Unary10", "+", expr.KIND_NEG):
+        for target in ("-", "Lerp", "Saturate", "*", expr.KIND_NEG):
             with self.subTest(target=target):
                 nested = expr.wrap_node(base, 1, target)
                 self.assertEqual(expr.from_rows(expr.delete_node(nested, 1)),
@@ -241,23 +241,23 @@ class TestMutations(unittest.TestCase):
         self.assertFalse(expr.can_delete_node(rows, 5))     # 折叠后的带符号常量也是叶子
         self.assertTrue(expr.can_delete_node(rows, 0))      # CALL
         # NEG 只在折不掉的时候才单独成行（`-TIMER`），那种是"一层"，可以删
-        neg_rows = expr.to_rows(expr.parse("Min(-TIMER, 1)"))
+        neg_rows = expr.to_rows(expr.parse("(-TIMER - 1)"))
         self.assertEqual(neg_rows[1]["kind"], "NEG")
         self.assertTrue(expr.can_delete_node(neg_rows, 1))
-        self.assertEqual(expr.from_rows(expr.delete_node(neg_rows, 1)), "Min(TIMER, 1)")
+        self.assertEqual(expr.from_rows(expr.delete_node(neg_rows, 1)), "(TIMER - 1)")
         # 不可用时是空操作，不是抛异常（界面上按钮本来就是灰的）
         self.assertEqual(expr.from_rows(expr.delete_node(rows, 2)), self.SRC)
 
     def test_delete_drops_the_other_arguments(self):
         """删掉一层就是丢掉它除第 0 参之外的参数——这是它和"替换成常量"的区别。"""
-        rows = expr.to_rows(expr.parse("Min(Lerp(TIMER, 1, 2), 5)"))
-        self.assertEqual(expr.from_rows(expr.delete_node(rows, 1)), "Min(TIMER, 5)")
+        rows = expr.to_rows(expr.parse("(Lerp(TIMER, 1, 2) - 5)"))
+        self.assertEqual(expr.from_rows(expr.delete_node(rows, 1)), "(TIMER - 5)")
 
     def test_every_mutation_leaves_a_reparsable_formula(self):
         """任何一次结构操作的产物都必须还能被自己解析回来——否则用户点一下就把公式
         点成解析不了的状态，下一次打开面板只剩一条错误。"""
         base = self._rows()
-        targets = [expr.KIND_CONST, expr.KIND_VAR, "+", "Min", "Lerp", "Unary10", "Func21"]
+        targets = [expr.KIND_CONST, expr.KIND_VAR, "*", "-", "Lerp", "Saturate", "Remap"]
         for index in range(len(base)):
             for target in targets:
                 for mutate in (expr.convert_node, expr.wrap_node):
@@ -276,7 +276,7 @@ class TestMutations(unittest.TestCase):
 
 class TestArgRoles(unittest.TestCase):
     """参数角色名。**只有语义已定、而且参数顺序有意义的调用才有名字**——给没确认的
-    东西编个名字就是把猜测画成确定（铁律 #7/#29）。
+    东西编个名字就是把猜测画成确定（铁律 #6）。
 
     2026-09-16 那一轮把语义全测出来之后，这张表从 2 条扩到 6 条。**扩的依据是"参数
     顺序反直觉、不标会写错"**，不是"反正已经确认了就都标上"：
@@ -290,52 +290,63 @@ class TestArgRoles(unittest.TestCase):
     """
 
     def test_clamp_and_lerp(self):
-        rows = expr.to_rows(expr.parse("Lerp(Clamp(TIMER, 180, 90), -0.5, 0)"))
+        rows = expr.to_rows(expr.parse("Lerp(SmoothStep(TIMER, 180, 90), -0.5, 0)"))
         self.assertEqual(expr.arg_roles(rows),
                          ["", "t", "value", "hi", "lo", "to", "from"])
 
     def test_the_counterintuitive_orders_are_all_labelled(self):
         """这几个的参数顺序和名字相反，角色名是用户最需要看到的东西。"""
-        rows = expr.to_rows(expr.parse("Min(1, TIMER)"))
+        rows = expr.to_rows(expr.parse("(1 - TIMER)"))
         self.assertEqual(expr.arg_roles(rows), ["", "subtract", "from"])
-        rows = expr.to_rows(expr.parse("Max(2, TIMER)"))
+        rows = expr.to_rows(expr.parse("PowOp(2, TIMER)"))
         self.assertEqual(expr.arg_roles(rows), ["", "exponent", "base"])
-        rows = expr.to_rows(expr.parse("Func20(2, TIMER)"))
+        rows = expr.to_rows(expr.parse("Pow(2, TIMER)"))
         self.assertEqual(expr.arg_roles(rows), ["", "exponent", "base"])
-        rows = expr.to_rows(expr.parse("Func21(1, 2, 3, 4, TIMER)"))
+        rows = expr.to_rows(expr.parse("Remap(1, 2, 3, 4, TIMER)"))
         self.assertEqual(expr.arg_roles(rows),
                          ["", "to", "from", "hi", "lo", "t"])
 
     def test_symmetric_and_unary_and_undecided_get_no_names(self):
         """对称运算（min/max）、一元函数、以及仍未定的 `InvLerp` 一律不标。"""
-        for formula in ("Unary10(TIMER)", "Unary0(TIMER)",
-                        "Func18(1, TIMER)", "Func19(1, TIMER)"):
+        for formula in ("Saturate(TIMER)", "Sin(TIMER)",
+                        "Min(1, TIMER)", "Max(1, TIMER)"):
             with self.subTest(formula=formula):
                 rows = expr.to_rows(expr.parse(formula))
                 self.assertTrue(all(r == "" for r in expr.arg_roles(rows)),
                                 expr.arg_roles(rows))
 
-    def test_roles_only_cover_semantically_settled_calls(self):
+    def test_roles_only_cover_calls_whose_argument_order_is_counterintuitive(self):
+        """判据是"不标会不会写错"，不是"反正已经确认了就都标上"。
+
+        收的是：三个多参函数（`SmoothStep`/`Lerp`/`Remap`）、真 clamp（`InvLerp`，
+        value 在最后）、以及**操作数顺序还反着的四个操作码** + 函数版 `Pow`。
+        对称运算（真 `Min`/`Max`）和一元函数故意不收——标了没有信息量。"""
         self.assertEqual(set(expr.CALL_ARG_ROLES),
-                         {"Clamp", "Lerp", "InvLerp", "Min", "Max", "Func20", "Func21"})
-        for name in ("Unary10", "Func18", "Func19"):
+                         {"SmoothStep", "Lerp", "InvLerp", "Remap",
+                          "/", "-", "Mod", "PowOp", "Pow"})
+        for name in ("Saturate", "Min", "Max", "*", "+"):
             self.assertNotIn(name, expr.CALL_ARG_ROLES)
 
-    def test_every_settled_call_is_readable_in_the_ui(self):
-        """vendor 字面量要么是纯编号（`Unary0`/`Func18`）、要么名字就是错的
-        （`Clamp` 其实是 smoothstep 重映射），所以每个语义已定的调用在界面上**至少**
-        得有一样说得清它是什么：规范显示名，或者一条真实语义公式。两样都没有的话
-        菜单里就只剩一个编号。"""
-        for name in expr.CALL_SIGNATURES:
-            if expr.call_confidence(name) == expr.CONFIDENCE_UNKNOWN:
-                continue
-            renamed = expr.call_display_name(name) != name
-            self.assertTrue(renamed or expr.call_semantics(name), name)
-        # 四个中缀符号显示时原样保留（换掉就和公式文本对不上），所以它们**只能**靠语义
-        # 说话——`+` 是乘、`-` 是除，不写出来用户一定照字面写错。
+    def test_calls_whose_name_could_mislead_always_say_their_semantics(self):
+        """`a96e1d9` 之后 vendor 的名字基本就是真实语义，所以"名字不够用"的只剩三类，
+        它们**必须**有一条 `CALL_SEMANTICS`：
+
+        1. **操作数顺序还反着的四个操作码**（`/` `-` `Mod` `PowOp`）；
+        2. **名字是错的那一个**（`InvLerp` 实为 clamp）；
+        3. 名字说不完的（弧度/角度、`Log` 的底、多参的参数顺序）。
+
+        反过来，`Min`/`Max`/`Floor` 这种"名字就是全部信息"的不需要再写一遍——那属于
+        CLAUDE.md #7 要防的冗余文案。
+        """
+        for name in ("/", "-", "Mod", "PowOp", "InvLerp",
+                     "Sin", "Cos", "Asin", "Acos", "SinDeg", "CosDeg", "Log",
+                     "Saturate", "Pow", "Remap", "Lerp", "SmoothStep"):
+            self.assertTrue(expr.call_semantics(name), name)
+        for name in ("Min", "Max", "Floor", "Ceil", "Abs", "Exp", "Log10", "*", "+"):
+            self.assertFalse(expr.call_semantics(name), name)
+        # 中缀符号显示时原样保留（换掉就和公式文本对不上）
         for symbol in expr.BINARY_OPERATORS:
             self.assertEqual(expr.call_display_name(symbol), symbol)
-            self.assertTrue(expr.call_semantics(symbol), symbol)
 
     def test_display_names_never_shadow_a_vendor_literal(self):
         """规范显示名和 vendor 字面量**撞名**时，归一化绝不能把字面量抢走。
@@ -349,16 +360,20 @@ class TestArgRoles(unittest.TestCase):
         for symbol in expr.BINARY_OPERATORS:
             self.assertEqual(expr.normalize_call_name(symbol), symbol, symbol)
         # 语料里的真实写法必须还是操作码 5（减法），不是 min
-        value = expr.evaluate(expr.parse("Min(5, Length)"),
+        value = expr.evaluate(expr.parse("(5 - Length)"),
                               expr.EvalContext({"Length": 12.0}, "identity", []))
         self.assertEqual(value, 7.0)
 
     def test_display_names_normalize_back_to_the_vendor_literal(self):
         """照界面上的规范名打公式要能解析，但存下来/写出去的还是 vendor 字面量
         ——文本里的函数名是 `EfxExpressionParser` 认的唯一写法。"""
-        rows = expr.to_rows(expr.parse("Smoothstep(Sin(TIMER), 12, 0)"))
-        self.assertEqual([r.get("name") for r in rows[:2]], ["Clamp", "Unary0"])
-        self.assertEqual(expr.from_rows(rows), "Clamp(Unary0(TIMER), 12, 0)")
+        rows = expr.to_rows(expr.parse("SmoothStep(Sin(TIMER), 12, 0)"))
+        self.assertEqual([r.get("name") for r in rows[:2]], ["SmoothStep", "Sin"])
+        self.assertEqual(expr.from_rows(rows), "SmoothStep(Sin(TIMER), 12, 0)")
+        # 唯一还需要归一化的名字：16 号（界面叫 `Clamp`，字面量是 `InvLerp`）
+        self.assertEqual(expr.normalize_call_name("Clamp"), "InvLerp")
+        rows16 = expr.to_rows(expr.parse("Clamp(TIMER, 60, 0)"))
+        self.assertEqual(rows16[0]["name"], "InvLerp")
 
 
 class TestPropagateSameUnitAsRoot(unittest.TestCase):
@@ -369,7 +384,7 @@ class TestPropagateSameUnitAsRoot(unittest.TestCase):
     `Clamp` 的 `120`/`0`——那是帧数阈值，被当角度换算会把 Clamp 的重映射区间整个改坏。"""
 
     def test_lerp_from_to_share_root_unit_clamp_bounds_do_not(self):
-        rows = expr.to_rows(expr.parse("Lerp(Clamp(TIMER, 120, 0), 190, -30)"))
+        rows = expr.to_rows(expr.parse("Lerp(SmoothStep(TIMER, 120, 0), 190, -30)"))
         same_unit = expr.propagate_same_unit_as_root(rows)
         # 行序：0 Lerp / 1 Clamp / 2 TIMER / 3 120 / 4 0 / 5 190 / 6 -30
         names_or_values = [(r.get("name"), r.get("value")) for r in rows]
@@ -388,13 +403,13 @@ class TestPropagateSameUnitAsRoot(unittest.TestCase):
 
     def test_unit_preserving_ops_propagate_both_sides(self):
         """两个操作数都和根节点同单位。⚠ **认的是真实语义，不是 vendor 的名字**
-        （铁律 #32）：`/` 是加法、`Min(a,b)` 是减法、`*` 是取模、`Func18`/`Func19` 是
+        （见 EXPRESSION_RULES.md）：`/` 是加法、`Min(a,b)` 是减法、`*` 是取模、`Func18`/`Func19` 是
         真正的 min/max —— 这几个才保持单位。
 
         `TIMER` 在这里被标成"和根同单位"不是 bug：它是 `VAR` 行，不会被"角度显示"
         开关换算（那个开关只改 `CONST` 的 `value`），标不标都不影响界面行为。"""
-        for formula in ("90 / TIMER", "Min(90, TIMER)", "90 * TIMER",
-                        "Func18(90, TIMER)", "Func19(90, TIMER)"):
+        for formula in ("(90 + TIMER)", "(90 - TIMER)", "Mod(90, TIMER)",
+                        "Min(90, TIMER)", "Max(90, TIMER)"):
             with self.subTest(formula=formula):
                 rows = expr.to_rows(expr.parse(formula))
                 self.assertEqual(expr.propagate_same_unit_as_root(rows),
@@ -406,7 +421,7 @@ class TestPropagateSameUnitAsRoot(unittest.TestCase):
 
     def test_abs_floor_ceil_propagate_to_their_single_child(self):
         """`abs`/`floor`/`ceil` 逐点保持单位。"""
-        for formula in ("Unary9(TIMER)", "Unary4(TIMER)", "Unary5(TIMER)"):
+        for formula in ("Abs(TIMER)", "Floor(TIMER)", "Ceil(TIMER)"):
             with self.subTest(formula=formula):
                 rows = expr.to_rows(expr.parse(formula))
                 self.assertEqual(expr.propagate_same_unit_as_root(rows), [True, True])
@@ -422,7 +437,7 @@ class TestPropagateSameUnitAsRoot(unittest.TestCase):
         ⚠ 旧表按 vendor 的名字把 `+`/`-`/`Max` 当成加/减/max 收进了传播集合——
         那会让"角度显示"开关去换算一个其实是无量纲系数的常量，**静默改坏语义不相关的
         数值**。2026-09-16 运算符语义翻案后修掉。"""
-        for formula in ("90 + 2", "90 - 2", "Max(2, 90)", "Func20(2, 90)"):
+        for formula in ("(90 * 2)", "(90 / 2)", "PowOp(2, 90)", "Pow(2, 90)"):
             with self.subTest(formula=formula):
                 rows = expr.to_rows(expr.parse(formula))
                 self.assertEqual(expr.propagate_same_unit_as_root(rows),
@@ -431,22 +446,24 @@ class TestPropagateSameUnitAsRoot(unittest.TestCase):
     def test_func21_propagates_to_its_endpoints_only(self):
         """`Func21(a, b, hi, lo, t)` = `Lerp(Clamp(t,hi,lo), a, b)`：输出和 `a`/`b`
         同单位，`hi`/`lo`/`t` 自成一个单位组（通常是帧计数），不能被当成角度换算。"""
-        rows = expr.to_rows(expr.parse("Func21(90, 0, 120, 0, TIMER)"))
+        rows = expr.to_rows(expr.parse("Remap(90, 0, 120, 0, TIMER)"))
         self.assertEqual(expr.propagate_same_unit_as_root(rows),
                          [True, True, True, False, False, False])
 
-    def test_invlerp_propagates_to_its_endpoints_only(self):
-        """`InvLerp(a, b, t)` 2026-09-16 测出就是 `Lerp`（系数在最后一个参数），所以
-        输出和 `a`/`b` 同单位、`t` 是无量纲系数——和 `Lerp` 一样的传播规则，只是位置
-        换了（`Lerp` 是 {1,2}、`InvLerp` 是 {0,1}）。"""
-        rows = expr.to_rows(expr.parse("InvLerp(90, 0, 0.5)"))
+    def test_invlerp_propagates_to_all_three_arguments(self):
+        """`InvLerp(hi, lo, value)` 2026-09-17 测出是真 `clamp`，所以**三个参数全部**
+        和输出同单位——不像 `Lerp` 那样有一个无量纲的系数槽。
+
+        这是语义翻案的连带修正：旧表按"它是 `Lerp`"只收了 {0,1}，于是"角度显示"开关
+        不会去换算第 3 个参数，而那个参数其实也是角度。"""
+        rows = expr.to_rows(expr.parse("InvLerp(90, 0, 45)"))
         self.assertEqual(expr.propagate_same_unit_as_root(rows),
-                         [True, True, True, False])
+                         [True, True, True, True])
 
     def test_remap_and_trig_and_log_do_not_propagate(self):
         """输出是无量纲的那些一律截断：`Clamp` 重映射到 `[0,1]`、`saturate` 拿 0/1 当
         边界、三角/对数/指数的输入都必须是别的单位体系。"""
-        for formula in ("Clamp(90, 120, 0)", "Unary10(90)", "Unary0(90)", "Unary6(90)"):
+        for formula in ("SmoothStep(90, 120, 0)", "Saturate(90)", "Sin(90)", "Log(90)"):
             with self.subTest(formula=formula):
                 rows = expr.to_rows(expr.parse(formula))
                 same_unit = expr.propagate_same_unit_as_root(rows)
@@ -455,15 +472,15 @@ class TestPropagateSameUnitAsRoot(unittest.TestCase):
 
 class TestSubtree(unittest.TestCase):
     def test_subtree_text(self):
-        rows = expr.to_rows(expr.parse("Lerp(Clamp(TIMER, 180, 90), -0.5, 0)"))
-        self.assertEqual(expr.subtree_text(rows, 0), "Lerp(Clamp(TIMER, 180, 90), -0.5, 0)")
-        self.assertEqual(expr.subtree_text(rows, 1), "Clamp(TIMER, 180, 90)")
+        rows = expr.to_rows(expr.parse("Lerp(SmoothStep(TIMER, 180, 90), -0.5, 0)"))
+        self.assertEqual(expr.subtree_text(rows, 0), "Lerp(SmoothStep(TIMER, 180, 90), -0.5, 0)")
+        self.assertEqual(expr.subtree_text(rows, 1), "SmoothStep(TIMER, 180, 90)")
         self.assertEqual(expr.subtree_text(rows, 2), "TIMER")
         self.assertEqual(expr.subtree_text(rows, 5), "-0.5")
         self.assertEqual(expr.subtree_text(rows, 6), "0")
 
     def test_subtree_rows_depths_are_rebased(self):
-        rows = expr.to_rows(expr.parse("Lerp(Clamp(TIMER, 180, 90), -0.5, 0)"))
+        rows = expr.to_rows(expr.parse("Lerp(SmoothStep(TIMER, 180, 90), -0.5, 0)"))
         sub = expr.subtree_rows(rows, 1)
         self.assertEqual([r["depth"] for r in sub], [0, 1, 1, 1])
 
@@ -481,7 +498,7 @@ class TestSlots(unittest.TestCase):
     `efx_sim/expr.py` 的槽位视角一节。
     """
 
-    SRC = "Lerp(Clamp(TIMER, 12, 0), 190, -30)"
+    SRC = "Lerp(SmoothStep(TIMER, 12, 0), 190, -30)"
 
     def _rows(self):
         return expr.to_rows(expr.parse(self.SRC))
@@ -494,14 +511,14 @@ class TestSlots(unittest.TestCase):
 
     def test_node_summary(self):
         rows = self._rows()
-        # 函数显示规范名（`Lerp` -> `LerpTFirst`、`Clamp` -> `Smoothstep`），
+        # 函数显示规范名（`Lerp` -> `Lerp`、`Clamp` -> `SmoothStep`），
         # 行数据里存的还是 vendor 字面量。
         self.assertEqual([expr.node_summary(rows, i) for i in (0, 1, 2, 3, 5, 6)],
-                         ["LerpTFirst", "Smoothstep", "TIMER", "12", "190", "-30"])
-        self.assertEqual([rows[i].get("name") for i in (0, 1)], ["Lerp", "Clamp"])
+                         ["Lerp", "SmoothStep", "TIMER", "12", "190", "-30"])
+        self.assertEqual([rows[i].get("name") for i in (0, 1)], ["Lerp", "SmoothStep"])
 
     def test_negation_summary(self):
-        rows = expr.to_rows(expr.parse("Min(-TIMER, 1)"))
+        rows = expr.to_rows(expr.parse("(-TIMER - 1)"))
         self.assertEqual(expr.node_summary(rows, 1), "-")
 
     def test_path_to_root(self):
@@ -517,13 +534,13 @@ class TestSlots(unittest.TestCase):
     def test_switching_a_leaf_slot_to_a_function_keeps_it_as_first_arg(self):
         """「内嵌」不再是独立操作：把叶子槽位换成函数时原内容自动成为第一个参数。
         手滑改错了，换回变量类型还能把它拿回来（因为它就在第 0 参上）。"""
-        rows = expr.convert_node(self._rows(), 2, "Min")
-        self.assertEqual(expr.from_rows(rows), "Lerp(Clamp(Min(TIMER, 0), 12, 0), 190, -30)")
+        rows = expr.convert_node(self._rows(), 2, "-")
+        self.assertEqual(expr.from_rows(rows), "Lerp(SmoothStep((TIMER - 0), 12, 0), 190, -30)")
 
     def test_negation_is_available_as_a_function_target(self):
         """取负在界面上就是「函数类型」里的一项，所以 convert_node 得认它。"""
         rows = expr.convert_node(self._rows(), 2, expr.KIND_NEG)
-        self.assertEqual(expr.from_rows(rows), "Lerp(Clamp(-TIMER, 12, 0), 190, -30)")
+        self.assertEqual(expr.from_rows(rows), "Lerp(SmoothStep(-TIMER, 12, 0), 190, -30)")
         self.assertEqual(expr.from_rows(expr.delete_node(rows, 2)), self.SRC)
 
 
@@ -542,14 +559,14 @@ class TestEvaluateRows(unittest.TestCase):
     """
 
     FORMULAS = (
-        "Lerp(Clamp(TIMER, 15, 0), 0.5, -1)",
-        "Min(Clamp(TIMER, 100, 20), 1)",
-        "(6 - Unary0(((2 - PI) / (100 - TIMER))))",
-        "Unary11(Func21(90, 0, 60, 0, TIMER))",
-        "Max(2, Lerp(Unary10((0.008 + TIMER)), 0, 1))",
-        "-TIMER / -2.5",                      # 一元负号两种形态都覆盖
-        "Func20(1, 2) / Unary2(0.5)",         # 未确认函数 + 会记 note 的
-        "Min(30, (45 * TIMER))",
+        "Lerp(SmoothStep(TIMER, 15, 0), 0.5, -1)",
+        "(SmoothStep(TIMER, 100, 20) - 1)",
+        "(6 / Sin(((2 / PI) + (100 / TIMER))))",
+        "SinDeg(Remap(90, 0, 60, 0, TIMER))",
+        "PowOp(2, Lerp(Saturate((0.008 * TIMER)), 0, 1))",
+        "(-TIMER + -2.5)",                      # 一元负号两种形态都覆盖
+        "(Pow(1, 2) + Asin(0.5))",         # 未确认函数 + 会记 note 的
+        "(30 - Mod(45, TIMER))",
     )
 
     def _vars(self):
@@ -587,12 +604,12 @@ class TestEvaluateRows(unittest.TestCase):
     def test_a_broken_branch_does_not_poison_the_others(self):
         """某一支算不出来只让那一行是 `None`，别的行照常有值——调试器要能显示
         "这支坏了、那支还好"。"""
-        parsed = expr.parse("Lerp(Clamp(TIMER, 15, 0), 0.5, Nope(1))")
+        parsed = expr.parse("Lerp(SmoothStep(TIMER, 15, 0), 0.5, Nope(1))")
         rows = expr.to_rows(parsed)
         vals = expr.evaluate_rows(parsed, expr.EvalContext({"TIMER": 7.0}, "identity", []))
         self.assertEqual(len(vals), len(rows))
         self.assertIsNone(vals[0])                       # 根受牵连
-        clamp_row = next(i for i, r in enumerate(rows) if r["name"] == "Clamp")
+        clamp_row = next(i for i, r in enumerate(rows) if r["name"] == "SmoothStep")
         self.assertIsNotNone(vals[clamp_row])            # 好的那支照常
 
 

@@ -30,7 +30,7 @@ efx_sim/ —— EFX 粒子系统模拟核心（零 bpy）
 （`[(model.short_attr_name(o.efx_attr_type), model.children_to_dict(o.efx_fields))
 for o in attrs]`），预览才能反映未保存的改动。而 `children_to_dict()` 本来就是
 `io_tree.export_attribute_object()` 用的那个函数——预览和导出读同一份数据、走同一个函数，
-验证纪律 #8 要的"打到真实用户路径上"不用额外争取。
+验证纪律 要的"打到真实用户路径上"不用额外争取。
 
 设计要点（详见各模块 docstring）
 --------------------------------

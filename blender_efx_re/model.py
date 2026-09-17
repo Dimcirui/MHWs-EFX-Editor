@@ -420,9 +420,9 @@ def _promote_null_to_string(self, context) -> None:
 
 
 def _on_field_edited(self, context) -> None:
-    """`float_value` / `int_value` / `string_value` 的 update 回调：字段被**用户**改过之后，
-    把依赖它的纯视觉产物重算一遍。目前两件事：Transform3D -> 所属 Entry 的 `matrix_basis`，
-    EmitterShape3D -> 生成区域线框叠加层标脏。
+    """`float_value` / `int_value` / `bool_value` 的 update 回调：字段被**用户**改过之后，
+    把依赖它的纯视觉产物重算一遍。三件事：Transform3D -> 所属 Entry 的 `matrix_basis`，
+    EmitterShape3D -> 生成区域线框叠加层标脏，任意字段 -> 粒子预览（`sim_preview`）标脏。
 
     没有这一步的话，视口和粒子预览摆的是**上一次 `sync_all_transform3d()` 时的**姿态——
     导入之后除非用户手动点 Refresh Transform3D View，改 LocalPosition 在视口里完全没反应，
@@ -437,12 +437,22 @@ def _on_field_edited(self, context) -> None:
     类型名单。批量填充（导入/粘贴/新建）期间由 `suppress_field_updates()` 关掉——那条路上
     每个标量都会触发一次，而调用方在填完之后自己会烘一遍（见
     `io_tree.apply_attribute_content()`）。
+
+    `sim_preview.mark_dirty()` 同样在这一并调用：`Velocity3D.Offset`/`Size` 这类普通内容
+    字段之前只有 `sim_preview.py` 自己的预览面板旋钮（种子/帧率/距离等）会触发
+    `_on_knob_changed()` -> `mark_dirty()`，编辑 attribute 树里的任何字段值都不会——这就是
+    "Normal 档的 Offset/Size 明明已经实装，播放中调数值却看不到变化"的根因：正在跑的预览
+    读的是上一次 `rebuild_tracks()` 时的快照，dirty 标脏之前不会重建。这里不按字段类型/
+    attribute 类型区分（不止 Velocity3D 一个受影响），一律标脏——`mark_dirty()` 本身只是
+    置一个布尔位，`tick()` 没在跑（没在播放）时置了也没有开销。
     """
     if _suppress_field_updates:
         return
     obj = getattr(self, "id_data", None)
     if obj is None or obj.get("~TYPE") != TYPE_ATTRIBUTE:
         return
+    from . import sim_preview
+    sim_preview.mark_dirty()
     if short_attr_name(obj.efx_attr_type) == "EmitterShape3D":
         # ⚠ 不要在这儿列字段白名单：RangeX/Y/Z、ScaleHorizontal/Vertical、LocalRotation*、
         # RotationOrder 全都进线框，漏一个就是"改了参数框不动"。整个 attribute 一律标脏。
@@ -599,7 +609,7 @@ class EFXValueNode(PropertyGroup):
     float_value: FloatProperty(name="Value", update=_on_field_edited)
     int_value: IntProperty(name="Value", update=_on_field_edited)
     uint_str: StringProperty(name="Value")
-    bool_value: BoolProperty(name="Value")
+    bool_value: BoolProperty(name="Value", update=_on_field_edited)
     string_value: StringProperty(name="Value", update=_promote_null_to_string)
     # children 在类体外挂（见下），因为类体内还不能引用 EFXValueNode 自己。
 
@@ -802,7 +812,7 @@ def is_static_random_node(node: EFXValueNode, attr_type: str | None = None) -> b
         return False
     if node.key in _SR_INDEX_FIELD_NAMES or node.key in _SR_MIN_MAX_FIELD_NAMES:
         return False
-    if is_pair_min_max_node(node, attr_type):
+    if is_pair_min_max_node(node, attr_type) or is_sr_start_span_node(node, attr_type):
         return False
     return True
 
@@ -822,6 +832,31 @@ def is_static_random_node(node: EFXValueNode, attr_type: str | None = None) -> b
 #   说明 `s` 跟的是部件总数、是**左闭右开的上界**，不是一个和静态值无关的随机幅度。
 #   高频组合 `(0,1)` / `(0,4)` / `(2,3)` / `(12,15)` 读作"用第 0 个部件"/"用第 0~3 个"
 #   /"用第 2 个"/"用第 12~14 个"，和 `PatternNo` 完全同构。
+# `{s,r}` 形状、语义是 **(起始角, 扫描跨度)** 的字段（弧度）。
+#
+# `EmitterShape3D.ScaleHorizontal/ScaleVertical` 的两个数不是 static/random，也不是
+# min/max：全语料按 `ShapeType` 分桶，球的 `ScaleHorizontal` 96.7% 是 `(0, 2π)`、
+# `ScaleVertical` 63.4% 是 `(-π/2, π)`。`(0, 2π)` 两种读法都讲得通，但 `(-π/2, π)` 只有
+# 读成"从 -90° 起、扫 180°"才是完整的纵向全扫；读成 min/max 会得到 -90°~+180° 这种
+# 270° 的怪区间。逐条依据见 `efx_sim/behaviors/emittershape3d.py` 的模块说明。
+#
+# ⚠ **标成 Static/Random 会直接把人带沟里**：实测有人想要"水平 360 度"，于是把 360
+# 填进了 Static 那一格——那是**起始角**，而跨度留在 0，扫描范围为零，整个形状塌成一条
+# 辐条。标成 Start/Span 之后这个误填不可能发生。
+_SR_START_SPAN_FIELD_NAMES = frozenset({"ScaleHorizontal", "ScaleVertical"})
+
+
+#: 这两个字段只在 `EmitterShape3D` 上是 (起始角, 跨度)；别的属性上同名字段不适用
+_SR_START_SPAN_ATTR = "EmitterShape3D"
+
+
+def is_sr_start_span_node(node, attr_type: str = "") -> bool:
+    """`{s,r}` 形状但语义是 (起始角, 扫描跨度) 的字段（见 `_SR_START_SPAN_FIELD_NAMES`）。"""
+    if not is_sr_shaped(node) or node.key not in _SR_START_SPAN_FIELD_NAMES:
+        return False
+    return short_attr_name(attr_type) == _SR_START_SPAN_ATTR
+
+
 _SR_INDEX_FIELD_NAMES = frozenset({"SequenceNo"})
 _SR_MIN_MAX_FIELD_NAMES = frozenset({"PatternNo", "PlaySpeed", "PartsStartNo"})
 
@@ -1597,6 +1632,17 @@ class EFXExpressionNodeItem(PropertyGroup):
     )
 
 
+def _active_expression_curve_changed(self, context) -> None:
+    """曲线列表切了一条 -> 节点视口跟着切（没打开过节点视口就是个空操作）。
+
+    放在这里而不是在 `EFX_RE_OT_expression_curve_activate` 里：切换活动曲线有好几个
+    入口（列表点选、字段行内嵌的单选点、增删曲线之后的 index 重定位），逐个入口加一行
+    迟早漏一个，属性值本身的 update 回调是唯一盖得全的挂钩点。
+    """
+    from . import expr_nodes
+    expr_nodes.on_active_curve_changed(self)
+
+
 def _expression_formula_changed(self, context) -> None:
     """公式文本改了（用户手打、导入、结构化编辑以外的任何来源）-> 重新解析成节点行。
 
@@ -1605,6 +1651,44 @@ def _expression_formula_changed(self, context) -> None:
     """
     from . import expr_edit
     expr_edit.on_formula_edited(self)
+
+
+# 两种加载方式都要能跑，理由同 `expr_edit.py` 顶部那段：装成扩展时 `efx_sim` 是**叔叔包**，
+# 门禁脚本把仓库根塞进 sys.path 直接 `import blender_efx_re` 时 `..` 已经越界。
+# ⚠ **必须在模块级 import**，别挪进函数体里：挪进去之后 `ImportError` 会被下面那个
+# 兜底 `except` 吞掉，表现是"公式栏整栏空白"，而且一条错误都不报——实测踩过。
+try:
+    from ..efx_sim import expr as _expr_mod, expr_text as _expr_text
+except ImportError:  # pragma: no cover - 只在门禁/单测的顶层包布局下走到
+    from efx_sim import expr as _expr_mod, expr_text as _expr_text
+
+
+def _read_formula_canonical(self) -> str:
+    """`formula`（vendor 记法）-> 规范记法，供界面显示/编辑。
+
+    **纯派生量，不存**——`formula` 始终是唯一权威（`expr_edit` 模块 docstring 的第 1 条）。
+
+    转换失败返回空串：这时 `formula_error` 已经在说话了，再塞一段坏文本只会更乱。
+    ⚠ **只吞 `ExprError`**。这里原来是 `except Exception`，结果把上面那条 import 的
+    `ImportError` 一起吞了——整个公式栏空白、日志里一个字都没有。面板 getter 里的宽
+    `except` 就是这么变成隐形故障的。
+    """
+    try:
+        return _expr_text.vendor_to_canonical(self.formula)
+    except _expr_mod.ExprError:
+        return ""
+
+
+def _write_formula_canonical(self, value) -> None:
+    """规范记法 -> `formula`，随后由 `formula` 自己的 update 回调重建行。
+
+    转换失败**不动 `formula`**，只把原因写进 `formula_error`——和 `write_formula()`
+    同一条纪律（铁律 #2：宁可让用户看见报错，也不静默写一条内容不对的公式）。
+    """
+    try:
+        self.formula = _expr_text.canonical_to_vendor(value)
+    except _expr_mod.ExprError as exc:
+        self.formula_error = str(exc)
 
 
 class EFXExpressionCurveItem(PropertyGroup):
@@ -1628,6 +1712,12 @@ class EFXExpressionCurveItem(PropertyGroup):
     formula: StringProperty(name="Formula", default="0",
                             update=_expression_formula_changed)
     formula_error: StringProperty(name="Error")
+    #: `formula` 的**规范记法**视图（`efx_sim/expr_text.py`）。vendor 给六个二元操作码
+    #: 起的名字一个都不对（见 docs/EXPRESSION_RULES.md），照公式文本字面意思写出来的公式必然是错的；这一栏
+    #: 按真实语义显示，也可以直接按真实语义编辑。派生量，不存、不参与导出。
+    formula_canonical: StringProperty(
+        name="Formula", description="按真实语义读写的公式",
+        get=_read_formula_canonical, set=_write_formula_canonical)
     #: `formula` 的结构化视图，见 `EFXExpressionNodeItem`。派生量，不参与导出。
     nodes: CollectionProperty(type=EFXExpressionNodeItem)
     #: **当前选中的那个槽位**（= 该槽位内容所在的行下标）。界面纵向展开的那条链、
@@ -1638,6 +1728,17 @@ class EFXExpressionCurveItem(PropertyGroup):
     #: 结构化编辑只动第一支，这一支原样存着、拼回去时原样带上——没证实语义不是丢数据的
     #: 理由（铁律 #2）。
     second_branch: StringProperty(name="Second Root Value")
+    #: 这棵树的参数表（`EFXExpressionTree.parameters`）原样存成 JSON，**不透传就丢数据**。
+    #:
+    #: 公式文本里一个普通标识符（`PI`、`Length`…）到底是"引擎运行时喂进来的外部变量"还是
+    #: "值存在文件里的具名常量"，**文本上完全看不出来**——两者都写成那个名字。真相在这张
+    #: 表的 `source` 字段（0=Parameter / 1=Constant / 2=External）和 `constantValue` 上。
+    #:
+    #: 这里原来写死成空数组，后果是**导入任何用了 `PI` 的官方特效再导出，π 就变成 0**：
+    #: 语料里 `PI` 一律是 `source=1, constantValue=3.1415927`（6 个文件 110 处，无一例外），
+    #: 表丢了之后解析器只能按名字回退成 `source=2`（External），而引擎没有东西绑给它。
+    #: 实测确认过这条链（铁律 #2：宁可拒绝也不静默丢数据）。
+    tree_parameters: StringProperty(name="Tree Parameters", default="[]")
 
 
 # ---------------------------------------------------------------------------
@@ -1875,7 +1976,8 @@ def register():
         description="ExpressionBits 的总位数，由 attribute 类型固定，导入时原样记录，不可编辑",
     )
     Object.efx_expression_curves = CollectionProperty(type=EFXExpressionCurveItem)
-    Object.efx_expression_curves_active_index = IntProperty()
+    Object.efx_expression_curves_active_index = IntProperty(
+        update=_active_expression_curve_changed)
 
 
 def unregister():

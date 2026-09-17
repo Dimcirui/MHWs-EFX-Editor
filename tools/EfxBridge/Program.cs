@@ -165,6 +165,10 @@ if (args.Length >= 1 && args[0] == "condstats")
 {
     return RunCondStats(args);
 }
+if (args.Length >= 1 && args[0] == "flagsurvey")
+{
+    return RunFlagsSurvey(args);
+}
 if (args.Length >= 1 && args[0] == "ptbehaviorcatalog")
 {
     return RunPtBehaviorCatalog(args);
@@ -193,6 +197,10 @@ if (args.Length >= 1 && args[0] == "exprrotationstats")
 {
     return RunExprRotationStats(args);
 }
+if (args.Length >= 1 && args[0] == "exprhostcorr")
+{
+    return RunExprHostCorr(args);
+}
 
 if (args.Length < 2 || args[0] != "roundtrip")
 {
@@ -212,6 +220,7 @@ if (args.Length < 2 || args[0] != "roundtrip")
     Console.WriteLine("  dotnet <dll> typefreq <语料目录> <json 输出路径>");
     Console.WriteLine("  dotnet <dll> fieldstatsbatch <语料目录> <逗号分隔的类型名列表> <json 输出路径> [每字段保留的不同取值数，默认 40]");
     Console.WriteLine("  dotnet <dll> condstats <语料目录> <attribute 类型名> <条件字段名> <json 输出路径> [每字段保留的不同取值数，默认 40]");
+    Console.WriteLine("  dotnet <dll> flagsurvey <语料目录> <json 输出路径> [每字段保留的不同取值数，默认 40]");
     Console.WriteLine("  dotnet <dll> ptbehaviorcatalog <语料目录> <json 输出路径>");
     Console.WriteLine("  dotnet <dll> bonealign <语料目录> <json 输出路径> [--extra 类型名,类型名]");
     Console.WriteLine("  dotnet <dll> pairstats <语料目录> <json 输出路径> [每字段保留的高频组合数，默认 20]");
@@ -219,6 +228,7 @@ if (args.Length < 2 || args[0] != "roundtrip")
     Console.WriteLine("  dotnet <dll> bitnames <json 输出路径> [游戏版本，默认 MHWilds]");
     Console.WriteLine("  dotnet <dll> exprassignstats <语料目录> <json 输出路径>");
     Console.WriteLine("  dotnet <dll> exprrotationstats <语料目录> <json 输出路径>");
+    Console.WriteLine("  dotnet <dll> exprhostcorr <语料目录> <json 输出路径> [每桶保留的不同取值数，默认 10]");
     return 1;
 }
 
@@ -1807,6 +1817,218 @@ static int RunExprAssignStats(string[] args)
     return 0;
 }
 
+// exprhostcorr 子命令：给每个 `IExpressionAttribute` 的每一位 bit，统计它置位时**本体属性**
+// （sibling，去掉类名里的 "Expression" 得到，和 vendor `EFXEntryBase.AddAttribute()` 同一套
+// 判据）各字段的取值分布，外加公式原文 / entry 名 / efx 文件名的高频样本。
+//
+//   exprhostcorr <语料目录> <json 输出路径> [每桶保留的不同取值数，默认 10]
+//
+// 用来回答"这一位到底驱动本体的哪个字段"。vendor 的 `BitNameDict` 只给一部分 bit 起了名，
+// 其余是 `unkn<N>` 占位；但**有名字的那些是现成的正对照**——同一套判据必须先把
+// `speed -> Speed`、`velocityY -> DirectionVectorY` 这类已知答案重新推出来，才有资格拿去
+// 推未知的。判据本身全部写在 `tools/infer_expression_bit_fields.py`（依据和结论分开，
+// 同 `tools/audit_range_fields.py` 的先例），这里只吐原始计数、不做任何判断。
+//
+// 最硬的一条线索是 **Multiply 的退化性**：`Multiply` 把公式结果乘在字段**导入时的原值**上，
+// 原值为 0 时结果恒为 0 —— 作者不会写恒为 0 的曲线。所以"这一位用 Multiply 驱动时，
+// 候选字段出现过 0"就能把这个候选**排除**掉（`zeroUnderMultiply`）。这条对"中性值是 1"的
+// 字段（`SpeedCoef` 那种）同样成立，因为 0 乘任何数还是 0。
+static int RunExprHostCorr(string[] args)
+{
+    if (args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> exprhostcorr <语料目录> <json 输出路径> [每桶保留的不同取值数，默认 10]");
+        return 1;
+    }
+    var dir = args[1];
+    var jsonOutPath = args[2];
+    var topN = args.Length >= 4 && int.TryParse(args[3], out var n) ? n : 10;
+
+    if (!Directory.Exists(dir))
+    {
+        Console.WriteLine($"目录不存在: {dir}");
+        return 1;
+    }
+
+    var files = Directory.EnumerateFiles(dir, "*.efx.*", SearchOption.AllDirectories).ToList();
+    var assignFieldCache = new Dictionary<Type, List<FieldInfo>>();
+    var hostFieldCache = new Dictionary<Type, List<FieldInfo>>();
+
+    List<FieldInfo> AssignFields(Type type)
+    {
+        if (assignFieldCache.TryGetValue(type, out var cached)) return cached;
+        var fields = type
+            .GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(f => f.FieldType == typeof(ExpressionAssignType))
+            .OrderBy(f => f.MetadataToken)
+            .ToList();
+        assignFieldCache[type] = fields;
+        return fields;
+    }
+
+    // 本体的"可比字段"：只收自己声明的、值类型/字符串的公开字段。基类那几个
+    // （type/UniqueID/Version）和 BitSet / 列表 / 嵌套对象一律不收——它们不可能是公式目标，
+    // 收进来只会把每个桶撑大一圈。
+    List<FieldInfo> HostFields(Type type)
+    {
+        if (hostFieldCache.TryGetValue(type, out var cached)) return cached;
+        var fields = type
+            .GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(f => (f.FieldType.IsValueType || f.FieldType == typeof(string))
+                        && f.FieldType != typeof(EfxVersion))
+            .OrderBy(f => f.MetadataToken)
+            .ToList();
+        hostFieldCache[type] = fields;
+        return fields;
+    }
+
+    var perType = new Dictionary<string, TypeCorr>();
+    int scanned = 0, failed = 0, instances = 0, hostMissing = 0;
+    string currentFile = "";
+
+    void Visit(EFXEntryBase container)
+    {
+        foreach (var attr in container.Attributes)
+        {
+            if (attr is IExpressionAttribute exprAttr)
+            {
+                instances++;
+                var attrTypeName = attr.type.ToString();
+                // vendor `AddAttribute()` 用的就是这个换算，不另发明一套
+                var hostTypeName = attrTypeName.Replace("Expression", "");
+                var host = container.Attributes.FirstOrDefault(a => a.type.ToString() == hostTypeName);
+                if (host == null) hostMissing++;
+
+                if (!perType.TryGetValue(attrTypeName, out var tc))
+                    tc = perType[attrTypeName] = new TypeCorr { hostType = hostTypeName };
+                tc.instances++;
+                if (host == null) tc.hostMissing++;
+
+                var hostFields = host == null ? new List<FieldInfo>() : HostFields(host.GetType());
+                foreach (var hf in hostFields)
+                    Tally(tc.hostBaseline, hf.Name, ValueKey(hf.GetValue(host)));
+
+                var bits = exprAttr.ExpressionBits;
+                var assignFields = AssignFields(attr.GetType());
+                var formulas = exprAttr.Expression?.ParsedExpressions;
+                int setSoFar = 0;
+                for (int i = 0; i < assignFields.Count; i++)
+                {
+                    if (!bits.HasBit(i)) continue;
+                    var assign = (ExpressionAssignType)assignFields[i].GetValue(attr)!;
+                    var bc = tc.Bit(i, assignFields[i].Name);
+                    bc.setCount++;
+                    Tally(bc.assign, "", assign.ToString());
+                    if (assign == ExpressionAssignType.Multiply) bc.multiplyCount++;
+
+                    foreach (var hf in hostFields)
+                    {
+                        var value = hf.GetValue(host);
+                        Tally(bc.hostFields, hf.Name, ValueKey(value));
+                        var allZero = NumericComponents(value).All(c => c == 0.0);
+                        if (allZero)
+                        {
+                            bc.ZeroCount(hf.Name);
+                            if (assign == ExpressionAssignType.Multiply) bc.ZeroUnderMultiply(hf.Name);
+                        }
+                    }
+
+                    // 置位顺序 <-> 公式顺序是既有约定（zip 消费），这里照同一个顺序取
+                    if (formulas != null && setSoFar < formulas.Count)
+                    {
+                        var text = formulas[setSoFar]?.root?.ToString();
+                        // 按 assign 分桶：`Assign` 那一桶的公式输出**就是字段的新值**，
+                        // 是唯一能拿来和字段自己的取值分布对量级的样本；`Multiply` 桶里
+                        // 的输出是无量纲倍率，混在一起量级就没法比了
+                        if (!string.IsNullOrEmpty(text)) Tally(bc.formulas, assign.ToString(), text);
+                    }
+                    if (!string.IsNullOrEmpty(container.name)) Tally(bc.entryNames, "", container.name!);
+                    Tally(bc.efxNames, "", Path.GetFileName(currentFile));
+                    setSoFar++;
+                }
+            }
+            if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
+            {
+                foreach (var e in pe.efxrData.Entries) Visit(e);
+                foreach (var a in pe.efxrData.Actions) Visit(a);
+            }
+        }
+    }
+
+    foreach (var path in files)
+    {
+        currentFile = path;
+        try
+        {
+            var efx = new EfxFile(new FileHandler(path));
+            efx.Read();
+            // 公式文本不在文件里，要 ParseExpressions() 把后缀栈还原成树才拿得到
+            efx.ParseExpressions();
+            scanned++;
+            foreach (var e in efx.Entries) Visit(e);
+            foreach (var a in efx.Actions) Visit(a);
+        }
+        catch (Exception)
+        {
+            failed++;   // 语料里本来就有一批读不了的，见 KNOWN_UPSTREAM_ISSUES
+        }
+    }
+
+    var payload = new
+    {
+        filesTotal = files.Count,
+        filesScanned = scanned,
+        filesFailed = failed,
+        instances,
+        hostMissing,
+        topN,
+        types = perType.OrderBy(kv => kv.Key).ToDictionary(kv => kv.Key, kv => kv.Value.Render(topN)),
+    };
+    File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine($"OK: {instances} 个 IExpressionAttribute 实例、{perType.Count} 个类型"
+                      + $"（本体缺失 {hostMissing}；扫描 {scanned}/{files.Count} 个文件，失败 {failed}）-> {jsonOutPath}");
+    return 0;
+}
+
+static void Tally(Dictionary<string, Dictionary<string, int>> buckets, string bucket, string key)
+{
+    if (!buckets.TryGetValue(bucket, out var hist)) hist = buckets[bucket] = new();
+    hist[key] = hist.GetValueOrDefault(key) + 1;
+}
+
+// 值 -> 数值分量序列。用来判"这个字段是不是整个为 0"（Multiply 退化判据）。
+// 值类型按公开字段递归展开（`via.Range` 的 s/r、`Vector3` 的 X/Y/Z 都走这条），
+// 引用类型不展开（返回空序列 = 不参与零值判断）。
+static IEnumerable<double> NumericComponents(object? v)
+{
+    if (v == null) yield break;
+    var t = v.GetType();
+    if (t == typeof(string)) { yield return ((string)v).Length; yield break; }
+    if (t.IsEnum || t.IsPrimitive) { yield return Convert.ToDouble(v); yield break; }
+    if (t.IsValueType)
+    {
+        foreach (var f in t.GetFields(BindingFlags.Public | BindingFlags.Instance))
+            foreach (var c in NumericComponents(f.GetValue(v)))
+                yield return c;
+    }
+}
+
+// 值 -> 稳定的字符串键（直方图用）。`float` 固定 G6，避免 `0.30000001` 和 `0.3` 分成两桶。
+static string ValueKey(object? v)
+{
+    if (v == null) return "null";
+    var t = v.GetType();
+    if (t.IsEnum) return v.ToString()!;
+    if (v is float f) return f.ToString("G6", System.Globalization.CultureInfo.InvariantCulture);
+    if (v is double d) return d.ToString("G6", System.Globalization.CultureInfo.InvariantCulture);
+    if (v is string s) return s.Length == 0 ? "\"\"" : "\"" + s + "\"";
+    if (t.IsPrimitive) return Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture)!;
+    if (t.IsValueType)
+        return "(" + string.Join(",", t.GetFields(BindingFlags.Public | BindingFlags.Instance)
+                                       .Select(x => ValueKey(x.GetValue(v)))) + ")";
+    return t.Name;
+}
+
 // fieldstatsbatch 子命令：一次扫描里同时给一批 attribute 类型做 fieldstats。
 //
 // 单独调 fieldstats N 次会把语料重新解析 N 遍（解析耗时跟"要不要过滤这个类型"无关，
@@ -2494,12 +2716,14 @@ static int RunCondStats(string[] args)
 {
     if (args.Length < 5)
     {
-        Console.WriteLine("用法: dotnet <dll> condstats <语料目录> <attribute 类型名> <条件字段名> <json 输出路径> [每字段保留的不同取值数，默认 40]");
+        Console.WriteLine("用法: dotnet <dll> condstats <语料目录> <attribute 类型名> <条件字段名[,条件字段名2,...]> <json 输出路径> [每字段保留的不同取值数，默认 40]");
+        Console.WriteLine("      条件字段名可以逗号分隔传多个（联合分桶，如 ShapeType,UseExtension），桶键用 | 拼接各字段取值");
         return 1;
     }
     var dir = args[1];
     var typeName = args[2];
     var condField = args[3];
+    var condFields = condField.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     var jsonOutPath = args[4];
     var maxDistinct = args.Length >= 6 && int.TryParse(args[5], out var md) ? md : 40;
 
@@ -2559,11 +2783,20 @@ static int RunCondStats(string[] args)
                 instances++;
                 var json = JsonSerializer.Serialize(attr, typeof(EFXAttribute), options);
                 var node = System.Text.Json.Nodes.JsonNode.Parse(json) as System.Text.Json.Nodes.JsonObject;
-                string condValue = "MISSING";
-                if (node != null && node.TryGetPropertyValue(condField, out var condNode) && condNode != null)
-                    condValue = condNode.ToJsonString();
-                else
-                    missingCond++;
+                var condParts = new List<string>();
+                bool anyMissing = false;
+                foreach (var cf in condFields)
+                {
+                    if (node != null && node.TryGetPropertyValue(cf, out var condNode) && condNode != null)
+                        condParts.Add(condNode.ToJsonString());
+                    else
+                    {
+                        condParts.Add("MISSING");
+                        anyMissing = true;
+                    }
+                }
+                if (anyMissing) missingCond++;
+                string condValue = string.Join("|", condParts);
 
                 if (!buckets.TryGetValue(condValue, out var bucket))
                     bucket = (0, new Dictionary<string, Dictionary<string, int>>());
@@ -2572,7 +2805,7 @@ static int RunCondStats(string[] args)
                 {
                     foreach (var (key, child) in node)
                     {
-                        if (key == "$type" || key == condField) continue;
+                        if (key == "$type" || condFields.Contains(key)) continue;
                         Tally(bucket.fields, child, key);
                     }
                 }
@@ -2630,6 +2863,154 @@ static int RunCondStats(string[] args)
     Console.WriteLine(
         $"OK: {wanted} 按 {condField} 分桶（{buckets.Count} 个取值，缺失 {missingCond}），"
         + $"共 {instances} 个实例（扫描 {scanned}/{files.Count} 个文件，失败 {failed}）-> {jsonOutPath}");
+    return 0;
+}
+
+// flagsurvey：condstats 只能一次测一个 attribute 类型，逐个手测 50 个"开头是 uint Flags"的
+// 类型太慢。这里单趟全语料扫描里，见到任意 attribute（不预先指定类型）只要其顶层 JSON 有
+// 数字字段 "Flags"，就按 (类型名, Flags 取值) 联合分桶，桶内其它字段的取值分布用法和
+// condstats 完全一样。产出交给 tools/scan_flag_bits.py 做逐位分解（每一位 on/off 时，
+// 其它字段的"主流值"占比是否剧烈变化——变化大说明这一位是"该字段的启用开关"；哪一位都测不出
+// 信号，就是姊妹项目 EFX-Editor 那种"typeFlag"式的类型选择位，不是布尔开关）。
+static int RunFlagsSurvey(string[] args)
+{
+    if (args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> flagsurvey <语料目录> <json 输出路径> [每字段保留的不同取值数，默认 40]");
+        return 1;
+    }
+    var dir = args[1];
+    var jsonOutPath = args[2];
+    var maxDistinct = args.Length >= 4 && int.TryParse(args[3], out var md) ? md : 40;
+
+    if (!Directory.Exists(dir))
+    {
+        Console.WriteLine($"目录不存在: {dir}");
+        return 1;
+    }
+
+    var options = CreateBridgeJsonOptions();
+    var files = Directory.EnumerateFiles(dir, "*.efx.*", SearchOption.AllDirectories).ToList();
+    // 类型名 -> Flags 取值(字符串) -> (该桶实例数, 字段路径 -> 取值 -> 出现次数)
+    var typeBuckets = new Dictionary<string, Dictionary<string, (int count, Dictionary<string, Dictionary<string, int>> fields)>>();
+    int scanned = 0, failed = 0, instances = 0, skipped = 0;
+
+    void Bump(Dictionary<string, Dictionary<string, int>> fields, string path, string value)
+    {
+        if (!fields.TryGetValue(path, out var hist))
+            fields[path] = hist = new Dictionary<string, int>();
+        hist[value] = hist.GetValueOrDefault(value) + 1;
+    }
+
+    void Tally(Dictionary<string, Dictionary<string, int>> fields, System.Text.Json.Nodes.JsonNode? node, string path)
+    {
+        switch (node)
+        {
+            case System.Text.Json.Nodes.JsonObject obj:
+                foreach (var (key, child) in obj)
+                {
+                    if (key == "$type") continue;
+                    Tally(fields, child, path.Length == 0 ? key : path + "." + key);
+                }
+                break;
+            case System.Text.Json.Nodes.JsonArray arr:
+                Bump(fields, path + "[].length", arr.Count.ToString());
+                break;
+            case null:
+                Bump(fields, path, "null");
+                break;
+            default:
+                Bump(fields, path, node.ToJsonString());
+                break;
+        }
+    }
+
+    void Visit(EFXEntryBase container)
+    {
+        foreach (var attr in container.Attributes)
+        {
+            var json = JsonSerializer.Serialize(attr, typeof(EFXAttribute), options);
+            var node = System.Text.Json.Nodes.JsonNode.Parse(json) as System.Text.Json.Nodes.JsonObject;
+            if (node != null
+                && node.TryGetPropertyValue("Flags", out var flagsNode)
+                && flagsNode is System.Text.Json.Nodes.JsonValue flagsValue
+                && flagsValue.TryGetValue<long>(out var flagsLong))
+            {
+                instances++;
+                var typeName = attr.type.ToString();
+                if (!typeBuckets.TryGetValue(typeName, out var buckets))
+                    typeBuckets[typeName] = buckets = new();
+                var key = flagsLong.ToString();
+                if (!buckets.TryGetValue(key, out var bucket))
+                    bucket = (0, new Dictionary<string, Dictionary<string, int>>());
+                bucket.count++;
+                foreach (var (fkey, child) in node)
+                {
+                    if (fkey == "$type" || fkey == "Flags") continue;
+                    Tally(bucket.fields, child, fkey);
+                }
+                buckets[key] = bucket;
+            }
+            else
+            {
+                skipped++;
+            }
+            if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
+            {
+                foreach (var e in pe.efxrData.Entries) Visit(e);
+                foreach (var a in pe.efxrData.Actions) Visit(a);
+            }
+        }
+    }
+
+    foreach (var path in files)
+    {
+        try
+        {
+            var efx = new EfxFile(new FileHandler(path));
+            efx.Read();
+            scanned++;
+            foreach (var e in efx.Entries) Visit(e);
+            foreach (var a in efx.Actions) Visit(a);
+        }
+        catch (Exception)
+        {
+            failed++;  // 语料里本来就有一批读不了的，见 KNOWN_UPSTREAM_ISSUES
+        }
+    }
+
+    var payload = new
+    {
+        filesTotal = files.Count,
+        filesScanned = scanned,
+        filesFailed = failed,
+        instances,
+        skippedNoFlagsField = skipped,
+        types = typeBuckets.OrderBy(kv => kv.Key).ToDictionary(
+            tkv => tkv.Key,
+            tkv => new
+            {
+                instances = tkv.Value.Sum(b => b.Value.count),
+                buckets = tkv.Value.OrderBy(kv => kv.Key).ToDictionary(
+                    kv => kv.Key,
+                    kv => new
+                    {
+                        count = kv.Value.count,
+                        fields = kv.Value.fields.ToDictionary(
+                            f => f.Key,
+                            f => new
+                            {
+                                distinct = f.Value.Count,
+                                top = f.Value.OrderByDescending(x => x.Value).Take(maxDistinct)
+                                        .ToDictionary(x => x.Key, x => x.Value),
+                            }),
+                    }),
+            }),
+    };
+    File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine(
+        $"OK: {typeBuckets.Count} 个 attribute 类型带顶层 Flags 数字字段，共 {instances} 个实例"
+        + $"（跳过 {skipped} 个无此字段的实例；扫描 {scanned}/{files.Count} 个文件，失败 {failed}）-> {jsonOutPath}");
     return 0;
 }
 
@@ -3094,7 +3475,43 @@ sealed class FixedExpressionTreeJsonConverter : System.Text.Json.Serialization.J
             }
         }
 
-        return EfxExpressionStringParser.Parse(expr, parameters);
+        var tree = EfxExpressionStringParser.Parse(expr, parameters);
+        RestoreParameterOrder(tree, parameters);
+        return tree;
+    }
+
+    /// <summary>
+    /// 把公式树的参数表顺序恢复成 JSON 里带来的那个顺序（= 原文件里的顺序）。
+    ///
+    /// ⚠ **游戏会因为这个顺序判文件 Invalid**（实机确认）。两条读路的顺序来源不一样：
+    ///
+    /// - 二进制 -> 树（`EfxFile.ParseExpressions`）：`tree.parameters = expression.Parameters.ToList()`，
+    ///   原样保留文件里的顺序；
+    /// - 文本 -> 树（`EfxExpressionStringParser.Parse`）：顺序由 `StoreNewParameters()` 的
+    ///   **前序遍历**重新生成，传进去的那张表只当哈希查找用（`EfxExpressionParser.cs:35`）。
+    ///
+    /// 而 Blender 走的正是 JSON 文本这条路，于是 `Lerp(IsBlue, colorR_N, color_N)` 这种三参
+    /// 公式的参数表被整个**反序**写出去（实测 18 棵树里 6 棵，每条都是精确反序）。
+    ///
+    /// ⚠ **所有既有门禁对它免疫**：`roundtrip` 是纯内存对象图往返（两次都走同一条重排），
+    /// Blender 产物和纯 CLI 产物逐字节相同（两边都经这条路），而"和原文件相同"按判据本来
+    /// 就不要求。只有把文件放回游戏里才会暴露。
+    ///
+    /// 稳定排序：JSON 里出现过的按原位置排，没出现过的（`Parse` 新引入的）保持相对次序、
+    /// 排在后面。不去改 vendor 的解析器——那是 submodule，绕在这里就够。
+    /// </summary>
+    private static void RestoreParameterOrder(EFXExpressionTree? tree, List<EFXExpressionParameterName> parameters)
+    {
+        if (tree == null || parameters.Count == 0 || tree.parameters.Count < 2) return;
+
+        var order = new Dictionary<uint, int>();
+        for (var i = 0; i < parameters.Count; i++)
+        {
+            order.TryAdd(parameters[i].parameterNameHash, i);
+        }
+        tree.parameters = tree.parameters
+            .OrderBy(p => order.TryGetValue(p.parameterNameHash, out var index) ? index : int.MaxValue)
+            .ToList();
     }
 
     public override void Write(Utf8JsonWriter writer, EFXExpressionTree value, JsonSerializerOptions options)
@@ -3105,4 +3522,64 @@ sealed class FixedExpressionTreeJsonConverter : System.Text.Json.Serialization.J
         JsonSerializer.Serialize(writer, value.parameters, options);
         writer.WriteEndObject();
     }
+}
+
+sealed class BitCorr
+{
+    public string bitName = "";
+    public int setCount;
+    public int multiplyCount;
+    public Dictionary<string, Dictionary<string, int>> assign = new();
+    public Dictionary<string, Dictionary<string, int>> hostFields = new();
+    public Dictionary<string, Dictionary<string, int>> formulas = new();
+    public Dictionary<string, Dictionary<string, int>> entryNames = new();
+    public Dictionary<string, Dictionary<string, int>> efxNames = new();
+    public Dictionary<string, int> zeroCount = new();
+    public Dictionary<string, int> zeroUnderMultiply = new();
+
+    public void ZeroCount(string field) => zeroCount[field] = zeroCount.GetValueOrDefault(field) + 1;
+    public void ZeroUnderMultiply(string field) => zeroUnderMultiply[field] = zeroUnderMultiply.GetValueOrDefault(field) + 1;
+}
+
+sealed class TypeCorr
+{
+    public string hostType = "";
+    public int instances;
+    public int hostMissing;
+    public Dictionary<string, Dictionary<string, int>> hostBaseline = new();
+    public Dictionary<int, BitCorr> bits = new();
+
+    public BitCorr Bit(int index, string name)
+    {
+        if (!bits.TryGetValue(index, out var bc)) bc = bits[index] = new BitCorr { bitName = name };
+        return bc;
+    }
+
+    static Dictionary<string, int> Top(Dictionary<string, int> hist, int topN) =>
+        hist.OrderByDescending(kv => kv.Value).Take(topN).ToDictionary(kv => kv.Key, kv => kv.Value);
+
+    static Dictionary<string, Dictionary<string, int>> TopPerBucket(
+        Dictionary<string, Dictionary<string, int>> buckets, int topN) =>
+        buckets.OrderBy(kv => kv.Key).ToDictionary(kv => kv.Key, kv => Top(kv.Value, topN));
+
+    public object Render(int topN) => new
+    {
+        hostType,
+        instances,
+        hostMissing,
+        hostBaseline = TopPerBucket(hostBaseline, topN),
+        bits = bits.OrderBy(kv => kv.Key).ToDictionary(kv => kv.Key.ToString(), kv => (object)new
+        {
+            bits[kv.Key].bitName,
+            bits[kv.Key].setCount,
+            bits[kv.Key].multiplyCount,
+            assign = bits[kv.Key].assign.TryGetValue("", out var a) ? Top(a, 16) : new(),
+            zeroCount = bits[kv.Key].zeroCount,
+            zeroUnderMultiply = bits[kv.Key].zeroUnderMultiply,
+            hostFields = TopPerBucket(bits[kv.Key].hostFields, topN),
+            formulas = TopPerBucket(bits[kv.Key].formulas, 12),
+            entryNames = bits[kv.Key].entryNames.TryGetValue("", out var e) ? Top(e, 12) : new(),
+            efxNames = bits[kv.Key].efxNames.TryGetValue("", out var x) ? Top(x, 8) : new(),
+        }),
+    };
 }

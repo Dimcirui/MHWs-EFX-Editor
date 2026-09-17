@@ -55,10 +55,12 @@
         "date": "2026-09-10"
       },
       "KeepHoldFrame": {
-        "confidence": "unknown",
-        "evidence": "机器挖掘表（mhws_field_labels_mined.json）对应字段注释本身带问号（\"保持帧数？\"），且与同结构体内独立存在的 KeepFrame 容易混淆——显式留空以盖掉挖掘表的猜测，不采信，等真实样本。",
-        "tester": "assistant",
-        "date": "2026-09-10"
+        "label_zh": "持续额外帧数",
+        "tooltip_zh": "粒子额外持续时间，当其为 0 且持续开关不为 0 时，粒子永久存在。",
+        "confidence": "confirmed",
+        "evidence": "实机测试：Flags=1/2（持续开关）时，KeepHoldFrame=0 表现为经过 Appear 阶段后永久停留在 Keep 阶段；KeepHoldFrame>0 表现为经过 Appear 阶段后在 Keep 阶段持续 KeepFrame+KeepHoldFrame 帧，然后进入 Vanish 阶段。推翻了机器挖掘表原本带问号的猜测（\"保持帧数？\"）。",
+        "tester": "user",
+        "date": "2026-09-17"
       }
     },
     "ReeLib.Efx.Structs.Basic.EFXAttributeParentOptions": {
@@ -460,12 +462,26 @@
     },
     "ReeLib.Efx.Structs.Main.EFXAttributeTypeBillboard3D": {
       "Flags": {
-        "label_zh": "混合类型（存疑）",
-        "tooltip_zh": "可能是混合类型（BlendType），作用未知。",
-        "confidence": "guess",
-        "evidence": "010 模板对应字段实际叫 unkn1，注释\"Might be BlendType\"——vendor 源码（EfxTypeBillboard.cs）对这个字段本身也没有确定的名字，两边都是猜测",
-        "tester": "assistant (vendor source physical order cross-check, 语义存疑)",
-        "date": "2026-09-10"
+        "label_zh": "标志位",
+        "tooltip_zh": "第 2/4 位是独立开关（强度/颜色随机范围）；其余位可能是混合类型（BlendType），未证实。",
+        "confidence": "likely",
+        "evidence": "010 模板对应字段实际叫 unkn1，注释\"Might be BlendType\"——vendor 源码（EfxTypeBillboard.cs）对这个字段本身也没有确定的名字，两边都是猜测，对未声明位仍然成立。新增：EfxBridge flagsurvey/condstats 全语料统计（39402 个实例）逐位分解，bit2（mask=4）打开时 Intensity 的取值几乎全部脱离默认值 0（关：99% 恒为 0；开：99% 非零），bit4（mask=16）打开时 ColorRange 几乎全部脱离默认值纯白不透明 0xFFFFFFFF（关：88% 恒为默认；开：仅 2% 为默认）——两者都是干净的二分信号，判定为各自字段的启用开关。bit0/bit1 测不出任何字段级信号，暂时归入未声明的残留位（候选 BlendType 的位置）。仅语料统计，未在 MHWs 实机验证过开关效果本身。",
+        "tester": "assistant (EfxBridge flagsurvey 全语料逐位分解，未实机复核)",
+        "date": "2026-09-17",
+        "bits": [
+          {
+            "mask": 4,
+            "label_zh": "启用强度",
+            "label_en": "Enable Intensity",
+            "items": [[0, "关闭", "Off"], [1, "启用", "On"]]
+          },
+          {
+            "mask": 16,
+            "label_zh": "启用颜色随机范围",
+            "label_en": "Enable Color Range",
+            "items": [[0, "关闭", "Off"], [1, "启用", "On"]]
+          }
+        ]
       },
       "Color": {
         "label_zh": "颜色",
@@ -476,8 +492,9 @@
       },
       "ColorRange": {
         "label_zh": "颜色范围",
-        "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tooltip_zh": "仅 Flags 的\"启用颜色随机范围\"位打开时才生效，关闭时不起作用。",
+        "confidence": "likely",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容。门控关系见同 attribute 的 Flags 字段 evidence（bit4 门控）。",
         "tester": "user+assistant",
         "date": "2026-09-09"
       },
@@ -497,8 +514,9 @@
       },
       "Intensity": {
         "label_zh": "强度",
-        "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tooltip_zh": "仅 Flags 的\"启用强度\"位打开时才生效，关闭时不起作用。",
+        "confidence": "likely",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容。门控关系见同 attribute 的 Flags 字段 evidence（bit2 门控）。",
         "tester": "assistant",
         "date": "2026-09-10"
       },
@@ -798,6 +816,28 @@
       }
     },
     "ReeLib.Efx.Structs.Transforms.EFXAttributeVelocity3D": {
+      "Flags": {
+        "label_zh": "标志位",
+        "tooltip_zh": "第 0/1 位是独立开关（都对应\"启用继承速度比例\"）；其余位含义未知。",
+        "confidence": "likely",
+        "evidence": "EfxBridge flagsurvey/condstats 全语料统计（62937 个实例）逐位分解：bit0（mask=1）打开时 InheritRate.s 几乎全部脱离默认值 0（关：92% 恒为 0，n=59996；开：仅 2% 为 0，n=2941）；bit1（mask=2）同向信号更极端（关：88% 恒为 0，n=62902；开：0% 为 0）但样本量很小（n=35），置信度主要靠 bit0。两位为什么会重复门控同一个字段尚不清楚（可能是两种触发路径共用同一个效果，也可能是本次分析方法本身把本该合并的一段 2 位取值拆成了两个独立位在看，需要实机验证区分）。另外发现 bit5/bit6 分别门控 SpeedDelayFrame/GravityDelayFrame（signal 0.82~0.88），本轮未建模，需要时可以照同样套路补。仅语料统计，未在 MHWs 实机验证过开关效果本身。",
+        "tester": "assistant (EfxBridge flagsurvey 全语料逐位分解，未实机复核)",
+        "date": "2026-09-17",
+        "bits": [
+          {
+            "mask": 1,
+            "label_zh": "启用继承速度比例 (A)",
+            "label_en": "Enable Inherit Rate (A)",
+            "items": [[0, "关闭", "Off"], [1, "启用", "On"]]
+          },
+          {
+            "mask": 2,
+            "label_zh": "启用继承速度比例 (B)",
+            "label_en": "Enable Inherit Rate (B)",
+            "items": [[0, "关闭", "Off"], [1, "启用", "On"]]
+          }
+        ]
+      },
       "Speed": {
         "label_zh": "初速度",
         "tooltip_zh": "粒子初始移动速度（米/帧，Range 类型：基准值 + 随机浮动范围）。",
@@ -888,9 +928,9 @@
       },
       "InheritRate": {
         "label_zh": "继承速度比例",
-        "tooltip_zh": "继承发射器速度的比例（无单位，0=不继承，1=完全继承）。",
-        "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容。单位：字段名里的\"Rate\"在这里应读作\"比例/比率\"而非\"速率\"——它不是一个随时间变化的量，是 spawn 时对发射器当前速度取一个比例混合进粒子初速度，跟 SpeedCoef 那种逐帧反复生效的机制不是一回事，所以标无单位而不是时间单位。",
+        "tooltip_zh": "继承发射器速度的比例（无单位，0=不继承，1=完全继承）。仅 Flags 的 bit0/bit1 至少一个打开时才生效。",
+        "confidence": "likely",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容。单位：字段名里的\"Rate\"在这里应读作\"比例/比率\"而非\"速率\"——它不是一个随时间变化的量，是 spawn 时对发射器当前速度取一个比例混合进粒子初速度，跟 SpeedCoef 那种逐帧反复生效的机制不是一回事，所以标无单位而不是时间单位。门控关系见同 attribute 的 Flags 字段 evidence（bit0/bit1 门控）。",
         "tester": "assistant",
         "date": "2026-09-10"
       },
@@ -989,19 +1029,19 @@
     "ReeLib.Efx.Structs.Transforms.EFXAttributeEmitterShape3D": {
       "RangeDivideHorizontalNum": {
         "label_zh": "横向等分数量",
-        "tooltip_zh": "粒子生成水平方向固定间隔（等分数量）。",
-        "confidence": "likely",
-        "evidence": "010 模板对应字段实际叫 RangeDivideHorizontal（缺 Num 后缀），按 vendor 源码字段顺序确认是同一个字段",
-        "tester": "assistant (vendor source + template physical order cross-check)",
-        "date": "2026-09-10"
+        "tooltip_zh": "把方位角均分成 n 个离散方向（不再连续扫描）。仅球体、圆柱体生效。",
+        "confidence": "confirmed",
+        "evidence": "010 模板对应字段实际叫 RangeDivideHorizontal（缺 Num 后缀），按 vendor 源码字段顺序确认是同一个字段；仅球体/圆柱体生效已由用户实机测试确认（2026-09-17），已同步进 field_visibility.py 按 ShapeType 门控。几何模型（方位角是周期量，均分成 n 个点不含重复的收尾点，像 n 片叶片/经线）来自用户描述（2026-09-17），已实现进 efx_sim/behaviors/emittershape3d.py，尚未逐条语料/实机交叉验证",
+        "tester": "user (live test 2026-09-17) + assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-17"
       },
       "RangeDivideVerticalNum": {
         "label_zh": "纵向等分数量",
-        "tooltip_zh": "粒子生成垂直方向固定间隔（等分数量）。",
-        "confidence": "likely",
-        "evidence": "010 模板对应字段实际叫 RangeDivideVertical（缺 Num 后缀），按 vendor 源码字段顺序确认是同一个字段",
-        "tester": "assistant (vendor source + template physical order cross-check)",
-        "date": "2026-09-10"
+        "tooltip_zh": "含义随形状变化（见 evidence）。仅球体、圆柱体生效。",
+        "confidence": "confirmed",
+        "evidence": "010 模板对应字段实际叫 RangeDivideVertical（缺 Num 后缀），按 vendor 源码字段顺序确认是同一个字段；仅球体/圆柱体生效已由用户实机测试确认（2026-09-17），已同步进 field_visibility.py 按 ShapeType 门控。几何模型来自用户描述（2026-09-17，已实现进 efx_sim/behaviors/emittershape3d.py，尚未逐条语料/实机交叉验证）：Sphere 上是把张角（-Y 到 +Y 的极角区间）均分成 n 个点（含两端，极角不是周期量），每个点是定纬度的圆锥面，n=2 时两极退化重合成一条穿过原点的直线，n=3 时两极+赤道（退化直线+赤道圆盘同时出现）；Cylinder 上是把 RangeY 均分成 n 个点（含两端），变成 n 片垂直于 Y 轴的圆环面。面板文案按 ShapeType 分两套，见 blender_efx_re/field_label_variants.py",
+        "tester": "user (live test 2026-09-17) + assistant (vendor source + template physical order cross-check)",
+        "date": "2026-09-17"
       },
       "LocalRotation": {
         "unit": "angle_radians",
@@ -1022,34 +1062,35 @@
       },
       "DivideEquidistant": {
         "label_zh": "等分划分（存疑）",
-        "tooltip_zh": "作用未知。",
+        "tooltip_zh": "作用未知。仅圆柱体生效。",
         "confidence": "guess",
-        "evidence": "010 模板对应字段拼写是 DivideEquidstant（少一个 i，模板作者的笔误），按 vendor 源码字段顺序确认是同一个字段",
-        "tester": "assistant (vendor source + template physical order cross-check)",
-        "date": "2026-09-10"
+        "evidence": "010 模板对应字段拼写是 DivideEquidstant（少一个 i，模板作者的笔误），按 vendor 源码字段顺序确认是同一个字段；`EfxBridge condstats EmitterShape3D DivideEquidistant` 全语料 188 个非默认样本 100% ShapeType=Cylinder，已同步进 field_visibility.py 按 ShapeType 门控（样本量小，只坐实了形状范围，字段作用仍未知）",
+        "tester": "assistant (vendor source + template physical order cross-check) + assistant (corpus condstats 2026-09-17)",
+        "date": "2026-09-17"
       },
       "DivideEquidistantCalcOuterCurveData": {
         "label_zh": "等分划分按外侧曲线计算（存疑）",
-        "tooltip_zh": "作用未知。",
+        "tooltip_zh": "作用未知。仅圆柱体生效。",
         "confidence": "guess",
-        "evidence": "010 模板对应字段名是 DivideEquidstantCaloOuterCurve（拼写和后缀都不同），按 vendor 源码字段顺序确认是同一个字段",
-        "tester": "assistant (vendor source + template physical order cross-check)",
-        "date": "2026-09-10"
+        "evidence": "010 模板对应字段名是 DivideEquidstantCaloOuterCurve（拼写和后缀都不同），按 vendor 源码字段顺序确认是同一个字段；`EfxBridge condstats` 全语料仅 5 个非默认样本，100% ShapeType=Cylinder 且 DivideEquidistant 均为 false（不是它的子开关），已同步进 field_visibility.py 按 ShapeType 门控（样本极小，仅供参考）",
+        "tester": "assistant (vendor source + template physical order cross-check) + assistant (corpus condstats 2026-09-17)",
+        "date": "2026-09-17"
       },
       "DivideEquidistantRecalcEveryFrameData": {
         "label_zh": "等分划分逐帧重算（存疑）",
-        "tooltip_zh": "作用未知。",
+        "tooltip_zh": "作用未知。仅圆柱体生效。",
         "confidence": "guess",
-        "evidence": "010 模板对应字段名是 DivideEquidstantEveryFrame（拼写和后缀都不同），按 vendor 源码字段顺序确认是同一个字段",
-        "tester": "assistant (vendor source + template physical order cross-check)",
-        "date": "2026-09-10"
+        "evidence": "010 模板对应字段名是 DivideEquidstantEveryFrame（拼写和后缀都不同），按 vendor 源码字段顺序确认是同一个字段；`EfxBridge condstats` 全语料仅 4 个非默认样本（RangeDivideNum 恒为 6，很可能是同一个特效文件的多个 entry），100% ShapeType=Cylinder 且 DivideEquidistant 均为 false，已同步进 field_visibility.py 按 ShapeType 门控（样本极小，仅供参考）",
+        "tester": "assistant (vendor source + template physical order cross-check) + assistant (corpus condstats 2026-09-17)",
+        "date": "2026-09-17"
       },
       "RangeY": {
         "label_zh": "Y 轴范围",
-        "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
-        "tester": "assistant",
-        "date": "2026-09-10"
+        "tooltip_zh": "立方体的负 min 会被钳到 0（绝对值区间，符号独立随机）。",
+        "confidence": "confirmed",
+        "evidence": "字段名本身足以说明作用，直接翻译；立方体上的钳位+对称读法、以及三轴联合挖空（不是逐轴独立钳位）由用户实机测试确认（2026-09-17，见 emittershape3d.py 模块说明），圆柱的 RangeY 仍是有符号位置区间，不受这条影响",
+        "tester": "user (live test 2026-09-17) + assistant",
+        "date": "2026-09-17"
       },
       "ShapeType": {
         "label_zh": "形状类型",
@@ -1084,17 +1125,19 @@
       },
       "RangeDivideNum": {
         "label_zh": "等分数量",
-        "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
-        "tester": "assistant",
-        "date": "2026-09-10"
+        "tooltip_zh": "把选中的轴均分成 n 个垂直平面。仅立方体生效。",
+        "confidence": "confirmed",
+        "evidence": "字段名本身足以说明作用，直接翻译；仅立方体生效已由用户实机测试确认（2026-09-17），已同步进 field_visibility.py 按 ShapeType 门控。几何模型（把 RangeDivideAxis 选中的那根轴的对称幅度区间 [-hi,hi] 均分成 n 个点、含两端，整个盒子变成 n 片垂直于该轴的平面）来自用户描述（2026-09-17），已实现进 efx_sim/behaviors/emittershape3d.py 的 _sample_box()/_box_outline()，尚未逐条语料/实机交叉验证",
+        "tester": "user (live test 2026-09-17) + assistant",
+        "date": "2026-09-17"
       },
       "RangeDivideAxis": {
         "label_zh": "等分坐标轴",
-        "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
-        "tester": "assistant",
-        "date": "2026-09-10"
+        "tooltip_zh": "选这根轴当均分的垂线方向。仅立方体生效。",
+        "confidence": "confirmed",
+        "evidence": "字段名本身足以说明作用，直接翻译；仅立方体生效已由用户实机测试确认（2026-09-17），已同步进 field_visibility.py 按 ShapeType 门控。几何模型见 RangeDivideNum 条目",
+        "tester": "user (live test 2026-09-17) + assistant",
+        "date": "2026-09-17"
       },
       "RotationOrder": {
         "label_zh": "旋转顺序",
@@ -1106,43 +1149,43 @@
       },
       "UseExtension": {
         "label_zh": "启用扩展",
-        "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
-        "tester": "assistant",
-        "date": "2026-09-10",
+        "confidence": "likely",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容；用户 2026-09-17 实机测试确认了这里描述的方向（立方体/球体/圆柱都会变形），且额外确认了 ScaleHorizontal/ScaleVertical 必须靠这个开关才生效——不勾选时那两个字段不管填什么都表现成满量程，细节见 ScaleHorizontal/ScaleVertical 条目和 docs/SIM_PORT_PLAN.md §8.4 追记。已实现进 efx_sim/behaviors/emittershape3d.py（球用现成的 sin/cos 公式即对、圆柱/立方体新增线性锥度），Box 的空腔具体是不是三轴联合还是独立分开、圆柱/Box 的锥度字段是不是真的是半径缩放，仍是模块说明里标注的待验证假设",
+        "tester": "user (live test 2026-09-17) + assistant",
+        "date": "2026-09-17",
         "tooltip_zh": "开启后改变基础形状轮廓（立方体变四棱锥、球体两侧内凹、圆柱变圆锥），常与等分间隔搭配使用。"
       },
       "ScaleHorizontal": {
-        "label_zh": "水平角度范围",
-        "tooltip_zh": "弧度制，限制发射器的水平角度范围。",
+        "label_zh": "水平扫描",
+        "tooltip_zh": "含义随形状变化（见 evidence）；需勾选“启用扩展”才生效。",
         "confidence": "likely",
-        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）；用 EfxBridge fieldstats 对全语料实测取值分布复核：s/r 众数落在 0~2π 区间且大量取值是 π/180 的整数倍，vendor 源码注释 \"Cylinder angle on cylinder shape\" 印证，和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数（π/6、π/4、π/2、π 等）高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
-        "tester": "assistant",
-        "date": "2026-09-10",
-        "unit": "angle_radians"
+        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出）。全语料 `EfxBridge condstats EmitterShape3D ShapeType,UseExtension`（2026-09-17 联合分桶复核）显示：Sphere/Cylinder 在 UseExtension=true 时该字段众数落在 0~2π、大量是 π/180 整数倍，是弧度制角度（水平扫描角），和已确认的 Transform3D.LocalRotation 同一套弧度常数吻合；但 **Box 在 UseExtension=true 时该字段 distinct=11，取值是 0.5/0.75/0.8/1.1/2.0 这类无 π 关系的小数，不是角度**，疑似被复用成缩放/锥度系数（配合 UseExtension 的\"立方体变四棱锥\"读法）。因此不再全局标 unit=angle_radians（会在 Box 上把缩放系数误显示成角度）。UseExtension=false 时全部三形状锁死在中性默认值（Box/无 π 关系形状恒 (1.0,0.0)，Sphere/Cylinder 恒 (0,2π)），字段本身在这个状态下不生效。这条 label_zh/tooltip_zh/unit 只是查不到 ShapeType 时的兜底——面板实际显示的文案按 ShapeType 分三套（Box\"水平锥度\"无单位 / Sphere+Cylinder\"水平扫描角\"弧度制），见 `blender_efx_re/field_label_variants.py`。",
+        "tester": "user (live test 2026-09-17) + assistant",
+        "date": "2026-09-17"
       },
       "ScaleVertical": {
-        "label_zh": "垂直角度范围",
-        "tooltip_zh": "弧度制，限制发射器的垂直角度范围。",
+        "label_zh": "垂直扫描",
+        "tooltip_zh": "含义随形状变化（见 evidence）；需勾选“启用扩展”才生效。",
         "confidence": "likely",
-        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出，未做游戏内验证）；用 EfxBridge fieldstats 对全语料实测取值分布复核：s/r 众数落在 0~2π 区间且大量取值是 π/180 的整数倍，与 ScaleHorizontal 同一形状，和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数（π/6、π/4、π/2、π 等）高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
-        "tester": "assistant",
-        "date": "2026-09-10",
-        "unit": "angle_radians"
+        "evidence": "010 Editor 模板 MHWs-EFX-Template / RE_EFX_STRUCTS.btx 对应字段注释（tools/mine_btx_semantics.py 自动匹配挖出）。全语料 `EfxBridge condstats EmitterShape3D ShapeType,UseExtension`（2026-09-17 联合分桶复核）显示：**只有 Sphere 在 UseExtension=true 时该字段是弧度角**（取值集中在 -π/2~π/2 附近，和用户实机确认的\"立体角补角\"模型一致：90°=竖线、0°=整圆面、120°/60°对称张开、负值反向）。**Cylinder 在 UseExtension=true 时该字段 distinct=38，取值是 0.5/0.6/0.8/1.5 这类 0~1.5 区间的小数，没有 π 关系，不是角度**——用户提出的假说是这其实是复用了上一代 ES3D 圆柱起止半径/锥度那种字段，语料分布和这个假说吻合（数值范围、非角度特征都对得上），后续实机枚举 (s,r) 五组取值确认是沿高度线性插值的径向锥度公式（见 emittershape3d.py 模块说明）。Box 同理（distinct=8，同样是无 π 关系的小数，实机确认是 Z 轴锥度）。因此不再全局标 unit=angle_radians。UseExtension=false 时三种形状都锁死在中性默认值（Sphere 恒 (-π/2,π)，Box/Cylinder 恒 (1.0,0.0)），字段本身在这个状态下不生效。这条 label_zh/tooltip_zh/unit 只是查不到 ShapeType 时的兜底——面板实际显示的文案按 ShapeType 分三套（Box\"垂直锥度\"/Cylinder\"径向锥度\"都无单位 / Sphere\"垂直扫描角\"弧度制），见 `blender_efx_re/field_label_variants.py`。",
+        "tester": "user (live test 2026-09-17) + assistant",
+        "date": "2026-09-17"
       },
       "RangeX": {
         "label_zh": "X 轴范围",
-        "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
-        "tester": "assistant",
-        "date": "2026-09-10"
+        "tooltip_zh": "立方体的负 min 会被钳到 0（绝对值区间，符号独立随机）。",
+        "confidence": "confirmed",
+        "evidence": "字段名本身足以说明作用，直接翻译；立方体上的钳位+对称读法、以及三轴联合挖空（不是逐轴独立钳位）由用户实机测试确认（2026-09-17，见 emittershape3d.py 模块说明），球/圆柱这两轴仍是径向幅度，不受这条影响",
+        "tester": "user (live test 2026-09-17) + assistant",
+        "date": "2026-09-17"
       },
       "RangeZ": {
         "label_zh": "Z 轴范围",
-        "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
-        "tester": "assistant",
-        "date": "2026-09-10"
+        "tooltip_zh": "立方体的负 min 会被钳到 0（绝对值区间，符号独立随机）。",
+        "confidence": "confirmed",
+        "evidence": "字段名本身足以说明作用，直接翻译；立方体上的钳位+对称读法、以及三轴联合挖空（不是逐轴独立钳位）由用户实机测试确认（2026-09-17，见 emittershape3d.py 模块说明），球/圆柱这两轴仍是径向幅度，不受这条影响",
+        "tester": "user (live test 2026-09-17) + assistant",
+        "date": "2026-09-17"
       }
     },
     "ReeLib.Efx.Structs.Transforms.EFXAttributeFadeByEmitterAngle": {
@@ -1305,6 +1348,62 @@
       }
     },
     "ReeLib.Efx.Structs.Transforms.EFXAttributeTransform3DModifier": {
+      "unkn0": {
+        "label_zh": "启用功能位图",
+        "tooltip_zh": "按位标记本 Modifier 启用了哪几组子功能？具体位含义未逐位破解。",
+        "confidence": "guess",
+        "evidence": "全语料 6412 个实例里 unkn0 只有 39 种取值，且全部可以分解成 2 的幂之和（1/2/4/16/64/128/256 等至少 7~8 个独立位），是典型的功能开关位图特征——数量和下面新猜出的 7 组子功能（位移/旋转/缩放各一段静态随机 + 各一段持续速度）大致吻合，但哪一位对应哪组尚未逐位核实，需要拿单独只翻一位的真实样本或游戏内实测才能拆解，不写成确定的位对照表",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn1": {
+        "label_zh": "X 轴位移",
+        "tooltip_zh": "推测：一次性生成时的随机位移，X 轴分量。",
+        "confidence": "guess",
+        "evidence": "结构位置对称于已确认的 unkn7~unkn12（旋转静态角度+随机值三对）：unkn1~unkn6 紧跟在开关位图 unkn0 之后、旋转静态角度组之前，同样是三对 (值,随机值) 排列。取值是普通小数量级（非弧度常数），猜测是位移而非角度；具体单位（是否和 Transform3D.LocalPosition 一样是米）未经游戏内实测确认",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn2": {
+        "label_zh": "X 轴位移随机值",
+        "tooltip_zh": "见 unkn1，X 轴位移在此基础上的随机浮动范围。",
+        "confidence": "guess",
+        "evidence": "见 unkn1 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn3": {
+        "label_zh": "Y 轴位移",
+        "tooltip_zh": "见 unkn1。",
+        "confidence": "guess",
+        "evidence": "见 unkn1 的 evidence；取值范围比 X/Z 更宽（最大到 ±7.0），三轴不对称，但 EmitterShape3D 等其它属性里 Y 轴（游戏坐标系的竖直轴）表现和 X/Z 不同也有先例",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn4": {
+        "label_zh": "Y 轴位移随机值",
+        "tooltip_zh": "见 unkn1。",
+        "confidence": "guess",
+        "evidence": "见 unkn1 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn5": {
+        "label_zh": "Z 轴位移",
+        "tooltip_zh": "见 unkn1。",
+        "confidence": "guess",
+        "evidence": "见 unkn1 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn6": {
+        "label_zh": "Z 轴位移随机值",
+        "tooltip_zh": "见 unkn1。",
+        "confidence": "guess",
+        "evidence": "见 unkn1 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
       "unkn7": {
         "label_zh": "X 轴旋转角度",
         "unit": "angle_radians",
@@ -1358,6 +1457,150 @@
         "evidence": "见 unkn7 的 evidence",
         "tester": "assistant (corpus value-distribution fingerprinting)",
         "date": "2026-09-10"
+      },
+      "unkn13": {
+        "label_zh": "X 轴缩放增量",
+        "tooltip_zh": "推测：一次性生成时叠加到基础缩放上的随机增量，X 轴分量，0=不额外缩放。",
+        "confidence": "guess",
+        "evidence": "unkn13/unkn15/unkn17（X/Y/Z 三轴同位字段）取值分布逐值完全相同，对应的 unkn14/unkn16/unkn18（随机值字段）也彼此完全相同——典型的'三轴独立开槽、编辑器里常三轴填同一个值'模式。**改判为加法增量而非乘法倍率**（2026-09-17 修正）：93.6%（6006/6412）恒为 0.0，只有约 6% 落在 1.0/0.78/0.7/0.8/1.5/1.2/2.0/3.0 附近——如果 1.0 是'不缩放'的中性值，全语料理应以 1.0 为压倒性众数（像 Transform3D.LocalScale 那样），但实际众数是 0.0，说明这是叠加在基础缩放（Transform3D.LocalScale，默认 1.0）之上的**增量**，0 表示不叠加、非零时是'额外放大/缩小多少'。和已确认的'变动系数'字段（unkn33 等，众数确实在 1.0 附近）不是同一种量，不要混用同一套'1=中性'的读法。结构位置紧跟在已确认的旋转静态角度组（unkn7~unkn12）之后，猜测三段静态随机（位移 unkn1~6/旋转 unkn7~12/缩放 unkn13~18）到此结束",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn14": {
+        "label_zh": "X 轴缩放增量随机值",
+        "tooltip_zh": "见 unkn13。",
+        "confidence": "guess",
+        "evidence": "见 unkn13 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn15": {
+        "label_zh": "Y 轴缩放增量",
+        "tooltip_zh": "见 unkn13。",
+        "confidence": "guess",
+        "evidence": "见 unkn13 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn16": {
+        "label_zh": "Y 轴缩放增量随机值",
+        "tooltip_zh": "见 unkn13。",
+        "confidence": "guess",
+        "evidence": "见 unkn13 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn17": {
+        "label_zh": "Z 轴缩放增量",
+        "tooltip_zh": "见 unkn13。",
+        "confidence": "guess",
+        "evidence": "见 unkn13 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn18": {
+        "label_zh": "Z 轴缩放增量随机值",
+        "tooltip_zh": "见 unkn13。",
+        "confidence": "guess",
+        "evidence": "见 unkn13 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn19": {
+        "label_zh": "X 轴位移速度",
+        "tooltip_zh": "推测：逐帧叠加的持续位移速度，X 轴分量。",
+        "confidence": "guess",
+        "evidence": "结构对齐已确认的 unkn31~unkn42（持续旋转角速度，三轴各 4 字段：速度/随机值/变动系数/变动系数随机值）：unkn19~unkn30 紧跟在三段静态随机之后、旋转角速度组之前，同样是三轴各 4 字段排列，且 unkn21/25/29 三个字段和已确认的'变动系数'（unkn33/37/41）一样呈 0.0/~1.0 双峰分布，unkn22/26 也和'变动系数随机值'一样恒为 0（fieldstats 键名带 .value 后缀，C# 反射判定为 nullable）；第三轴对应的 unkn30 虽然取值同样近乎恒为 0，但 C# 侧类型是普通 float 而非 nullable，和前两轴不完全一致，此处按同一组处理但注明类型上的这个小差异。命名参照姊妹项目 TRANSFORM3D behavior 的 translation velocity 分组（docs/SIM_PORT_PLAN.md §5.1）。取值量级不是弧度常数，猜测对应位移而非角度。未做游戏内实测",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn20": {
+        "label_zh": "X 轴位移速度随机值",
+        "tooltip_zh": "见 unkn19。",
+        "confidence": "guess",
+        "evidence": "见 unkn19 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn21": {
+        "label_zh": "X 轴位移速度变动系数",
+        "tooltip_zh": "1=匀速，大于 1 加速，小于 1 减速。",
+        "confidence": "guess",
+        "evidence": "见 unkn19 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn22": {
+        "label_zh": "X 轴位移速度变动随机值",
+        "tooltip_zh": "见 unkn21，在变动系数基础上叠加的随机波动，绝大多数情况下不设置。",
+        "confidence": "guess",
+        "evidence": "见 unkn19 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn23": {
+        "label_zh": "Y 轴位移速度",
+        "tooltip_zh": "见 unkn19。",
+        "confidence": "guess",
+        "evidence": "见 unkn19 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn24": {
+        "label_zh": "Y 轴位移速度随机值",
+        "tooltip_zh": "见 unkn19。",
+        "confidence": "guess",
+        "evidence": "见 unkn19 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn25": {
+        "label_zh": "Y 轴位移速度变动系数",
+        "tooltip_zh": "见 unkn21。",
+        "confidence": "guess",
+        "evidence": "见 unkn19 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn26": {
+        "label_zh": "Y 轴位移速度变动随机值",
+        "tooltip_zh": "见 unkn22。",
+        "confidence": "guess",
+        "evidence": "见 unkn19 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn27": {
+        "label_zh": "Z 轴位移速度",
+        "tooltip_zh": "见 unkn19。",
+        "confidence": "guess",
+        "evidence": "见 unkn19 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn28": {
+        "label_zh": "Z 轴位移速度随机值",
+        "tooltip_zh": "见 unkn19。",
+        "confidence": "guess",
+        "evidence": "见 unkn19 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn29": {
+        "label_zh": "Z 轴位移速度变动系数",
+        "tooltip_zh": "见 unkn21。",
+        "confidence": "guess",
+        "evidence": "见 unkn19 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn30": {
+        "label_zh": "Z 轴位移速度变动随机值",
+        "tooltip_zh": "见 unkn22。绝大多数情况下不设置（恒为 0）。",
+        "confidence": "guess",
+        "evidence": "见 unkn19 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
       },
       "unkn31": {
         "label_zh": "X 轴随机方向旋转角速度",
@@ -1455,11 +1698,107 @@
       },
       "unkn42": {
         "label_zh": "Z 轴角速度变动随机值",
-        "tooltip_zh": "见 unkn34。全语料从未出现过非零值。",
+        "tooltip_zh": "见 unkn34。目前不设置（恒为 0）。",
         "confidence": "likely",
         "evidence": "见 unkn31 的 evidence",
         "tester": "assistant (corpus value-distribution fingerprinting)",
         "date": "2026-09-10"
+      },
+      "unkn43": {
+        "label_zh": "X 轴缩放速度",
+        "tooltip_zh": "推测：逐帧叠加的持续缩放变化速度，X 轴分量。",
+        "confidence": "guess",
+        "evidence": "结构对齐已确认的 unkn31~unkn42（持续旋转角速度）和新猜出的 unkn19~unkn30（持续位移速度）：排在旋转角速度组之后，同样是三轴各 4 字段（速度/随机值/变动系数/变动系数随机值）。unkn45/49/53 和'变动系数'一样呈 0.0/~1.0 双峰分布，unkn46/48/50/54 和'变动系数随机值'一样恒为 0（部分是 nullable ukn_type，部分是恒为 0 的普通 float，和 unkn19~30 那组一样存在类型不完全统一的小差异）。unkn43 和 unkn51（X 组 vs Z 组的'速度'字段）取值分布近乎逐值重合，是三轴共用同一批预设数值、支持它们是同一参数三个轴分量的直接证据。命名参照姊妹项目'scale velocity'分组。未做游戏内实测",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn44": {
+        "label_zh": "X 轴缩放速度随机值",
+        "tooltip_zh": "见 unkn43。目前不设置（恒为 0）。",
+        "confidence": "guess",
+        "evidence": "见 unkn43 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn45": {
+        "label_zh": "X 轴缩放速度变动系数",
+        "tooltip_zh": "1=不变，大于 1 越缩越快，小于 1 越缩越慢。",
+        "confidence": "guess",
+        "evidence": "见 unkn43 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn46": {
+        "label_zh": "X 轴缩放速度变动随机值",
+        "tooltip_zh": "见 unkn45，在变动系数基础上叠加的随机波动，绝大多数情况下不设置。",
+        "confidence": "guess",
+        "evidence": "见 unkn43 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn47": {
+        "label_zh": "Y 轴缩放速度",
+        "tooltip_zh": "见 unkn43。",
+        "confidence": "guess",
+        "evidence": "见 unkn43 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn48": {
+        "label_zh": "Y 轴缩放速度随机值",
+        "tooltip_zh": "见 unkn43。目前不设置（恒为 0）。",
+        "confidence": "guess",
+        "evidence": "见 unkn43 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn49": {
+        "label_zh": "Y 轴缩放速度变动系数",
+        "tooltip_zh": "见 unkn45。",
+        "confidence": "guess",
+        "evidence": "见 unkn43 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn50": {
+        "label_zh": "Y 轴缩放速度变动随机值",
+        "tooltip_zh": "见 unkn46。",
+        "confidence": "guess",
+        "evidence": "见 unkn43 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn51": {
+        "label_zh": "Z 轴缩放速度",
+        "tooltip_zh": "见 unkn43。取值分布和 unkn43（X 轴）近乎逐值重合。",
+        "confidence": "guess",
+        "evidence": "见 unkn43 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn52": {
+        "label_zh": "Z 轴缩放速度随机值",
+        "tooltip_zh": "见 unkn43。目前不设置（恒为 0）。",
+        "confidence": "guess",
+        "evidence": "见 unkn43 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn53": {
+        "label_zh": "Z 轴缩放速度变动系数",
+        "tooltip_zh": "见 unkn45。",
+        "confidence": "guess",
+        "evidence": "见 unkn43 的 evidence",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
+      },
+      "unkn54": {
+        "label_zh": "Z 轴缩放速度变动随机值",
+        "tooltip_zh": "见 unkn46。目前不设置（恒为 0），也可能是结构体末尾的版本预留字段。",
+        "confidence": "guess",
+        "evidence": "见 unkn43 的 evidence；unkn54 是整个结构体的最后一个字段，也不能排除它其实是别的版本才用到的预留位而非'Z 轴变动随机值'——两种解释目前都和现有语料吻合，未能区分",
+        "tester": "assistant (corpus value-distribution fingerprinting)",
+        "date": "2026-09-17"
       }
     },
     "ReeLib.Efx.Structs.Main.EFXAttributeTypeGpuMesh": {
@@ -1551,6 +1890,28 @@
       }
     },
     "ReeLib.Efx.Structs.Misc.EFXAttributeRgbCommon": {
+      "Flags": {
+        "label_zh": "标志位",
+        "tooltip_zh": "第 0/1 位是独立开关（绿/红通道颜色随机范围）；其余位含义未知。",
+        "confidence": "likely",
+        "evidence": "EfxBridge flagsurvey/condstats 全语料统计（40804 个实例）逐位分解：bit0（mask=1）打开时 GreenChColorRange 几乎全部脱离默认值纯白不透明 0xFFFFFFFF（关：99% 恒为默认，n=40715；开：仅 0% 为默认，n=89——样本量偏小但信号极干净）；bit1（mask=2）同理门控 RedChColorRange（关：99% 恒为默认，n=40414；开：17% 为默认，n=390）。两个开关分别对应结构里物理对称的绿/红通道颜色范围组，和 TypeBillboard3D.Flags 里\"启用颜色随机范围\"是同一种约定。仅语料统计，未在 MHWs 实机验证过开关效果本身。",
+        "tester": "assistant (EfxBridge flagsurvey 全语料逐位分解，未实机复核)",
+        "date": "2026-09-17",
+        "bits": [
+          {
+            "mask": 1,
+            "label_zh": "启用绿通道颜色随机范围",
+            "label_en": "Enable Green Channel Color Range",
+            "items": [[0, "关闭", "Off"], [1, "启用", "On"]]
+          },
+          {
+            "mask": 2,
+            "label_zh": "启用红通道颜色随机范围",
+            "label_en": "Enable Red Channel Color Range",
+            "items": [[0, "关闭", "Off"], [1, "启用", "On"]]
+          }
+        ]
+      },
       "GreenChSaturate": {
         "label_zh": "绿通道饱和度",
         "confidence": "likely",
@@ -1598,8 +1959,9 @@
       },
       "GreenChColorRange": {
         "label_zh": "绿通道颜色范围",
-        "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tooltip_zh": "仅 Flags 的\"启用绿通道颜色随机范围\"位打开时才生效。",
+        "confidence": "likely",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容。门控关系见同 attribute 的 Flags 字段 evidence（bit0 门控）。",
         "tester": "assistant",
         "date": "2026-09-10"
       },
@@ -1612,8 +1974,9 @@
       },
       "RedChColorRange": {
         "label_zh": "红通道颜色范围",
-        "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
+        "tooltip_zh": "仅 Flags 的\"启用红通道颜色随机范围\"位打开时才生效。",
+        "confidence": "likely",
+        "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容。门控关系见同 attribute 的 Flags 字段 evidence（bit1 门控）。",
         "tester": "assistant",
         "date": "2026-09-10"
       },

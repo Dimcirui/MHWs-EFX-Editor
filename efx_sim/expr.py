@@ -13,7 +13,7 @@ efx_sim/expr.py —— IExpressionAttribute 公式（文本形式）的解析与
 形式，见 `EfxExpressionParser.cs` 的 `ReadIdentifier()`），预处理时把 `:` 换成 `__` 再喂给
 `ast.parse(..., mode="eval")`。
 
-置信度分层（**只有这样分层，才对得起铁律 #7"没拿到真实样本就不实现、不断言"**）
+置信度分层（**只有这样分层，才对得起铁律 #6"没拿到真实样本就不实现、不断言"**）
 --------------------------------------------------------------------------
 - **实机确认：vendor 给六个二元操作码起的名字，一个都不对。** 文本里的
   `+` 是**乘**、`-` 是**除**（`b/a`）、`*` 是**取模**（`fmod(b,a)`）、`/` 是**加**，
@@ -41,18 +41,17 @@ efx_sim/expr.py —— IExpressionAttribute 公式（文本形式）的解析与
   印证 `Lerp` 第一个参数确实是插值系数），逐条证据见 `_eval_clamp()` 的 docstring 和
   docs/EXPRESSION_SEMANTICS.md。`bounds_clamp`/`remap_unclamped` 两档保留旧读法对拍，见
   `SimConfig.expr_clamp_mode`。
-  **`InvLerp` 也定了（2026-09-16 实机）**：`InvLerp(a, b, t)` == `b + (a-b)*saturate(t)`
-  ——**就是 `Lerp`，只是插值系数挪到最后一个参数**，不做任何"反向"的事。判据是两条
-  探针：`InvLerp(x, 1, 0)` 恒定 1 不动（说明第 3 参是系数、第 1 参不是 value），
-  `InvLerp(1, 0, x)` 是两端饱和的 0→1 斜坡（说明 `t` 钳 `[0,1]`）。语料里那两种互斥
-  用法里，`InvLerp(1, 0.5, 1 - Clamp(TIMER, 120, 30))` 读通了（从 1 淡到 0.5），
-  而 `InvLerp(Length, 65, 20)` 在这个读法下退化成恒等于 `Length`（`65`/`20` 是死参数）
-  ——那大概是作者写错了，实机结果优先。
+  **`InvLerp`（操作码 16）是真正的 `clamp`（2026-09-17 实机）**：
+  `InvLerp(hi, lo, value)` == `max(lo, min(hi, value))`。**不是 lerp、也不是反向插值**
+  ——名字和 17 号基本是对调的（17 号叫 `Clamp` 却是 smoothstep 重映射）。
+  ⚠ 这条 2026-09-16 曾被判成"就是 `Lerp`、系数挪到末位"，**错了**：当时两条探针用了
+  `a=1, b=0`，恰好让 lerp、钳位反向插值、以及真 clamp 三者全部退化成 `saturate(x)`。
+  端点换成 `4/1` 之后三者立刻分开，逐条读数见 docs/EXPRESSION_SEMANTICS.md 第 3 节。
 - **`Unary*` / `Func*` 这批纯编号占位已经全部实机测完**（2026-09-16），规范命名见
   `CALL_DISPLAY_NAMES`，按操作码是：0~2 `Sin`/`Cos`/`Asin`（弧度）、4~10
   `Floor`/`Ceil`/`Log`(ln)/`Log10`/`Exp`/`Abs`/`Saturate`、11~12 `SinDeg`/`CosDeg`
-  （角度制）、15~17 `LerpTFirst`/`LerpTLast`/`Smoothstep`、18~21 `Min`/`Max`/`Pow`/
-  `LerpRange`。**vendor 枚举里那几个名字对不上语义**：17 号叫 `Clamp` 但其实是
+  （角度制）、15~17 `Lerp`/`LerpTLast`/`SmoothStep`、18~21 `Min`/`Max`/`Pow`/
+  `Remap`。**vendor 枚举里那几个名字对不上语义**：17 号叫 `Clamp` 但其实是
   smoothstep 重映射；18/19 才是真 min/max，而文本里的 `Min(`/`Max(` 是中缀操作码
   5/0（减和幂）。3 号是 `Acos`（改字节测出来的，但解析器不认这个名字、写不出来），
   13/14 引擎没实现。
@@ -79,18 +78,18 @@ _ROOT_VALUE_CHAR = "|"
 #: 逐条依据见 `_eval_binary_operator()`。
 #: **真正的 min/max 不在二元操作码里，在函数里**：`Func18` = `min`、`Func19` = `max`
 #: （2026-09-16 实机确认，见 `_eval_known_binary_func()`）。
-_BINARY_KNOWN_FUNCS = frozenset({"Min", "Max"})
+_BINARY_KNOWN_FUNCS = frozenset({"Mod", "PowOp"})
 
 #: 2 参、实机测出语义的**函数**（区别于上面那两个"函数写法的二元操作码"）。
 #: `Func18`/`Func19` 名字纯是编号，语义是 min/max。
 _KNOWN_BINARY_FUNCS = {
-    "Func18": min,
-    "Func19": max,
-    "Func20": None,     # pow(b, a) = b^a，走 _eval_known_binary_func 里的兜底分支
+    "Min": min,
+    "Max": max,
+    "Pow": None,        # pow(b, a) = b^a，走 _eval_known_binary_func 里的兜底分支
 }
 
 #: 3 参、具名确认但参数顺序是猜的函数，见模块 docstring
-_TERNARY_KNOWN_FUNCS = frozenset({"Lerp", "InvLerp", "Clamp"})
+_TERNARY_KNOWN_FUNCS = frozenset({"Lerp", "InvLerp", "SmoothStep"})
 
 #: 1 参函数里**语义已经测出来的**：名字 -> (实现, 置信度说明用的 key)。
 #: 2026-09-16 实机测法：Y 轴当时间基准、Z 轴填 `UnaryN(<输入>)`、单粒子
@@ -98,49 +97,50 @@ _TERNARY_KNOWN_FUNCS = frozenset({"Lerp", "InvLerp", "Clamp"})
 #: `identity`/`abs`/`saturate` 三者全等、`floor`/`trunc` 全等、`ceil`/`sign` 全等，
 #: 前一轮就是因为这个卡住的。逐条判据见 `_KNOWN_UNARY_EVIDENCE`。
 _KNOWN_UNARY_FUNCS = {
-    "Unary0": math.sin,                                    # 弧度
-    "Unary1": math.cos,                                    # 弧度
-    "Unary2": None,      # asin（弧度），走 _eval_known_unary 里的定义域兜底
-    "Unary4": lambda x: float(math.floor(x)),
-    "Unary5": lambda x: float(math.ceil(x)),
-    "Unary6": None,      # ln，走 _eval_known_unary 里的定义域兜底
-    "Unary7": None,      # log10，同上
-    "Unary8": None,      # e^x，走溢出兜底
-    "Unary9": abs,
-    "Unary10": lambda x: max(0.0, min(1.0, x)),            # saturate / clamp01
-    "Unary11": lambda x: math.sin(math.radians(x)),        # **角度制**
-    "Unary12": lambda x: math.cos(math.radians(x)),        # **角度制**
+    "Sin": math.sin,                                       # 弧度
+    "Cos": math.cos,                                       # 弧度
+    "Asin": None,        # 弧度，走 _eval_known_unary 里的定义域兜底
+    "Acos": None,        # 弧度，同上。**操作码 3**：语义靠改字节测出来（旧解析器不认这个
+                         # 名字，写不出来），a96e1d9 把它加进 FunctionArgCounts 之后才可写
+    "Floor": lambda x: float(math.floor(x)),
+    "Ceil": lambda x: float(math.ceil(x)),
+    "Log": None,         # ln，走 _eval_known_unary 里的定义域兜底
+    "Log10": None,       # 同上
+    "Exp": None,         # e^x，走溢出兜底
+    "Abs": abs,
+    "Saturate": lambda x: max(0.0, min(1.0, x)),           # clamp01
+    "SinDeg": lambda x: math.sin(math.radians(x)),         # **角度制**
+    "CosDeg": lambda x: math.cos(math.radians(x)),         # **角度制**
 }
 
 #: 每个已测函数的实机读数（写在这儿是为了让 docstring 和回归测试引用同一份原始观察）
 _KNOWN_UNARY_EVIDENCE = {
-    "Unary0": "圆测试从侧面起（sin(0)=0）；[-2,2] 宽扫呈 谷前(-0.909)-谷(-1@-pi/2)-峰(1@pi/2)-峰后(0.909)",
-    "Unary1": "圆测试配 Unary0 画出整圆；[-2,2] 宽扫呈 谷(-0.416)-峰(1@0)-谷(-0.416)",
-    "Unary4": "[-2,2] 阶梯，第一个完整台阶在 -2（trunc/ceil 都会从 -1 开始）",
-    "Unary5": "[-2,2] 阶梯，第一个完整台阶在 -1",
-    "Unary6": "输入 0->1 时从 -inf 爬到 0；Unary6(Unary8(t)) 复合终点恰好 1.0（同底互逆）",
-    "Unary8": "[-2,2] 宽扫起点 0.14 == e^-2 = 0.1353（10^-2=0.01 / 2^-2=0.25 都不对）",
-    "Unary2": "输入扫 0->1.4：升到 1.4416 时粒子消失（画面内，不是边界）== asin 在 x>1 无定义，"
+    "Sin": "圆测试从侧面起（sin(0)=0）；[-2,2] 宽扫呈 谷前(-0.909)-谷(-1@-pi/2)-峰(1@pi/2)-峰后(0.909)",
+    "Cos": "圆测试配 Unary0 画出整圆；[-2,2] 宽扫呈 谷(-0.416)-峰(1@0)-谷(-0.416)",
+    "Floor": "[-2,2] 阶梯，第一个完整台阶在 -2（trunc/ceil 都会从 -1 开始）",
+    "Ceil": "[-2,2] 阶梯，第一个完整台阶在 -1",
+    "Log": "输入 0->1 时从 -inf 爬到 0；Unary6(Unary8(t)) 复合终点恰好 1.0（同底互逆）",
+    "Exp": "[-2,2] 宽扫起点 0.14 == e^-2 = 0.1353（10^-2=0.01 / 2^-2=0.25 都不对）",
+    "Asin": "输入扫 0->1.4：升到 1.4416 时粒子消失（画面内，不是边界）== asin 在 x>1 无定义，"
               "消失前最后一帧 asin(1.003 之前) = 1.4416；tan/atanh 会先冲出画面、atan 根本不消失、"
               "acos 是往下走到 -0.87 才消失",
-    "Unary7": "Unary7(Unary8(t)) 复合终点 0.434 == log10(e)（ln 会是 1.0、log2 会是 1.443）",
-    "Unary9": "[-2,2] 宽扫画出直线 V 字；输入缩到 [-0.5,0.5] 后是小 V、顶点贴 0（排掉 max(|x|,1) 的平底 U）",
-    "Unary10": "[-2,2] 宽扫呈 `_/‾`：0 段 -> 斜升到 1 -> 停在 1，就是 clamp01",
-    "Unary11": "[-2,2] 恒 0、[-180,180] 扫出完整三角波 -> sin 的角度制版本（sin(2°)=0.035）",
-    "Unary12": "[-2,2] 恒 1、[-180,180] 扫出三角波 -> cos 的角度制版本（cos(2°)=0.9994）",
+    "Log10": "Unary7(Unary8(t)) 复合终点 0.434 == log10(e)（ln 会是 1.0、log2 会是 1.443）",
+    "Abs": "[-2,2] 宽扫画出直线 V 字；输入缩到 [-0.5,0.5] 后是小 V、顶点贴 0（排掉 max(|x|,1) 的平底 U）",
+    "Saturate": "[-2,2] 宽扫呈 `_/‾`：0 段 -> 斜升到 1 -> 停在 1，就是 clamp01",
+    "SinDeg": "[-2,2] 恒 0、[-180,180] 扫出完整三角波 -> sin 的角度制版本（sin(2°)=0.035）",
+    "CosDeg": "[-2,2] 恒 1、[-180,180] 扫出三角波 -> cos 的角度制版本（cos(2°)=0.9994）",
 }
 
 #: 纯数字占位、语义**仍然**未确认的函数名 -> 参数个数（`EfxExpressionParser.cs` 的
 #: `FunctionArgCounts`：Unary* 全部 1 参，Func18/19/20 是 2 参，Func21 是 5 参）。
-#: 函数全部测完了（12 个 `Unary*` + `Func18`/`19`/`20`/`21`），这张表现在是空的。
-#: **唯一还没定语义的是三参的 `InvLerp`**（语料里两种用法互斥，见模块 docstring），
-#: 它走 `_TERNARY_KNOWN_FUNCS` 那条路、置信度是 `undecided`。
+#: 函数全部测完了（12 个 `Unary*` + `Func18`/`19`/`20`/`21`、以及三参的
+#: `Lerp`/`InvLerp`/`Clamp`），这张表现在是空的。
 #:
 #: ⚠ **vendor 的枚举跳过了 3 / 13 / 14**，所以文本里写 `Unary3(...)` 会被解析器当成
 #: 未知函数名直接拒绝——那是**我们这侧的限制，不是引擎说 3 不存在**（vendor 的枚举
 #: 大概是按语料里出现过的取值列的，没出现过就没列）。0/1/2 是 `sin`/`cos`/`asin`，
 #: **3 很可能是 `acos`**，但要测得先给 `EfxExpressionFunction` 加枚举项（vendor 补丁），
-#: 没有语料样本之前不值得动（铁律 #5/#7）。
+#: 没有语料样本之前不值得动（铁律 #4/#6）。
 _UNKNOWN_FUNC_ARGC = {}
 
 
@@ -288,9 +288,9 @@ def _apply_call(fname, args, ctx):
             raise ExprError("%s 需要 2 个参数，实际 %d 个" % (fname, len(args)))
         return _eval_known_binary_func(fname, args[0], args[1], ctx)
 
-    if fname == "Func21":
+    if fname == "Remap":
         if len(args) != 5:
-            raise ExprError("Func21 需要 5 个参数，实际 %d 个" % len(args))
+            raise ExprError("Remap 需要 5 个参数，实际 %d 个" % len(args))
         return _eval_func21(args, ctx)
 
     if fname in _TERNARY_KNOWN_FUNCS:
@@ -310,23 +310,39 @@ def _apply_call(fname, args, ctx):
 
 
 def _eval_ternary_known(fname, args, ctx):
-    if fname == "Clamp":
+    if fname == "SmoothStep":
         return _eval_clamp(args, ctx)
     if fname == "Lerp":
         # `Lerp(t, a, b)` == `b + (a - b) * saturate(t)`
-        # **`t` 要钳在 `[0, 1]`，不做线性外推。** 这一点是 2026-09-16 收尾时才补上的：
-        # 直接证据来自 `InvLerp`（同一个函数、系数在末位）的探针——`InvLerp(1, 0, x)`
-        # 的 x 扫 -1→2，实机是"前端平在 0、中段斜升、后端平在 1"，两端都饱和。
-        # 旁证是测 `Lerp` 线性那条（`Lerp(100 - TIMER, 1, 0)` 对 `TIMER/100`）末尾的折点：
-        # `TIMER` 超过窗口后 `t > 1`，若外推则残差恒为 0（全程平），实机却折了下去。
-        # ⚠ 之前的实现漏了钳位，而 `InvLerp` 那半边钳了——**同一个函数被写成两种行为**，
-        # 是在给 vendor 写 issue、逐个核对签名时才发现的。
+        #
+        # **线性 + `t` 钳在 `[0, 1]` + 方向，三件事 2026-09-17 由一条零差探针一次钉死**
+        # （参考是 `Func21`，线性和钳位都已独立确认，且不含 `Lerp` 自己）：
+        #   clip(20 * (Lerp(TIMER/15, 4, 1) - Func21(4, 1, 15, 0, TIMER)))   实测**死平**
+        # 三种替代读法都不平：不钳位会在第 16 帧上跳并削平在 +0.4；带 smoothstep 缓动会
+        # 前半段 −0.4、后半段 +0.4、第 15 帧后归 0；方向反过来则开头 +0.4、之后全程 −0.4。
+        # 正对照（把参考端点 1 改成 2）实测画出预期的"前 0.25 m 在 −0.4、之后归 0"。
+        # ⚠ **原来那条"直接证据"已经作废**（留着当教训）：它说"`InvLerp` 是同一个函数、
+        # 系数在末位，而 `InvLerp(1, 0, x)` 两端饱和"。2026-09-17 测出 16 号其实是
+        # `clamp`（见下），那条推理连同前提一起没了——**好在上面这条零差探针不依赖它**。
         t, a, b = args
         return b + (a - b) * max(0.0, min(1.0, t))
-    # InvLerp(a, b, t) == b + (a - b) * saturate(t)  —— 就是 `Lerp`，只是插值系数挪到
-    # 了最后一个参数。**名字是错的**，它不做任何"反向"的事（2026-09-16 实机确认）。
-    a, b, t = args
-    return b + (a - b) * max(0.0, min(1.0, t))
+    # `InvLerp(hi, lo, value)` == `max(lo, min(hi, value))` —— **操作码 16 是真正的
+    # `clamp`**，不是 lerp、不是反向插值（2026-09-17 实机，五条读数唯一确定）。
+    #
+    # ⚠ **两次钳位的先后有意义**：引擎是 `max(lo, min(hi, v))`，所以 `lo > hi` 时
+    # **`lo` 赢**。判据是探针 `InvLerp(x, 1, 0)`（x 扫 −1→2）实机恒定 1 纹丝不动——
+    # 换成 `min(hi, max(lo, v))` 的话 x < 1 那段会跟着 x 走，不可能是平的。
+    # 这个先后顺序**不是我们挑的约定**，是测出来的，别"顺手规范化成 min<=max"。
+    #
+    # 逐条读数（横轴 `1 - TIMER/40`、纵轴限幅 ±0.4 的零差探针）：
+    #   S1  clip(20*(F16(4,1,TIMER/15) - F21(4,1,15,0,TIMER)))  -> 第 60 帧从负值上跳
+    #   S2  同上但两处 15 换 30                                  -> 第 120 帧上跳（跟着 hi 走）
+    #   P   同 S1 但参考端点 1 改成 2                            -> 跳变位置**不变**（由 hi 定）
+    #   N   把 F16 换成参考自己                                  -> 死平（排掉固定帧假象）
+    # 跳变发生在 `value` 涨到 `hi` 的那一刻，不是 `t` 涨到 1——正是这个 4 倍偏差把
+    # "lerp 不钳位"那个候选排掉的。
+    hi, lo, value = args
+    return max(lo, min(hi, value))
 
 
 def _eval_clamp(args, ctx):
@@ -379,7 +395,7 @@ def _eval_clamp(args, ctx):
 
 #: vendor 文本符号 -> (真实语义的说明, 实现)。**六个二元操作码没有一个是 vendor 标的
 #: 那个意思**，见 `_eval_binary_operator()` 的完整判据表。
-_BINARY_OPERATOR_SEMANTICS = ("+", "-", "*", "/", "Min", "Max")
+_BINARY_OPERATOR_SEMANTICS = ("*", "/", "Mod", "+", "-", "PowOp")
 
 
 def _eval_binary_operator(symbol, a, b, ctx):
@@ -446,31 +462,31 @@ def _eval_binary_operator(symbol, a, b, ctx):
     ⚠ **文本里的符号必须原样保留**（`+ - * /` / `Min(` / `Max(`）——那是 vendor 解析器
     认的字面量，换符号就往返不回去。这里只改"这些符号算什么"。
     """
-    if symbol == "+":                       # 操作码 1 = 乘
+    if symbol == "*":                       # 操作码 1 = 乘（名字对了，可交换）
         return a * b
-    if symbol == "-":                       # 操作码 2 = 除（被除数是右操作数）
+    if symbol == "/":                       # 操作码 2 = 除（**被除数是右操作数**）
         if a == 0:
-            ctx.note("公式除零（`-` 实为 `右/左`，左操作数是除数），按 0.0 处理")
+            ctx.note("公式除零（`/` 实为 `右/左`，左操作数才是除数），按 0.0 处理")
             return 0.0
         return b / a
-    if symbol == "*":                       # 操作码 3 = 取模（模数是左操作数）
+    if symbol == "Mod":                     # 操作码 3 = 取模（**模数是左操作数**）
         if a == 0:
-            ctx.note("公式取模的模数为 0（`*` 实为 `fmod(右, 左)`），按 0.0 处理")
+            ctx.note("公式取模的模数为 0（`Mod` 实为 `fmod(右, 左)`），按 0.0 处理")
             return 0.0
         return math.fmod(b, a)
-    if symbol == "/":                       # 操作码 4 = 加
+    if symbol == "+":                       # 操作码 4 = 加（名字对了，可交换）
         return a + b
-    if symbol == "Min":                     # 操作码 5 = 减（被减数是右操作数）
+    if symbol == "-":                       # 操作码 5 = 减（**被减数是右操作数**）
         return b - a
-    if symbol == "Max":                     # 操作码 0 = 幂（指数是左操作数）
-        ctx.note("公式用到 `Max(a, b)`（实为 `pow(b, a)`，语料推断、未实机独立确认）")
+    if symbol == "PowOp":                   # 操作码 0 = 幂（**指数是左操作数**）
+        ctx.note("公式用到 `PowOp(a, b)`（实为 `pow(b, a)`，语料推断、未实机独立确认）")
         try:
             result = float(b) ** float(a)
         except (OverflowError, ValueError, ZeroDivisionError):
-            ctx.note("`Max(a, b)`（实为 `pow(b, a)`）的幂运算无定义，按 0.0 处理")
+            ctx.note("`PowOp(a, b)`（实为 `pow(b, a)`）的幂运算无定义，按 0.0 处理")
             return 0.0
         if result != result or result in (float("inf"), float("-inf")):
-            ctx.note("`Max(a, b)`（实为 `pow(b, a)`）算出 NaN/Inf，按 0.0 处理")
+            ctx.note("`PowOp(a, b)`（实为 `pow(b, a)`）算出 NaN/Inf，按 0.0 处理")
             return 0.0
         return result
     raise ExprError("不支持的二元运算符：%r" % (symbol,))
@@ -521,7 +537,7 @@ def _eval_known_binary_func(fname, a, b, ctx):
       在 `Length >= 0` 时恒为 0，纯退化。
     - `Func19((16 - Length), 0.17)` = `max(Length/16, 0.17)` —— 给下限。
     """
-    if fname == "Func20":
+    if fname == "Pow":
         try:
             result = float(b) ** float(a)
         except (OverflowError, ValueError, ZeroDivisionError):
@@ -646,18 +662,23 @@ def _eval_known_unary(fname, x, ctx):
     定义域兜底一律"记 note + 返回 0"，和除零/取模除零同一套：NaN/Inf 会顺着位置字段
     传进视口和导出，不能放过去。
     """
-    if fname == "Unary2":
+    if fname == "Asin":
         if x < -1.0 or x > 1.0:
-            ctx.note("`Unary2`（实为 asin）的输入超出 [-1, 1]，无定义，按 0.0 处理")
+            ctx.note("`Asin` 的输入超出 [-1, 1]，无定义，按 0.0 处理")
             return 0.0
         return math.asin(x)
-    if fname in ("Unary6", "Unary7"):
-        base_name = "ln" if fname == "Unary6" else "log10"
+    if fname == "Acos":
+        if x < -1.0 or x > 1.0:
+            ctx.note("`Acos` 的输入超出 [-1, 1]，无定义，按 0.0 处理")
+            return 0.0
+        return math.acos(x)
+    if fname in ("Log", "Log10"):
+        base_name = "ln" if fname == "Log" else "log10"
         if x <= 0:
             ctx.note("`%s`（实为 %s）的输入 <= 0，无定义，按 0.0 处理" % (fname, base_name))
             return 0.0
-        return math.log(x) if fname == "Unary6" else math.log10(x)
-    if fname == "Unary8":
+        return math.log(x) if fname == "Log" else math.log10(x)
+    if fname == "Exp":
         try:
             return math.exp(x)
         except OverflowError:
@@ -702,7 +723,7 @@ BINARY_OPERATORS = ("+", "-", "*", "/")
 
 
 #: 置信度分层，逐条依据见模块 docstring 和 docs/EXPRESSION_SEMANTICS.md。
-#: **UI 要如实展示这一层，四档不能画成一个样**（铁律 #7）。
+#: **UI 要如实展示这一层，四档不能画成一个样**（铁律 #6）。
 CONFIDENCE_CONFIRMED = "confirmed"      # 语义完全确认（运算符本身 + Min/Max）
 CONFIDENCE_CORPUS = "corpus"            # 语料一致性推断：有成规模的正面证据、零反例，但没实机确认
 CONFIDENCE_UNDECIDED = "undecided"      # 语料里有互相矛盾的用法，读法未定
@@ -731,15 +752,16 @@ BINARY_OPERATOR_CONFIDENCE = {
 CALL_SIGNATURES = {
     # 名字全是错的：`Min(a,b)` 实为 `b - a`（操作码 5）、`Max(a,b)` 实为 `pow(b, a)`
     # （操作码 0，`Max(2, <扫描>)` 画出 U 形抛物线实机确认）。见 `_eval_binary_operator()`。
-    "Min": (2, CONFIDENCE_CONFIRMED),
-    "Max": (2, CONFIDENCE_CONFIRMED),
+    "Mod": (2, CONFIDENCE_CONFIRMED),
+    "PowOp": (2, CONFIDENCE_CONFIRMED),
     # `Lerp`：方向、线性、`t` 在第 1 位、`t` 两端饱和，四点全部实机确认
     "Lerp": (3, CONFIDENCE_CONFIRMED),
     # `Clamp`：重映射 + **两端**饱和 + 中段 smoothstep，全部实机确认。下界那一半是最后
     # 补上的（`Clamp(Lerp(100 - TIMER, 1, -1), 1, 0)`，输入扫 -1→+1、`lo=0`，实测前半段
     # 贴在 0 而不是跑成负值）。
-    "Clamp": (3, CONFIDENCE_CONFIRMED),
-    # `InvLerp` 就是 `Lerp`、系数在最后一个参数（实机确认）
+    "SmoothStep": (3, CONFIDENCE_CONFIRMED),
+    # `InvLerp` 是真正的 `clamp`，参数序 `(hi, lo, value)`（2026-09-17 实机，
+    # 五条读数唯一确定；2026-09-16 那次判成 `Lerp` 是端点退化造成的误判）
     "InvLerp": (3, CONFIDENCE_CONFIRMED),
 }
 CALL_SIGNATURES.update(
@@ -753,14 +775,14 @@ CALL_SIGNATURES.update(
 )
 #: `Func21(a, b, hi, lo, t)` == `Lerp(Clamp(t, hi, lo), a, b)`，实机零差检验确认，
 #: 见 `_eval_func21()`。
-CALL_SIGNATURES["Func21"] = (5, CONFIDENCE_CONFIRMED)
+CALL_SIGNATURES["Remap"] = (5, CONFIDENCE_CONFIRMED)
 #: `Func18` = `min`、`Func19` = `max`，实机确认，见 `_eval_known_binary_func()`。
 CALL_SIGNATURES.update((name, (2, CONFIDENCE_CONFIRMED)) for name in _KNOWN_BINARY_FUNCS)
 
 #: vendor 字面量 -> **规范显示名**。`EfxExpressionFunction` 的成员名在上游是纯编号
 #: 占位（`Unary0`/`Func18`/…），而 `Clamp`/`Lerp`/`InvLerp` 这三个是起错了的名字
 #: （分别是 smoothstep 重映射、t 在首位的 lerp、t 在末位的同一个 lerp）。整张表的语义
-#: 已经逐个实机测完（铁律 #32/#33），所以界面一律显示这一列。
+#: 已经逐个实机测完（见 docs/EXPRESSION_RULES.md），所以界面一律显示这一列。
 #:
 #: ⚠ **只是显示层**：公式文本里的函数名必须保持 vendor 字面量——那是
 #: `EfxExpressionParser` 认的唯一写法，换了就往返不回来（`ExpressionTree.cs` 那条
@@ -770,48 +792,54 @@ CALL_SIGNATURES.update((name, (2, CONFIDENCE_CONFIRMED)) for name in _KNOWN_BINA
 #: 操作码 0 / 5 是**中缀运算符**（文本写法恰好长得像函数 `Max(`/`Min(`，实为幂和减），
 #: 和函数表里的 18 / 19 号**真** min/max 同名不同物——显示名按真实语义拆开，
 #: 否则界面上会有两个 `Min` 指着两件事。
+#: vendor 中缀符号 / 函数写法 -> (**规范记法**的中缀符号, 是否交换操作数)。
+#:
+#: 这是「六个运算符全标错」那张表的机读版，也是记法中转层 `efx_sim/expr_text.py` 的**唯一**数据源
+#: ——两处各写一张表迟早会漂，而漂了之后往返照样全绿（双向一致的错误对往返免疫）。
+#: `swap` 是因为引擎的操作数顺序和 vendor 的 left/right 相反，不是笔误。
+CANONICAL_OPERATORS = {
+    "*": ("*", False),          # 操作码 1：乘（可交换，vendor 已经写对）
+    "/": ("/", True),           # 操作码 2：除，**被除数在右**
+    "Mod": ("%", True),         # 操作码 3：取模（C 语义），**模数在左**
+    "+": ("+", False),          # 操作码 4：加（可交换，vendor 已经写对）
+    "-": ("-", True),           # 操作码 5：减，**被减数在右**
+    "PowOp": ("**", True),      # 操作码 0：幂，**指数在左**
+}
+
 CALL_DISPLAY_NAMES = {
-    # 一元（操作码 0~12）
-    "Unary0": "Sin",            # 弧度
-    "Unary1": "Cos",            # 弧度
-    "Unary2": "Asin",           # 弧度
-    "Unary4": "Floor",
-    "Unary5": "Ceil",
-    "Unary6": "Log",            # ln
-    "Unary7": "Log10",
-    "Unary8": "Exp",
-    "Unary9": "Abs",
-    "Unary10": "Saturate",
-    "Unary11": "SinDeg",        # 角度制
-    "Unary12": "CosDeg",        # 角度制
-    # 插值（操作码 15~17、21）
-    "Lerp": "LerpTFirst",       # Lerp(t, a, b)
-    "InvLerp": "LerpTLast",     # Lerp(a, b, t)，和上一个同一个公式
-    "Clamp": "Smoothstep",      # u*u*(3-2u)，u = saturate((t-lo)/(hi-lo))
-    "Func21": "LerpRange",
-    # 函数表里的真 min/max/pow（操作码 18~20）
-    "Func18": "Min",
-    "Func19": "Max",
-    "Func20": "Pow",
-    # 中缀运算符的函数写法（操作码 0 / 5）——名字和语义对不上，按语义显示
-    "Max": "Pow",               # pow(b, a)
-    "Min": "Sub",               # b - a
+    # 一元（操作码 0~12）—— a96e1d9 之后 vendor 的名字就是真实语义，这里是恒等映射
+    "Sin": "Sin", "Cos": "Cos", "Asin": "Asin", "Acos": "Acos",
+    "Floor": "Floor", "Ceil": "Ceil", "Log": "Log", "Log10": "Log10",
+    "Exp": "Exp", "Abs": "Abs", "Saturate": "Saturate",
+    "SinDeg": "SinDeg", "CosDeg": "CosDeg",
+    # 插值 / 重映射（15~17、21）
+    "Lerp": "Lerp",
+    # ⚠ **唯一还和 vendor 不一致的一个**：16 号 vendor 叫 `InvLerp`，2026-09-17 实机测出
+    # 它是真正的 `clamp`（`max(lo, min(hi, value))`，参数序 `(hi, lo, value)`）。上游还没
+    # 改，所以界面按真实语义显示 `Clamp`。等上游改了这一行也变成恒等。
+    "InvLerp": "Clamp",
+    "SmoothStep": "SmoothStep",
+    "Remap": "Remap",
+    # 函数表里的真 min/max/pow（18~20）
+    "Min": "Min", "Max": "Max", "Pow": "Pow",
 }
 
 #: 规范显示名 -> vendor 字面量。给"用户在界面上照显示名打出来"那条路兜底：解析时归一化
 #: 成字面量，行数据和写出文本都还是 vendor 那一侧。
 #:
-#: ⚠ **本身就是 vendor 字面量的显示名一律不进这张表**，否则会把真的那个名字抢掉：
-#: `Func18` 的显示名是 `Min`，而 `Min` 同时是操作码 5 的**字面量**（语义 `b - a`）——
-#: 收进来就会让语料里到处都有的 `Min(5, Length)` 被静默读成 `min(5, Length)`，
-#: 往返和求值一起错。同理 `Max`。`Pow` 不是任何字面量，所以它指向函数 `Func20`
-#: （和操作码 0 的 `Max(` 语义相同，但函数那个写法没有歧义）。
+#: a96e1d9 之后 vendor 的名字基本就是真实语义，所以这张表**只剩一条**（`Clamp` -> 16 号
+#: 的 `InvLerp`）。等上游把 16 号也改名，它就会空掉、整套别名机制可以删掉。
+#:
+#: ⚠ **本身就是 vendor 字面量的显示名一律不进这张表**，否则会把真的那个名字抢掉。
+#: 历史上真踩过一次：旧 vendor 里 `Func18` 的显示名是 `Min`，而 `Min` 同时是操作码 5 的
+#: **字面量**（语义 `b - a`）——收进来就会让语料里到处都有的 `Min(5, Length)` 被静默读成
+#: `min(5, Length)`，求值和往返一起错。现在 18 号自己就叫 `Min`，这个歧义没了，但**判据
+#: 要留着**：下次再加显示名时还得过这一关。
 _VENDOR_CALL_LITERALS = frozenset(CALL_SIGNATURES) | frozenset(BINARY_OPERATORS)
 _CALL_NAME_ALIASES = {}
 for _vendor, _display in CALL_DISPLAY_NAMES.items():
     if _display not in _VENDOR_CALL_LITERALS:
         _CALL_NAME_ALIASES.setdefault(_display, _vendor)
-_CALL_NAME_ALIASES["Pow"] = "Func20"
 del _vendor, _display
 
 
@@ -824,7 +852,7 @@ def call_display_name(name):
 def normalize_call_name(name):
     """显示名 -> vendor 字面量（本来就是字面量的原样返回）。
 
-    解析入口统一过一遍这个，用户就可以直接照界面上的 `Sin` / `Smoothstep` 打公式，
+    解析入口统一过一遍这个，用户就可以直接照界面上的 `Sin` / `SmoothStep` 打公式，
     而存下来和写出去的仍然是 `Unary0` / `Clamp`。
     """
     return _CALL_NAME_ALIASES.get(name, name)
@@ -840,7 +868,7 @@ KIND_CALL = "CALL"      # 中缀运算符（`name` 在 BINARY_OPERATORS 里）�
 def call_arity(name):
     """调用名 -> 参数个数。不认识的名字返回 None（调用方自己决定是拒绝还是沿用现有个数）。
 
-    显示名（`Sin`/`Smoothstep`/…）和 vendor 字面量（`Unary0`/`Clamp`/…）都认。
+    显示名（`Sin`/`SmoothStep`/…）和 vendor 字面量（`Unary0`/`Clamp`/…）都认。
     """
     if name in BINARY_OPERATORS:
         return 2
@@ -1121,12 +1149,30 @@ KNOWN_EXTERNAL_VARIABLES = (
 
 #: 新建变量节点时的默认名字。选 `TIMER` 是因为它是语料里最常见的内置变量（抽样 147 个
 #: 文件出现 203 次），而且语义无歧义——不用先想"填什么"才能继续编辑。
+#: 公式文本里长得像变量、其实是**值存在文件里的具名常量**的名字 ->
+#: (vendor 的名字哈希, 常量值)。
+#:
+#: 文本形式区分不了这两种东西：`PI` 和 `TIMER` 都只是一个标识符。真相在树的参数表
+#: （`EFXExpressionTree.parameters`）的 `source` 字段上——`ExpressionParameterSource`
+#: 的 `Constant = 1` 表示"值在文件里"，`External = 2` 表示"引擎运行时喂"。
+#:
+#: 目前只有 `PI` 一条，依据是全语料实测：6 个用到它的文件、110 处出现，**无一例外**都是
+#: `source=1, constantValue=3.1415927`；同一批文件里的 `TIMER` 则一律 `source=2`。
+#: 哈希取自 vendor 的 `EfxExpressionParser.KnownExternalHashes`（那张表只负责把哈希译成
+#: 名字，**不代表引擎会给它绑值**——`PI` 就是反例）。
+#:
+#: ⚠ 新打的公式里写 `PI` 时必须靠这张表补出常量条目，否则解析器只能按名字回退成
+#: External，引擎没有东西绑给它，实机读成 **0**（实测：`Z = PI` 的粒子贴地）。
+NAMED_CONSTANTS = {
+    "PI": (4068760923, 3.1415927),
+}
+
 DEFAULT_VARIABLE = "TIMER"
 
 
 def recompute_depths(rows):
     """按 `arity` 重算每行的 `depth`。所有结构变换都靠这个收尾——`depth` 只给面板算缩进，
-    是派生量，任何时候都不该手动维护（照铁律 #6 的路子：全量重算，不做增量）。"""
+    是派生量，任何时候都不该手动维护（照铁律 #5 的路子：全量重算，不做增量）。"""
     stack = []          # [剩余待消费的子节点数, ...]
     for row in rows:
         while stack and stack[-1] == 0:
@@ -1253,54 +1299,55 @@ def delete_node(rows, index):
 
 #: 函数名 -> 各参数的角色名。**只收语义已定的**：`Clamp(value, hi, lo)` 和
 #: `Lerp(t, from, to)` 的读法有全语料证据（见 docs/EXPRESSION_SEMANTICS.md），
-#: `Min`/`Max` 对称不需要名字，`InvLerp`（读法未定）和 `Unary*`/`Func*`（语义未知）
-#: **一律不收** —— 给它们编一个参数名就是把猜测画成确定（铁律 #7）。
+#: `Min`/`Max` 对称不需要名字，语义未知的 `Unary*`/`Func*` **一律不收** —— 给它们编一个
+#: 参数名就是把猜测画成确定（铁律 #6）。
 #:
 #: 只有两个条目看着少，但实测这两个占函数调用的 763/~1700，而 `Lerp(Clamp(...))` 这个
 #: 套路本身就是全语料 31.5% 的公式，正好是最需要解释的那个形状。
 CALL_ARG_ROLES = {
-    "Clamp": ("value", "hi", "lo"),
+    "SmoothStep": ("value", "hi", "lo"),
     "Lerp": ("t", "to", "from"),
-    # `InvLerp(a, b, t)` 就是 `Lerp`、系数在最后 —— 角色名沿用同一套
-    "InvLerp": ("to", "from", "t"),
-    # `Func21(a, b, hi, lo, t)` == `Lerp(Clamp(t, hi, lo), a, b)`，所以前两个槽位的角色
-    # 和 `Lerp` 的第 2/3 参一致（`to` 是 t 在 hi 端取的值），后三个和 `Clamp` 一致。
-    "Func21": ("to", "from", "hi", "lo", "t"),
-    # 这两个的**参数顺序和名字相反**，角色名是用户最需要看到的东西：
-    # `Max(a, b)` == `pow(b, a)`、`Func20(a, b)` == `pow(b, a)` —— 指数在前、底数在后。
-    "Max": ("exponent", "base"),
-    "Func20": ("exponent", "base"),
-    # `Min(a, b)` == `b - a` —— 减数在前、被减数在后。
-    "Min": ("subtract", "from"),
+    # 16 号是真 clamp，参数序 `(hi, lo, value)`——value 在**最后**，不标一定写错
+    "InvLerp": ("hi", "lo", "value"),
+    "Remap": ("to", "from", "hi", "lo", "t"),
+    # **四个操作数顺序还是反的**（a96e1d9 只改了名字，没翻操作数）——不标一定写错
+    "/": ("divisor", "dividend"),
+    "-": ("subtract", "from"),
+    "Mod": ("modulus", "value"),
+    "PowOp": ("exponent", "base"),
+    # 函数表里的 pow 也是指数在前
+    "Pow": ("exponent", "base"),
 }
 
-#: 调用名 -> **真实语义**的极简说明，给界面用（铁律 #25：只写"这个东西干什么"，
+#: 调用名 -> **真实语义**的极简说明，给界面用（铁律 #7：只写"这个东西干什么"，
 #: 出处/置信度/验证过程一律不进去，那些在 docs/ 和代码注释里）。
 #: 之所以必须显示：**这些名字全是错的**——用户打 `Min(a, b)` 完全不知道它算 `b - a`、
 #: 打 `+` 不知道它是乘法。用数学记法写，跨语言通用、不用过 i18n。
 CALL_SEMANTICS = {
-    # 中缀运算符（`BINARY_OPERATORS`）
-    "+": "a * b",
-    "-": "b / a",
-    "*": "fmod(b, a)",
-    "/": "a + b",
-    # 函数写法的两个操作码
-    "Min": "b - a",
-    "Max": "pow(b, a)",
-    # 一元里"规范名说不完"的那几个：弧度/角度之分、`Log` 到底是哪个底
-    "Unary0": "sin (rad)",
-    "Unary1": "cos (rad)",
-    "Unary2": "asin (rad)",
-    "Unary11": "sin (deg)",
-    "Unary12": "cos (deg)",
-    "Unary6": "ln",
-    "Unary10": "clamp(x, 0, 1)",
-    # 多参：规范名给不出参数顺序，公式必须写出来
-    "Func20": "pow(b, a)",
-    "Func21": "b+(a-b)*saturate((t-lo)/(hi-lo))",
+    # ⚠ **只收"名字说不完 / 名字会骗人"的**。a96e1d9 之后 vendor 的名字基本都对了，
+    # 所以 `*` 和 `+` 不再需要注释——它们真的就是乘和加。
+    #
+    # 四个操作数顺序还是反的（上游只改了名字），这四条**必须显示**：
+    "/": "b / a（被除数在右）",
+    "-": "b - a（被减数在右）",
+    "Mod": "fmod(b, a)（模数在左）",
+    "PowOp": "pow(b, a)（指数在左）",
+    # 一元里"规范名说不完"的：弧度/角度之分、`Log` 到底是哪个底
+    "Sin": "sin (rad)",
+    "Cos": "cos (rad)",
+    "Asin": "asin (rad)",
+    "Acos": "acos (rad)",
+    "SinDeg": "sin (deg)",
+    "CosDeg": "cos (deg)",
+    "Log": "ln",
+    "Saturate": "clamp(x, 0, 1)",
+    # 多参：名字给不出参数顺序，公式必须写出来
+    "Pow": "pow(b, a)（指数在前）",
+    "Remap": "b+(a-b)*saturate((t-lo)/(hi-lo))",
     "Lerp": "Lerp(t, a, b) = b + (a - b) * saturate(t)",
-    "InvLerp": "Lerp(a, b, t) = b + (a - b) * saturate(t)",
-    "Clamp": "u*u*(3-2*u), u = saturate((t-lo)/(hi-lo))",
+    # 16 号的名字**是错的**（vendor 叫 InvLerp，实为 clamp），语义必须写出来
+    "InvLerp": "max(lo, min(hi, value))",
+    "SmoothStep": "u*u*(3-2*u), u = saturate((value-lo)/(hi-lo))",
 }
 
 
@@ -1345,10 +1392,10 @@ def arg_roles(rows):
 
 
 #: 函数/运算符名 -> 参与"和整体输出同一个物理量"传播的子节点位置下标（0-based）。
-#: 只收**语义已定、而且真的保持单位**的那些（铁律 #29：给没确认的东西编一个"它和角度
+#: 只收**语义已定、而且真的保持单位**的那些（见 EXPRESSION_RULES.md：给没确认的东西编一个"它和角度
 #: 同单位"就是把猜测画成确定）。
 #:
-#: ⚠ **2026-09-16 大改过一次，因为运算符的真实语义全变了**（铁律 #32）。旧表按
+#: ⚠ **2026-09-16 大改过一次，因为运算符的真实语义全变了**（见 EXPRESSION_RULES.md）。旧表按
 #: vendor 的名字收了 `+`/`-`/`Max`，而它们实际是**乘 / 除 / 幂**——这三个都不保持单位：
 #:
 #: - 乘（文本 `+`）：只有一侧带单位、另一侧是无量纲系数，**没法只从结构分辨哪侧是哪侧**
@@ -1367,25 +1414,29 @@ def arg_roles(rows):
 #:                                 `hi`/`lo`/`t` 自成一个单位组（同 `Clamp`）-> {0, 1}
 #:   `Unary9`/`Unary4`/`Unary5`    `abs`/`floor`/`ceil`，逐点保持单位 -> {0}
 #:
-#: **`Clamp` 故意不收**（`InvLerp` 2026-09-16 测出来其实是 `Lerp`，已收进来）：
+#:   `InvLerp(hi, lo, value)`     = 真 `clamp`，输出和**三个**参数全部同单位 -> {0,1,2}
+#:
+#: **`Clamp`（17 号）故意不收**：
 #: 它的输出是重映射到 `[0,1]` 的无量纲值，和自己的 `value`/`hi`/`lo` 不是同一个单位体系——那几个输入形成一个独立的单位组（常见的是
 #: "逐帧计数"，见 `Clamp(TIMER, 120, 0)`），不能从外层"这条曲线整体是角度"reverse 过去。
 #: **三角 / 对数 / 指数 / `saturate` 同样不收**：`sin` 的输入是角度而输出无量纲、
 #: `ln`/`exp` 的输入必须无量纲、`saturate` 拿 0/1 当边界所以输入也得是无量纲——
 #: 这些都不是"和输出同一个物理量"。
 _UNIT_PRESERVING_ARG_POSITIONS = {
-    "/": (0, 1),
-    "Min": (0, 1),
-    "*": (0, 1),
-    "Func18": (0, 1),
-    "Func19": (0, 1),
-    "Lerp": (1, 2),
-    "InvLerp": (0, 1),
-    "Func21": (0, 1),
-    "Unary9": (0,),
-    "Unary4": (0,),
-    "Unary5": (0,),
+    "+": (0, 1),                # 加
+    "-": (0, 1),                # 减
+    "Mod": (0, 1),              # 取模
+    "Min": (0, 1),              # 真 min（18）
+    "Max": (0, 1),              # 真 max（19）
+    "Lerp": (1, 2),             # 两个端点同单位，`t` 是无量纲系数
+    "InvLerp": (0, 1, 2),       # 真 clamp：**三个参数全部**同单位
+    "Remap": (0, 1),            # 输出和两个端点同单位；hi/lo/t 自成一个单位组
+    "Abs": (0,),
+    "Floor": (0,),
+    "Ceil": (0,),
 }
+#: ⚠ **不收**：`*`（乘）、`/`（除）、`PowOp`/`Pow`（幂）——它们不保持单位；
+#: `SmoothStep` 的输出是无量纲的 `[0,1]`；三角/对数/指数/`Saturate` 同理。
 
 
 def propagate_same_unit_as_root(rows):
@@ -1461,10 +1512,14 @@ def node_summary(rows, index):
     只显示头是"一次只看一级"的代价：从父行看不出子表达式里填了什么，得点进去。
 
     函数名走 `call_display_name()` 显示**规范名**（`Unary0` -> `Sin`、`Clamp` ->
-    `Smoothstep`），行数据里存的还是 vendor 字面量。中缀运算符 `+ - * /` 是符号不是
-    名字，原样显示——它们的真实语义（乘/除/取模/加）靠 `CALL_SEMANTICS` 在函数菜单和
-    tooltip 里说，**不能把符号本身换掉**：上面那条原始公式文本里写的就是这个符号，
-    树里换一个用户就以为两边对不上了。
+    `SmoothStep`），行数据里存的还是 vendor 字面量。
+
+    中缀运算符同样显示**规范符号**（`CANONICAL_OPERATORS`）：`+` 画成 `*`、`Min` 画成
+    `-`……因为面板上方那条公式文本现在也是规范记法（`model.formula_canonical`），两边
+    必须是同一套符号。
+    ⚠ 这条早先是反过来的（"符号原样显示、不能换掉，否则和上面的原始文本对不上"）——
+    前提变了：那时面板上显示的是 vendor 文本，现在**界面上不再出现 vendor 写法**。
+    行数据和写出文本仍然一律是 vendor 一侧——那是存盘/导出的权威，但它是实现细节。
     """
     row = rows[index]
     kind = row["kind"]
@@ -1474,7 +1529,11 @@ def node_summary(rows, index):
         return (row.get("name") or "").strip() or "?"
     if kind == KIND_NEG:
         return "-"
-    return call_display_name((row.get("name") or "").strip()) or "?"
+    name = (row.get("name") or "").strip()
+    operator = CANONICAL_OPERATORS.get(name)
+    if operator is not None:
+        return operator[0]
+    return call_display_name(name) or "?"
 
 
 def subtree_rows(rows, index):

@@ -36,7 +36,8 @@ from bpy.props import BoolProperty, EnumProperty, IntProperty, PointerProperty, 
 from bpy.types import Menu, Panel, UIList
 
 from . import (
-    attribute_types, bitfield, bridge, copy_paste, expr_edit, expr_preview, field_visibility,
+    attribute_types, bitfield, bridge, copy_paste, expr_edit, expr_nodes, expr_preview,
+    field_label_variants, field_visibility,
     i18n, io_tree, model, semantics, structure_ops,
 )
 from .i18n import T
@@ -143,6 +144,16 @@ _SCALAR_PROP_ATTR = {
     "BOOL": "bool_value",
     "STRING": "string_value",
 }
+
+
+def _sibling_field_value(attr_owner, field_name: str) -> int | None:
+    """从 `attr_owner.efx_fields`（同一个 attribute 的顶层字段集合）里按 key 取一个兄弟
+    字段当前的整数值——`field_label_variants.resolve_entry()` 用这个当 `get_value` 回调，
+    读不到就返回 None（保守：调用方遇到 None 会原样保留未覆盖的知识表条目，不瞎猜）。"""
+    if attr_owner is None:
+        return None
+    node = next((n for n in attr_owner.efx_fields if n.key == field_name), None)
+    return model._read_packed_int(node) if node is not None else None
 
 
 def _wants_degrees(entry) -> bool:
@@ -260,6 +271,13 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
         return
 
     entry = semantics.get_field_entry(attr_type, node.key) if attr_type else None
+    if attr_type is not None:
+        # 按 ShapeType 之类的兄弟字段切换 label/tooltip/unit——同一个存储槽位在不同模式下
+        # 是完全不同的量（EmitterShape3D 的 ScaleHorizontal/ScaleVertical），见
+        # field_label_variants.py 的说明。查不到规则的类型/字段原样返回 entry，零开销。
+        entry = field_label_variants.resolve_entry(
+            attr_type, node.key, entry,
+            lambda fname: _sibling_field_value(attr_owner, fname))
     label_text = _field_label(entry, node.key)
 
     dtype = node.data_type
@@ -286,6 +304,14 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
         _draw_label(split, label_text)
         split.prop(node, "string_value", text="")
         _draw_field_help_icon(layout.row(align=True), entry)
+        return
+
+    if (dtype in ("INT", "BIGINT") and node.key == "tableSelectionGroup"
+            and attr_type is not None and io_tree.short_attr_name(attr_type) == "FixRandomGenerator"):
+        # `tableSelectionGroup` 是 8 个互相独立的开关位（真多选），不是下面 `segs` 那套
+        # "互斥分段值"模型能表达的形状，也绕不开一个真实的溢出坑（众数 -1 折成无符号后
+        # 高位全 1）——专属弹窗见 fixrandom_ops.py 头部说明，这里不走通用位域弹窗。
+        _draw_randomfix_table_group_row(layout, node, label_text, entry, attr_owner)
         return
 
     segs = bitfield.segments(entry)
@@ -420,6 +446,17 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
                            icon="ERROR", translate=False)
         return
 
+    if dtype == "OBJECT" and model.is_sr_start_span_node(node, attr_type):
+        # EmitterShape3D.ScaleHorizontal/ScaleVertical：(起始角, 扫描跨度)，弧度。
+        # 标成 Static/Random 会让人把"我要 360 度"填进第一格（那是起始角），跨度留 0、
+        # 形状塌成一条辐条——实测踩过，所以这两格必须各自写清楚是什么。
+        row = layout.row(align=True)
+        split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
+        _draw_label(split, label_text)
+        _draw_sr_pair(split.row(align=True), node, "Start", "Span", entry)
+        _draw_field_help_icon(row, entry)
+        return
+
     if dtype == "OBJECT" and model.is_static_random_node(node, attr_type):
         # 画成两列并排：Static / Random。用户明确要求用这组 REE 惯例命名而不是 MHWI 社区惯用
         # 的 Value/Jitter——这套命名以后计划回哺到 EFX-Editor，两边统一用 REE 这边的说法
@@ -487,6 +524,14 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
     if (node.key == "behaviorString" and node.data_type == "STRING" and attr_owner is not None
             and structure_ops.resolve_behavior_string_node(attr_owner) == node):
         value_row.operator("efx_re.ptbehavior_pick_behavior_string", text="", icon="VIEWZOOM")
+    # FixRandomGenerator 的种子槽位：骰子按钮一键换新种子，对齐姊妹项目 EFX-Editor 的
+    # RANDOMFIX 界面（fixrandom_ops.py 头部说明）。tableSelectionGroup 不落进这条通用行
+    # ——它在上面 draw_node() 里已经被 _draw_randomfix_table_group_row() 接管。
+    if (node.key.startswith("randomSeedTable") and node.data_type == "INT"
+            and attr_type is not None and io_tree.short_attr_name(attr_type) == "FixRandomGenerator"
+            and attr_owner is not None):
+        op = value_row.operator("efx_re.randomfix_randomize_seed", text="", icon="RNDCURVE")
+        op.node_path = bitfield.node_path(attr_owner.efx_fields, node)
     _draw_field_help_icon(row, entry)
 
 
@@ -722,6 +767,48 @@ def _draw_ptbehavior_properties(layout, node, label_text, entry, behavior_string
         "efx_re.ptbehavior_property_add", text=T("ptbehavior.add_property"), icon="ADD",
         translate=False,
     )
+
+
+def _randomfix_table_group_summary(packed: int, items: list) -> str:
+    """`tableSelectionGroup` 按钮上的摘要文字：`items` 就是知识表里该字段 `bits[0].items`
+    （已经是"值=单独一位, 中文, 英文"的列表，见 semantics/mhws_field_labels.json），逐位报告
+    选中了哪几个种子表槽位；items 覆盖不到的残留位（常见的 -1 哨兵折成无符号后的高位）原样
+    追加成 `+0x...`，和 `bitfield.summary()` 对残留位的处理是同一套约定，不静默吞掉。"""
+    covered = 0
+    parts = []
+    en = i18n.get_lang() == "EN"
+    for value, label_zh, label_en in items:
+        covered |= value
+        if packed & value:
+            parts.append((label_en or label_zh) if en else label_zh)
+    leftover = packed & ~covered & 0xFFFFFFFF
+    if leftover:
+        parts.append(f"+0x{leftover:X}")
+    if parts:
+        return " · ".join(parts)
+    return "(none)" if en else "（未选择）"
+
+
+def _draw_randomfix_table_group_row(layout, node, label_text, entry, attr_owner) -> None:
+    """`FixRandomGenerator.tableSelectionGroup` 专属画法：勾选框多选弹窗，见
+    `fixrandom_ops.py` 头部为什么不走下面这套通用位域弹窗。"""
+    row = layout.row(align=True)
+    split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
+    _draw_label(split, label_text)
+    value_row = split.row(align=True)
+    packed = bitfield.read_packed(node)
+    items = (bitfield.segments(entry) or [{}])[0].get("items", [])
+    if packed is None or attr_owner is None or not items:
+        # 拿不到值/挂载对象，或知识表里这个字段还没有 bits 标注——退回普通数字框，
+        # 总比画不出来强（对齐 _draw_bitfield_row() 同样的退路）。
+        _draw_scalar_prop(value_row, node)
+        _draw_field_help_icon(row, entry)
+        return
+    op = value_row.operator("efx_re.randomfix_edit_table_group",
+                             text=_randomfix_table_group_summary(packed, items),
+                             icon="CHECKBOX_HLT", translate=False)
+    op.node_path = bitfield.node_path(attr_owner.efx_fields, node)
+    _draw_field_help_icon(row, entry)
 
 
 def _draw_bitfield_row(layout, node, label_text, entry, segs, attr_owner) -> None:
@@ -1747,14 +1834,35 @@ def _draw_expression_content(layout, context, obj) -> None:
             "EFX_RE_MT_expression_bit_picker",
             text=model.bit_display_label(curve.bit_index, curve.bit_name), translate=False,
         )
+    # 公式按**规范记法**读写（`efx_sim/expr_text.py`）：vendor 文本里 `+` 是乘、`-` 是除、
+    # `*` 是取模、`/` 是加、`Min(` 是减、`Max(` 是幂（见 docs/EXPRESSION_RULES.md），照字面写必错。存下来的
+    # 仍然是 `formula`（vendor 一侧），这一栏是它的 get/set 派生视图。
     box.label(text=T("expr.raw_text"), translate=False)
     row = box.row(align=True)
-    row.prop(curve, "formula", text="")
+    row.prop(curve, "formula_canonical", text="")
     row.operator("efx_re.expression_formula_check", icon="CHECKMARK", text="")
+    # 未知变量要在**公式框旁边**报出来：它求值成 0，公式往往因此看起来仍然合理
+    # （`pi` 打成小写 -> 恒为 0 的式子退化成一条漂亮的斜线），而求值 note 只出现在下面
+    # 「数值可视化」那一节，离得太远。
+    unknown_vars = expr_edit.unknown_variable_names(context, curve)
+    if unknown_vars:
+        box.label(text="%s: %s" % (T("expr.unknown_var"), ", ".join(unknown_vars)),
+                  icon="ERROR", translate=False)
+
+    # ⚠ **不要在这里再加一个 vendor 写法的文本框**。两种写法并排只会让人问"该信哪个"，
+    # 而其中一种的符号是错的。`formula`（vendor 一侧）仍然是存盘/导出的权威，但它是
+    # 实现细节，不该出现在界面上。
+    # 公式本身解析不了时的修复入口在 `expr_edit.draw_nodes()` 那个错误框里，
+    # `ExprError` 的消息自带原文（`公式语法错误：… （原文：…）`）。
 
     # 结构化视图。文本框仍然在（手打是逃生口，也是唯一能写 `ext:<hash>` 这类占位的途径），
     # 两边共用同一个 `formula` 字符串：改哪边另一边立刻跟着变，见 expr_edit 模块说明。
     box.separator()
+    # 节点视口入口。缩进行视图在窄面板下会把一条 4 层的公式摊成一道楼梯，而且只展开
+    # 「根 -> 选中槽位」那一条链；节点图没有宽度天花板、整棵树一眼看完。两者共用同一个
+    # `formula`，随便从哪边改另一边立刻跟上（见 expr_nodes 模块说明）。
+    box.operator(expr_nodes.EFX_RE_OT_expr_node_open.bl_idname,
+                 text=T("exprnode.open"), icon="NODETREE")
     box.label(text=T("expr.structure"), translate=False)
     expr_edit.draw_nodes(box, context, curve)
     if _expression_uses_unknown_functions(curve):
@@ -1768,7 +1876,7 @@ def _draw_expression_content(layout, context, obj) -> None:
 
 def _expression_uses_unknown_functions(curve) -> bool:
     """这条公式里有没有语义未确认的函数（`Unary*`/`Func*`）。有就在面板上说一句——
-    用户拿这条公式调参时应该知道"这一步到底算什么"本项目还不掌握（铁律 #7）。"""
+    用户拿这条公式调参时应该知道"这一步到底算什么"本项目还不掌握（铁律 #6）。"""
     return any(
         node.kind == "CALL"
         and expr_edit.call_confidence(node.name) == expr_edit.CONFIDENCE_UNKNOWN
@@ -1807,22 +1915,42 @@ _AXIS_GROUPS: dict = {
         ("缩放变化速率", "Size Change Rate", [("X", "SizeXAdd"), ("Y", "SizeYAdd"), ("Z", "SizeZAdd")]),
         ("缩放变化加速度", "Size Change Accel", [("X", "SizeXAddCoef"), ("Y", "SizeYAddCoef"), ("Z", "SizeZAddCoef")]),
     ],
+    # Transform3DModifier：全部 54 个 unknN 都是纯量字段，没有一个是真正的 via.Range 复合
+    # 类型——但 unkn1/unkn2 这类"值+随机值"仍然是同一个概念的两个物理字段（见
+    # semantics/mhws_field_labels.json 对应 evidence），axis 元组用 3 项
+    # (轴标签, 值字段名, 随机值字段名) 而不是通常的 2 项，触发 _draw_axis_group() 里
+    # 的并排绘制分支（同一行画两个独立字段，不是拆一个 Range 节点的 s/r）。
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeTransform3DModifier": [
+        ("位移", "Position", [("X", "unkn1", "unkn2"), ("Y", "unkn3", "unkn4"), ("Z", "unkn5", "unkn6")]),
+        ("旋转", "Rotation", [("X", "unkn7", "unkn8"), ("Y", "unkn9", "unkn10"), ("Z", "unkn11", "unkn12")]),
+        ("缩放增量", "Scale Delta", [("X", "unkn13", "unkn14"), ("Y", "unkn15", "unkn16"), ("Z", "unkn17", "unkn18")]),
+        ("位移速度", "Velocity", [("X", "unkn19", "unkn20"), ("Y", "unkn23", "unkn24"), ("Z", "unkn27", "unkn28")]),
+        ("位移速度变动系数", "Velocity Coefficient", [("X", "unkn21", "unkn22"), ("Y", "unkn25", "unkn26"), ("Z", "unkn29", "unkn30")]),
+        ("旋转角速度", "Angular Velocity", [("X", "unkn31", "unkn32"), ("Y", "unkn35", "unkn36"), ("Z", "unkn39", "unkn40")]),
+        ("角速度变动系数", "Angular Velocity Coefficient", [("X", "unkn33", "unkn34"), ("Y", "unkn37", "unkn38"), ("Z", "unkn41", "unkn42")]),
+        ("缩放速度", "Scale Velocity", [("X", "unkn43", "unkn44"), ("Y", "unkn47", "unkn48"), ("Z", "unkn51", "unkn52")]),
+        ("缩放速度变动系数", "Scale Velocity Coefficient", [("X", "unkn45", "unkn46"), ("Y", "unkn49", "unkn50"), ("Z", "unkn53", "unkn54")]),
+    ],
 }
 
 
 def _resolve_axis_groups(attr_type: str | None, node_by_key: dict):
     """把 `_AXIS_GROUPS` 里该类型的分组规格解析成可绘制的形式；缺字段（版本裁剪掉的变体
     没有全部轴）的分组整体跳过，退回逐字段正常显示。返回 (组首字段名 -> 分组规格 字典，
-    被该分组消费掉的全部字段名 set)。"""
+    被该分组消费掉的全部字段名 set)。
+
+    每根轴是 `(轴标签, 字段名)`（单字段，常见情形）或 `(轴标签, 值字段名, 随机值字段名)`
+    （两个独立纯量字段拼一行，见 `EFXAttributeTransform3DModifier` 那批 unknN）——用
+    `axis[1:]` 取全部字段名而不是固定长度解包，两种形状都吃得下。"""
     group_at: dict = {}
     consumed: set = set()
     if not attr_type:
         return group_at, consumed
     for label_zh, label_en, axes in _AXIS_GROUPS.get(attr_type, []):
-        names = [base for _axis, base in axes]
+        names = [name for axis in axes for name in axis[1:]]
         if not all(n in node_by_key for n in names):
             continue
-        group_at[names[0]] = (label_zh, label_en, axes)
+        group_at[axes[0][1]] = (label_zh, label_en, axes)
         consumed.update(names)
     return group_at, consumed
 
@@ -1836,13 +1964,31 @@ def _draw_axis_group(layout, attr_type: str, label_zh: str, label_en: str, axes,
     `_draw_scalar_prop` 对着一个 OBJECT 节点打印字面 "null"（面板显示 null 的成因）。"""
     title = label_en if i18n.get_lang() == "EN" else label_zh
     layout.row(align=True).label(text=title, icon="ORIENTATION_GLOBAL", translate=False)
-    for axis_label, base in axes:
-        node = node_by_key[base]
-        entry = semantics.get_field_entry(attr_type, base)
+    for axis in axes:
+        axis_label = axis[0]
         row = layout.row(align=True)
         split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
         _draw_label(split, axis_label)
         cols = split.row(align=True)
+        if len(axis) == 3:
+            # 两个独立纯量字段（不是一个 Range 节点拆出来的 s/r）拼一行——
+            # `EFXAttributeTransform3DModifier` 那批 unknN "值/随机值" 对，见
+            # `_AXIS_GROUPS` 头部说明。标签沿用 sr_pair 的 Static/Random 措辞，
+            # 用户认这套列头认惯了。
+            value_key, jitter_key = axis[1], axis[2]
+            value_node = node_by_key[value_key]
+            jitter_node = node_by_key[jitter_key]
+            entry = semantics.get_field_entry(attr_type, value_key)
+            show_degrees = _wants_degrees(entry)
+            v_prop = "degrees_value" if show_degrees and value_node.data_type == "FLOAT" else None
+            j_prop = "degrees_value" if show_degrees and jitter_node.data_type == "FLOAT" else None
+            _draw_scalar_prop(cols, value_node, text="Static", prop_name=v_prop)
+            _draw_scalar_prop(cols, jitter_node, text="Random", prop_name=j_prop)
+            _draw_field_help_icon(row, entry)
+            continue
+        base = axis[1]
+        node = node_by_key[base]
+        entry = semantics.get_field_entry(attr_type, base)
         if model.is_static_random_node(node, attr_type):
             _draw_sr_pair(cols, node, "Static", "Random", entry)
         elif model.is_sr_min_max_node(node) or model.is_pair_min_max_node(node, attr_type):
@@ -1871,7 +2017,7 @@ def _draw_fields_content(layout, context, obj) -> None:
     # 字段字节原样保留，只是本来不画。只在该类型确实有门控规则时才画开关，没有规则的类型
     # 不该在面板上多一个永远不起作用的开关。
     mode_rules = field_visibility.FIELD_VISIBILITY.get(obj.efx_attr_type)
-    has_vis_rules = mode_rules is not None
+    has_vis_rules = field_visibility.has_rules(obj.efx_attr_type)
     show_all = bool(getattr(context.scene, "efx_re_show_all_fields", False))
     if has_vis_rules:
         col.prop(context.scene, "efx_re_show_all_fields",

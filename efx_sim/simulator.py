@@ -150,6 +150,58 @@ _EXPR_FIELD_OVERRIDES = {
     ("Transform3D", "scaleX"): ("LocalScale", "X"),
     ("Transform3D", "scaleY"): ("LocalScale", "Y"),
     ("Transform3D", "scaleZ"): ("LocalScale", "Z"),
+
+    # EfxVelocity.cs:133 Velocity3DExpression：19 位里 vendor 的 `BitNameDict` 只给 8 位
+    # 起了名，其余是 `unkn3`~`unkn19`（反射表 `semantics/mhws_bit_names.json` 按声明顺序
+    # 补齐的占位名）。**占位名一个都不进表**——`unkn5`(bit4，全语料 198 次)、
+    # `unkn6`(bit5，75 次)、`unkn3`(bit2，34 次) 都是真被作者用过的，但 vendor 自己都没认出
+    # 它们指哪个字段，猜一个进来只会让预览拿错字段算出一条看着合理的假曲线（铁律 #6）。
+    # 定位不到的曲线走 `_resolve_expr_target()` 返回 None 那条路，由调用方 note 出来。
+    #
+    # `speed`/`speedRand` -> `Speed` 没有歧义：`EFXAttributeVelocity3D` 上只有一个 `Speed`。
+    # ⚠ `velocity{X,Y,Z}` 落到 `DirectionVector{X,Y,Z}` **比上面两条弱一档**，靠的是字段
+    # **形状**而不是名字：带 `…Random` 变体的 bit 必须落在一个有主/副值的 `via.Range` 上，
+    # 而 `Velocity3D` 上唯一的"逐轴 Range 三元组"就是 `DirectionVectorX/Y/Z`
+    # （`Offset`/`Size` 是 `Vector3`，没有主副值可分）。4 个 Range × 主/副 = 正好 8 位，
+    # 和 vendor 起了名的 8 位严丝合缝。反证也一起记着：vendor 在 [13]~[15] 注释掉了
+    # `vectorX/Y/Z // direction?`，说明它怀疑还有第二组方向——真是那样的话这三条就错了，
+    # 复核时从这里查。
+    ("Velocity3D", "speed"): ("Speed", "primary"),
+    ("Velocity3D", "speedRand"): ("Speed", "secondary"),
+    ("Velocity3D", "velocityX"): ("DirectionVectorX", "primary"),
+    ("Velocity3D", "velocityXRandom"): ("DirectionVectorX", "secondary"),
+    ("Velocity3D", "velocityY"): ("DirectionVectorY", "primary"),
+    ("Velocity3D", "velocityYRandom"): ("DirectionVectorY", "secondary"),
+    ("Velocity3D", "velocityZ"): ("DirectionVectorZ", "primary"),
+    ("Velocity3D", "velocityZRandom"): ("DirectionVectorZ", "secondary"),
+
+    # --- 以下是**推断**，不是 vendor 源码给的名字（上面全部是）。判据、正对照成绩和
+    # 被否掉的两条判据记在 docs/EXPRESSION_SEMANTICS.md 第 15 节，工具是
+    # `EfxBridge exprhostcorr` + `tools/infer_expression_bit_fields.py`。
+    #
+    # EfxMiscStructs.cs:460 NoiseExpression：`new BitSet(8)`，**没有 BitNameDict**，8 位
+    # 全是 `unkn1`~`unkn8`。本体 `EFXAttributeNoise` 恰好只有 4 个 `via.Range`，声明顺序
+    # LowFrequency / LowFrequencyWidth / HighFrequency / HighFrequencyWidth ——
+    # **8 位 = 4 字段 × 主/副值，没有多余候选**。三条独立线索一致：
+    # ① "偶数位=主值、奇数位=副值"这个形状在四个**有名字**的类型上都成立
+    #    （Life 6=3×2、Spawn 6=3×2、EmitterShape3D 6=3×2、Velocity3D 有名字的 8=4×2）；
+    # ② 全语料用量在每一对里都是偶数位 > 奇数位（320>161、320>152、261>142、181>80），
+    #    和 `speed`(1031) > `speedRand`(351) 同一个形状；
+    # ③ 真实文件对读：`11_guide_006.efx.5571972` 的 `[003] tubu_out` 置位的是 bit2/bit6、
+    #    assign 都是 Multiply、两条公式都是 `1 - Clamp(TIMER, 90, 30)` —— 按这张表读就是
+    #    "把低频和高频的**振幅**（Width）在第 30~90 帧之间乘到 0"，噪声淡出的标准写法；
+    #    换成"bit2 = LowFrequency"则读成"把频率降到 0"（噪声变得无限慢而不是消失），讲不通。
+    # ⚠ 仍然是推断。现在**接上也不改变任何行为**——`efx_sim/behaviors/` 里没有 noise.py，
+    # `Noise` 不是注册过的 behavior，`em._views` 里没有它这条视图，曲线照样会被跳过并 note。
+    # 等真的实现 `Noise` 的那天，先拿实机确认这四对再让它生效。
+    ("Noise", "unkn1"): ("LowFrequency", "primary"),
+    ("Noise", "unkn2"): ("LowFrequency", "secondary"),
+    ("Noise", "unkn3"): ("LowFrequencyWidth", "primary"),
+    ("Noise", "unkn4"): ("LowFrequencyWidth", "secondary"),
+    ("Noise", "unkn5"): ("HighFrequency", "primary"),
+    ("Noise", "unkn6"): ("HighFrequency", "secondary"),
+    ("Noise", "unkn7"): ("HighFrequencyWidth", "primary"),
+    ("Noise", "unkn8"): ("HighFrequencyWidth", "secondary"),
 }
 
 
@@ -596,15 +648,33 @@ class Simulator(object):
         return out
 
     def suggested_duration(self, default=180):
-        """"播放一次"该放多长（帧）。按各 behavior 的 `duration_hint()` 取最大值。"""
+        """『播放一次』该放多长（帧）。按各 behavior 的 `duration_hint()` 取最大值。
+
+        三种返回值分开处理（见 `registry.DURATION_INFINITE`）：
+
+            > 0                  有限长度，参与取 max
+            0                    没有意见，忽略
+            DURATION_INFINITE    没有自然终点 -> 至少放满 `default`
+
+        最后一条是关键：**只要有一个 behavior 说"没有终点"，播放长度就不能被别人的有限
+        提示压下去。** 真实故障——一个 `Spawn.LoopNum=0`（无限）+ `Life.Flags=持续性` 的
+        entry，这两个都返回"无限"，全场唯一的正数提示是 `UVSequence` 的"这条 `.uvs` 只有
+        1 帧"，旧写法（`0` 当"没意见"、直接取 max）算出播放长度 = 1 帧：每个 tick 步进到
+        第 0 帧就撞线重置回第 -1 帧，面板上帧数在 -1 上不停跳、视口里永远看不到粒子。
+        """
         best = 0
+        infinite = False
         for b in self.bound:
             fn = getattr(b.behavior, "duration_hint", None)
             if fn is None:
                 continue
-            got = fn(self.em)
-            if got:
-                best = max(best, int(got))
+            got = int(fn(self.em) or 0)
+            if got == _reg.DURATION_INFINITE:
+                infinite = True
+            elif got > 0:
+                best = max(best, got)
+        if infinite:
+            return max(best, default)
         return best or default
 
     # -- Expression 曲线 -------------------------------------------------------

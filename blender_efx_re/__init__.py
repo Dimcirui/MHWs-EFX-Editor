@@ -16,11 +16,15 @@ from . import tex_image
 from . import io_tree
 from . import attribute_types
 from . import bitfield
+from . import fixrandom_ops
 # expr_edit 在 model 之后、panels 之前：它的算子被 panels 的 draw 引用，
 # 而它自己只依赖 model 里已注册好的 EFXExpressionNodeItem。
 from . import expr_edit
 # expr_preview 在 expr_edit 之后：panels 的 Expression 那一段先画结构、再画数值。
 from . import expr_preview
+# expr_nodes 在 expr_edit 之后：它把自己挂进 expr_edit.ON_ROWS_CHANGED，
+# 而且 model 的活动曲线回调会现 import 它。
+from . import expr_nodes
 from . import transform3d_view
 from . import bone_binding
 from . import mdf_catalog
@@ -51,7 +55,8 @@ from . import file_menu
 __all__ = [
     "bridge", "i18n", "preferences", "semantics", "model", "coords", "tex_image", "io_tree",
     "transform3d_view",
-    "bone_binding", "attribute_types", "bitfield", "mdf_catalog", "asset_link", "operators",
+    "bone_binding", "attribute_types", "bitfield", "fixrandom_ops", "mdf_catalog", "asset_link",
+    "operators",
     "copy_paste", "structure_ops",
     "entry_presets",
     "panels", "sim_preview", "es3d_overlay", "asset_index", "asset_browser",
@@ -68,8 +73,10 @@ def register():
     preferences.register()
     model.register()
     bitfield.register()
+    fixrandom_ops.register()
     expr_edit.register()
     expr_preview.register()
+    expr_nodes.register()
     transform3d_view.register()
     bone_binding.register()
     operators.register()
@@ -112,8 +119,10 @@ def unregister():
     operators.unregister()
     bone_binding.unregister()
     transform3d_view.unregister()
+    expr_nodes.unregister()
     expr_preview.unregister()
     expr_edit.unregister()
+    fixrandom_ops.unregister()
     bitfield.unregister()
     model.unregister()
     preferences.unregister()

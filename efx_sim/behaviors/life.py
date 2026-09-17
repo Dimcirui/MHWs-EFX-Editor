@@ -44,7 +44,7 @@ efx_sim/behaviors/life.py —— `Life`（寿命与淡入淡出）
 约束：纯 Python，**禁 import bpy**；零第三方依赖。
 """
 
-from ..registry import Behavior, register
+from ..registry import DURATION_INFINITE, Behavior, register
 from ..stages import SHADE
 
 TYPE_NAME = "Life"
@@ -126,6 +126,6 @@ class Life(Behavior):
         if f is None:
             return 0
         if f.i("Flags") == FLAG_CONTINUOUS:
-            return 0                      # 持续性：没有自然终点，长度由播放器自己定
+            return DURATION_INFINITE      # 持续性：没有自然终点
         total = sum(f.min_max_pair(k)[1] for k in ("AppearFrame", "KeepFrame", "VanishFrame"))
         return int(total)

@@ -80,6 +80,7 @@ _P = {
     "handler": None,
     "timer": None,
     "dirty": False,      # 属性被编辑过 -> 下个 tick 重建
+    "pending_reset": False,  # 循环播放撞线 -> **下个** tick 重置（让最后一帧先画出来）
     "error": "",
     "spawned_count": 0,  # 本次播放里 PtLife 已召唤出的 track 总数，见 _MAX_SPAWNED_TRACKS_PER_SESSION
 }
@@ -483,6 +484,7 @@ def rebuild_tracks(context, keep_frame=True):
     _P["tracks"] = fresh
     _P["duration"] = _resolve_duration(scene)
     _P["spawned_count"] = 0   # 重建整批丢弹掉所有召唤出的 track，计数跟着清零
+    _P["pending_reset"] = False   # 新的一批 track 没撞过线，上一批欠的重置不能顺手落到它们头上
 
     if keep_frame and old_frame > 0:
         # 快进回原来那一帧：不快进的话，拖一下开关画面就跳回第 0 帧，调参时没法比较前后。
@@ -1103,6 +1105,9 @@ def tick(context):
         _redraw_viewports()
     if not _P["tracks"] or not _P["playing"]:
         return
+    if _P["pending_reset"]:
+        _P["pending_reset"] = False
+        _reset_all()
 
     now = time.perf_counter()
     dt = now - _P["last_t"]
@@ -1126,7 +1131,10 @@ def tick(context):
         frame = _P["tracks"][0]["sim"].em.frame
         if _P["duration"] > 0 and frame >= _P["duration"]:
             if getattr(scene, "efx_re_sim_mode", "LOOP") == "LOOP":
-                _reset_all()
+                # **下一个 tick 才重置**，不是现在：`_rebuild_items()` 排在这个循环后面，
+                # 就地重置会让每一轮的**最后一帧**被重置后的空场景顶掉，视口里根本看不到。
+                # duration 大的时候这只是 1/180 的闪烁，duration 小的时候就是"永远是空的"。
+                _P["pending_reset"] = True
                 _P["acc"] = 0.0
             else:
                 _P["playing"] = False

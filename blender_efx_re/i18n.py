@@ -158,6 +158,8 @@ _STRINGS: dict[str, dict[str, str]] = {
     # Expression 公式的结构化编辑（blender_efx_re/expr_edit.py）
     "expr.structure":         {"EN": "Structure",           "ZH": "结构"},
     "expr.raw_text":          {"EN": "Formula text",        "ZH": "公式文本"},
+    "expr.unknown_var":       {"EN": "Unknown variable (reads as 0)",
+                               "ZH": "未知变量（按 0 求值）"},
     "expr.reparse":           {"EN": "Reparse from text",   "ZH": "按文本重新解析"},
     "expr.no_rows":           {"EN": "No structure view for this formula yet.",
                                "ZH": "这条公式还没有结构视图。"},
@@ -189,6 +191,12 @@ _STRINGS: dict[str, dict[str, str]] = {
     "expr.hud.toggle":        {"EN": "Curve in viewport",   "ZH": "视口显示曲线"},
     "expr.hud.gaps":          {"EN": "%d frames cannot be evaluated (line is broken there)",
                                "ZH": "%d 帧算不出来（曲线在那里断开）"},
+    # 节点视口
+    "exprnode.open":          {"EN": "Edit in node editor", "ZH": "在节点编辑器里编辑"},
+    "exprnode.unbound":       {"EN": "No formula bound. Open one from the Expression panel.",
+                               "ZH": "还没绑定公式。从 Expression 面板点「在节点编辑器里编辑」。"},
+    "exprnode.rejected":      {"EN": "This edit was rejected, the formula is unchanged",
+                               "ZH": "这次改动没被接受，公式没有变"},
     "expr.var.file_params":   {"EN": "This file's parameters", "ZH": "本文件的具名参数"},
     "expr.var.builtins":      {"EN": "Built-in variables",  "ZH": "内置变量"},
     "expr.note.unknown_func": {

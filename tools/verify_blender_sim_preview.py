@@ -68,8 +68,8 @@ def _script_args() -> list[str]:
 
 def _samples() -> list[pathlib.Path]:
     argv = _script_args()
-    if "--sample" in argv:
-        return [pathlib.Path(argv[argv.index("--sample") + 1])]
+    if "-(-sample)" in argv:
+        return [pathlib.Path(argv[argv.index("-(-sample)") + 1])]
     # 解包根换过一次（`MHWILDS_EXTRACT/EFX/natives/STM/...` -> `.../natives/STM/...`），两条都试。
     for root in (pathlib.Path(r"E:\Program\Steam\steamapps\common\MonsterHunterWilds"
                               r"\MHWILDS_EXTRACT\natives\STM\Art\VFX"),
@@ -271,6 +271,120 @@ def verify_group_scope(entries, scene) -> None:
         scene.efx_re_sim_group = prev_group
 
 
+def verify_loop_clock(entries, scene) -> None:
+    """`sim_preview.tick()` 那条真实时钟路径：**循环撞线时最后一帧要能被看见**。
+
+    真实故障（2026-09-17）：一个 `Spawn.LoopNum=0` + `Life.Flags=持续性` + 只有 1 帧
+    `.uvs` 的 entry，`suggested_duration()` 算出播放长度 = 1 帧，`tick()` 每次都在第 0 帧
+    撞线、**就地** `_reset_all()` 然后 `break`——而 `_rebuild_items()` 排在循环后面，于是
+    视口里画的永远是重置后的空场景，面板上帧号一直是 -1。
+
+    ⚠ 这条门禁**不经过** `suggested_duration()`：直接把 `_P["duration"]` 压到 2 帧来逼出
+    同一个时序。播放长度算错和"撞线那帧被吞掉"是两个独立的 bug，共用一条判据的话，修好
+    任一个另一个就测不到了（CLAUDE.md：门禁可以全绿的同时什么都没测）。
+    """
+    target = next((e for e in entries if sim_preview.build_blocks(e)), None)
+    if target is None:
+        _check(False, "循环时钟：样本里找不到能建 track 的 Entry")
+        return
+
+    for obj in bpy.context.selected_objects:
+        obj.select_set(False)
+    target.select_set(True)
+    bpy.context.view_layer.objects.active = target
+
+    n = sim_preview.rebuild_tracks(bpy.context, keep_frame=False)
+    if not n:
+        _check(False, "循环时钟：rebuild_tracks 一个 track 都没建出来")
+        return
+    try:
+        scene.efx_re_sim_mode = "LOOP"
+        # ⬇ 必须排在 `efx_re_sim_mode` 赋值**之后**：那个属性的 `update=` 会
+        # `mark_dirty()`，而 `tick()` 的第一件事就是“脏了就 rebuild_tracks”——rebuild 里
+        # 会把 `_P["duration"]` 重新算成 `suggested_duration()`，把这里压的 2 盖掉。
+        # （第一版就是这么写的，帧序列一路递增到 11，根本没撞线。）
+        sim_preview._P["dirty"] = False
+        sim_preview._P["duration"] = 2
+        sim_preview._P["playing"] = True
+        sim_preview._P["acc"] = 0.0
+        sim_preview._P["pending_reset"] = False
+
+        seen_frames = []
+        for _ in range(12):
+            sim_preview._P["acc"] += 1.0     # 每次恰好走一帧，不依赖墙钟
+            sim_preview._P["last_t"] = __import__("time").perf_counter()
+            sim_preview.tick(bpy.context)
+            seen_frames.append(sim_preview.current_frame())
+
+        _check(-1 not in seen_frames,
+               "循环撞线后不会把第 -1 帧（重置后的空场景）画出来",
+               f"看到的帧序列 {seen_frames}")
+        # 撞线判据是“步进完之后 `frame >= duration`”，duration=2 因此走 0/1/2 三帧。
+        # 这个 off-by-one 是旧有行为（不是本次改动引入的），这里只如实钉住周期。
+        _check(sorted(set(seen_frames)) == [0, 1, 2],
+               "duration=2 的循环在第 0~2 帧之间周期滑动",
+               f"看到的帧序列 {seen_frames}")
+        _check(seen_frames.count(0) >= 2, "12 个 tick 里确实循环回绕过不止一次",
+               f"看到的帧序列 {seen_frames}")
+    finally:
+        sim_preview._P["playing"] = False
+        sim_preview._P["pending_reset"] = False
+        sim_preview.rebuild_tracks(bpy.context, keep_frame=False)
+
+
+def verify_field_edit_marks_dirty(entries, scene) -> None:
+    """`model._on_field_edited()` 对**任意**内容字段都要标脏 `sim_preview`（不止 EmitterShape3D）。
+
+    真实故障（2026-09-17 用户实机报告）：`Velocity3D.Offset`/`Size` 这类字段已经在
+    `efx_sim/behaviors/velocity3d.py` 里实装（Normal 档 `方向 = normalize((Size-1)×生成
+    坐标+Offset)`），但播放中调它们的数值看不到变化——因为在这次修复之前，只有
+    `sim_preview.py` 自己的预览面板旋钮（种子/帧率/距离等，走 `_on_knob_changed()`）会
+    `mark_dirty()`，属性树里的普通内容字段编辑完全不会，正在播放的预览读的是上一次
+    `rebuild_tracks()` 时的快照。这里刻意优先挑一个和 `EmitterShape3D`/`Transform3D` 都
+    无关的 `Velocity3D` 字段，证明这不是 `verify_es3d_overlay()` 那条专用路径顺带盖住的
+    ——`_on_field_edited()` 本身也确实不区分字段/attribute 类型，一律标脏。
+    """
+    def _find_leaf(entry, prefer_type):
+        for attr in entry.children:
+            if attr.get("~TYPE") != model.TYPE_ATTRIBUTE:
+                continue
+            if prefer_type is not None and model.short_attr_name(attr.efx_attr_type) != prefer_type:
+                continue
+            for node in attr.efx_fields:
+                if node.data_type in ("FLOAT", "INT"):
+                    return node
+                for child in node.children:
+                    if child.data_type in ("FLOAT", "INT"):
+                        return child
+        return None
+
+    leaf = None
+    for entry in entries:
+        leaf = _find_leaf(entry, "Velocity3D")
+        if leaf is not None:
+            break
+    if leaf is None:
+        for entry in entries:
+            leaf = _find_leaf(entry, None)
+            if leaf is not None:
+                break
+    if leaf is None:
+        _check(False, "字段编辑标脏检查：样本里找不到一个 FLOAT/INT 叶子字段")
+        return
+
+    sim_preview._P["dirty"] = False
+    if leaf.data_type == "FLOAT":
+        origin = leaf.float_value
+        leaf.float_value = origin + 1.0
+        leaf.float_value = origin
+    else:
+        origin = leaf.int_value
+        leaf.int_value = origin + 1
+        leaf.int_value = origin
+    _check(sim_preview._P["dirty"],
+           "编辑任意 attribute 字段值都会把粒子预览标脏（不止 EmitterShape3D）")
+
+
 def check_mesh_look() -> None:
     """网格在预览里的取图/分桶：必须取**遮罩**、必须走网格专用 shader 的桶。
 
@@ -377,7 +491,7 @@ def main() -> int:
                     continue
                 # `expressions=` 必须传——`_make_track()`（真实预览路径）恒传，这里不传的话
                 # Expression 曲线永远不求值、`patch_field()` 永远不触发，下面的"reset()+
-                # 重播幂等"检查就测不到它要测的东西（铁律 #8：CLI/门禁层绿不代表真实路径绿）。
+                # 重播幂等"检查就测不到它要测的东西（验证纪律：CLI/门禁层绿不代表真实路径绿）。
                 sim = sim_preview._sim().Simulator(
                     blocks, sim_preview.config_from_scene(scene),
                     expressions=sim_preview.collect_expressions(entry))
@@ -480,6 +594,12 @@ def main() -> int:
 
             print(f"--- 分组范围（efx_re_sim_scope=GROUP） / {sample.name}")
             verify_group_scope(entries, scene)
+
+            print(f"--- 循环时钟（sim_preview.tick） / {sample.name}")
+            verify_loop_clock(entries, scene)
+
+            print(f"--- 字段编辑标脏（Velocity3D 优先） / {sample.name}")
+            verify_field_edit_marks_dirty(entries, scene)
 
             # 4. **只读**：预览跑完之后重新导出，必须逐字节相同
             after_bytes = _export_bytes(root_obj, tmpdir, "after")

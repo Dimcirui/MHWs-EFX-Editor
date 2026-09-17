@@ -18,7 +18,7 @@ tools/verify_blender_sr_pair.py —— `{s,r}` 字段的"主值是哪个子节�
 纯 Python 单测（`tests/test_sim_core.py`）已经在**手搓的 dict** 上盖住了同一套规则，但那边
 的 int/float 是 Python 字面量；这里要验的是**真实属性树**——`EFXValueNode.data_type` 由
 `io_tree` 从 EfxBridge 的 JSON 填进来，类型信息是不是真的能一路活到面板层，只有在真 Blender
-里跑一遍才知道。这是验证纪律 #8 那条"CLI 层绿不代表 Blender 层绿"在只读侧的对应物。
+里跑一遍才知道。这是验证纪律 那条"CLI 层绿不代表 Blender 层绿"在只读侧的对应物。
 
 ## 检查项
 
@@ -91,6 +91,7 @@ def main() -> int:
         return 1
 
     seen_pair_min_max = 0
+    seen_start_span = 0
     seen_parts_start = 0
     seen_rangei = 0
     seen_range = 0
@@ -136,13 +137,26 @@ def main() -> int:
                 else:
                     seen_range += 1
 
-                # 4. 语义谓词互斥
+                # 4. 语义谓词互斥。⚠ **新增一类语义就要加进这个元组**——漏了的话那个
+                #    字段会"一个谓词都不命中"，面板上什么都不画。
                 flags = (model.is_static_random_node(node, attr_type),
                          model.is_pair_min_max_node(node, attr_type),
                          model.is_sr_min_max_node(node),
-                         model.is_sr_index_node(node))
+                         model.is_sr_index_node(node),
+                         model.is_sr_start_span_node(node, attr_type))
                 if sum(1 for f in flags if f) != 1:
                     _check(False, f"{short}.{node.key} 的语义谓词命中 {sum(flags)} 个，应恰好 1 个")
+
+                # EmitterShape3D 的两个扫描角是 (起始角, 跨度)，不是 static/random。
+                # 标错的代价不是"少解释一层语义"，是用户把"我要 360 度"填进起始角那格、
+                # 跨度留 0、整个形状塌成一条辐条（实测踩过）。
+                if short == "EmitterShape3D" and node.key in ("ScaleHorizontal",
+                                                              "ScaleVertical"):
+                    seen_start_span += 1
+                    if not model.is_sr_start_span_node(node, attr_type):
+                        _check(False, f"EmitterShape3D.{node.key} 没被判成 (起始角, 跨度)")
+                    if model.is_static_random_node(node, attr_type):
+                        _check(False, f"EmitterShape3D.{node.key} 仍被判成 static/random")
 
                 # 1. Life 的四个字段是 (min, max)
                 if short == "Life" and node.key in ("AppearFrame", "KeepFrame",
@@ -180,13 +194,14 @@ def main() -> int:
     print()
     print(f"=== 扫过 {checked_nodes} 个 {{s,r}} 节点"
           f"（RangeI {seen_rangei} / Range {seen_range}），"
-          f"其中 Life 的 (min,max) 字段 {seen_pair_min_max} 个")
+          f"其中 Life 的 (min,max) 字段 {seen_pair_min_max} 个、扫描角 {seen_start_span} 个")
 
     # 样本里必须真的出现过两类结构体，否则这个门禁什么也没验到
     _check(seen_rangei > 0, "样本里出现过 RangeI 字段")
     _check(seen_range > 0, "样本里出现过 Range 字段")
     _check(seen_pair_min_max > 0, "样本里出现过 Life 的 (min,max) 字段")
     _check(seen_parts_start > 0, "样本里出现过 PartsStartNo（不然那几条断言等于没测）")
+    _check(seen_start_span > 0, "样本里出现过 EmitterShape3D 的扫描角字段")
 
     if _FAILED:
         print(f"\n===== {_FAILED} FAILED")

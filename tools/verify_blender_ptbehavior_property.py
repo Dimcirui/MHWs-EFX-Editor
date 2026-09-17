@@ -25,7 +25,7 @@ tools/verify_blender_ptbehavior_property.py —— PtBehavior 候选目录增删
 5. `efx_re.ptbehavior_property_remove` 删掉之后同样能读回来，条数、内容都回到加之前的状态
    （加了又删 = 无操作，字节应该和从没加过时的导出完全一样）。
 6. 面板绘制（`panels._draw_ptbehavior_property`）不崩，主行画出属性名 + 删除按钮。
-7. **把"保序插入"这个改动临时注回去，确认它真的 FAIL**（CLAUDE.md 验证纪律 #11）：
+7. **把"保序插入"这个改动临时注回去，确认它真的 FAIL**（CLAUDE.md 验证纪律）：
    把新增强制改成"总是追加到末尾"，再验一次"相对顺序是候选目录子序列"，必须失败——这条是
    整个功能里唯一"我们自己算的行为"（克隆真实样本本身不会错，插入位置算法才会）。
 
@@ -237,7 +237,7 @@ def verify(efx_path: pathlib.Path, workdir: pathlib.Path, report: Report) -> Non
         report.check("删完读回来的名字和加之前完全一致（加了又删=无操作）",
                      set(readback_names) == before_names, str(readback_names))
 
-    # ---- 把"保序插入"注回去，确认它真的 FAIL（验证纪律 #11）--------------------
+    # ---- 把"保序插入"注回去，确认它真的 FAIL（验证纪律）--------------------
     pick2 = next((n for n in free if n != pick), None)
     if pick2 is None:
         print("  （这个类候选只有 1 条，跳过保序插入的回归防护验证）")

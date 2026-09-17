@@ -22,7 +22,7 @@ tools/verify_blender_mdf_property.py —— 材质参数覆盖表（TypeMesh 的
 3. 加完之后走 Export 算子写出来的文件**能被 RE-Engine-Lib 读回来**，且读回来的条数、
    `propertiesDataSize` 都对得上。
 4. `efx_re.mdf_property_remove` 删掉之后同样能读回来，条数正确。
-5. **把 bug 注回去要真的 FAIL**（CLAUDE.md 验证纪律 #11）：临时停掉
+5. **把 bug 注回去要真的 FAIL**（CLAUDE.md 验证纪律）：临时停掉
    `io_tree._refresh_derived_sizes()` 之后，同样的导出必须失败——这个字段 vendor 写出
    时不自愈（`RszByteSizeField` 没进代码生成器的重算分支，`EFXAttributeTypeMeshV2.DoWrite()`
    也没补），不重算就会写出一个读不回来的文件。这条是整个功能唯一的"必须我们自己算"的地方，
@@ -470,7 +470,7 @@ def verify(efx_path: pathlib.Path, mdf_path: str, workdir: pathlib.Path, report:
     _verify_mismatch_marking(node, obj, mdf_path, report)
     _verify_texture_branch(root_col, node, material_path, entries, workdir, report)
 
-    # ---- 把 bug 注回去，确认防护真的会 FAIL（验证纪律 #11）-------------------
+    # ---- 把 bug 注回去，确认防护真的会 FAIL（验证纪律）-------------------
     bpy.ops.efx_re.mdf_property_add(candidate=str(pick["utf8Hash"]))
     original = io_tree._refresh_derived_sizes
     io_tree._refresh_derived_sizes = lambda attr_dict, version: None

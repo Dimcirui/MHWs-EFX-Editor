@@ -252,10 +252,23 @@ class EFX_RE_OT_attribute_add(Operator):
     bl_description = "给当前 Entry/Action 新增一个指定类型的空 Attribute，按类型顺序插入"
     bl_options = {"REGISTER", "UNDO"}
 
+    #: ⚠ **必须是 `all_enum_items`（全部类型），不能按分类过滤。**
+    #:
+    #: `EnumProperty` 的取值**由 items 校验**：items 里没有的字符串，无论是
+    #: `bpy.ops.efx_re.attribute_add(attr_type=X)` 传进来还是 `op.attr_type = X` 赋进去，
+    #: 都会直接抛 `enum "X" not found in (...)`。而"当前浏览哪个分类"是个纯 UI 过滤状态，
+    #: 挂在 `WindowManager` 上——让它去限制算子能接受的参数，等于把一个浏览偏好变成了
+    #: 调用约束。
+    #:
+    #: 实测踩法：分类下拉选了某个具体分类，再用搜索弹窗（`efx_re.attribute_add_search`，
+    #: 它按设计覆盖全部类型）选一个**不属于该分类**的类型 -> 转调这个算子时直接报错。
+    #:
+    #: 分类过滤只发生在**画菜单**那一步（`EFX_RE_MT_attribute_type_picker.draw()` 用
+    #: `readable_types(category)`），那是它该待的地方。
     attr_type: EnumProperty(
         name="Type",
         description="要新增的 attribute 类型",
-        items=attribute_types.enum_items,
+        items=attribute_types.all_enum_items,
     )
 
     @classmethod
@@ -370,7 +383,7 @@ def reference_mismatches(properties_node, entries: list) -> list[tuple[int, str]
     文件名没用（用户从 pak 里捞出来的文件想叫什么叫什么），比对真实数据才有意义。
 
     覆盖表是空的（一条都还没有）时返回空列表：这时候没有任何可核对的证据，不能因此就声称
-    材质是对的，但也没有理由拦——直接放行，别编造结论（铁律 #7）。
+    材质是对的，但也没有理由拦——直接放行，别编造结论（铁律 #6）。
     """
     by_hash = {e["utf8Hash"]: e for e in entries}
     issues: list[tuple[int, str]] = []

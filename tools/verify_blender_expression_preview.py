@@ -12,7 +12,7 @@ tools/verify_blender_expression_preview.py —— Expression 公式数值可视�
 门禁边界：这条能测到什么、测不到什么
 ------------------------------------
 可视化走的是 3D 视口 HUD（`gpu` + `blf`），而 **`--background` 下没有 GPU 上下文**
-（CLAUDE.md 验证纪律 #10），所以 `_draw_hud()` 本身跑不到。代码为此按 `sim_preview` 的
+（CLAUDE.md 验证纪律），所以 `_draw_hud()` 本身跑不到。代码为此按 `sim_preview` 的
 分法拆了两层，这条门禁测的是**数据那一层**：
 
 | 能测 | 测不到 |
@@ -30,7 +30,7 @@ tools/verify_blender_expression_preview.py —— Expression 公式数值可视�
 单测覆盖，这里只验"接到真实场景数据上仍然对"。**HUD 好不好看只能在有界面的 Blender 里
 实测**，改了 `_draw_hud()` 的布局就去实机看一眼。
 
-按验证纪律 #11，下面每条都注入过对应 bug 确认会 FAIL：
+按验证纪律，下面每条都注入过对应 bug 确认会 FAIL：
 `build_variables()` 去掉具名参数那层 -> "文件级具名参数在"红；
 `_make_track()` 去掉 `expr_parameters=` -> "sim_preview 建 track 时传了具名参数"红
 （⚠ "面板读数 == efx_sim 求值"那条**抓不到**变量表漂移——它给两边喂同一个 dict，
@@ -217,7 +217,7 @@ def verify_variables_and_agreement(report: Report):
     attr["~TYPE"] = model.TYPE_ATTRIBUTE
     attr.efx_is_expression_attribute = True
     curve = attr.efx_expression_curves.add()
-    curve.formula = "Lerp(Clamp(TIMER, 12, 0), 190, -30)"
+    curve.formula = "Lerp(SmoothStep(TIMER, 12, 0), 190, -30)"
     attr.efx_expression_curves_active_index = 0
     bpy.context.view_layer.objects.active = attr
 
@@ -280,7 +280,7 @@ def verify_series_and_confidence(report: Report, attr, curve) -> None:
     _expr._UNKNOWN_FUNC_ARGC["FuncNew"] = 1
     _expr.CALL_SIGNATURES["FuncNew"] = (1, _expr.CONFIDENCE_UNKNOWN)
     try:
-        curve.formula = "Lerp(FuncNew(Clamp(TIMER, 12, 0)), 190, -30)"
+        curve.formula = "Lerp(FuncNew(SmoothStep(TIMER, 12, 0)), 190, -30)"
         series2 = expr_preview.hud_series(bpy.context, obj=attr, frames=8)
         report.check("置信度取最差的那一档（注入的未知函数 -> unknown）",
                      series2.confidence == _expr.CONFIDENCE_UNKNOWN, str(series2.confidence))
@@ -301,7 +301,7 @@ def verify_series_and_confidence(report: Report, attr, curve) -> None:
 
     # 反向检查：已经测出语义的函数**不能**被当成未知（否则 UI 会永远挂着"语义未确认"）。
     # 2026-09-16 那一轮把 12 个 `Unary*` + `Func18`~`Func21` 全部定了下来。
-    curve.formula = "Lerp(Unary10(Clamp(TIMER, 12, 0)), Func21(1, 0, 12, 0, TIMER), -30)"
+    curve.formula = "Lerp(Saturate(SmoothStep(TIMER, 12, 0)), Remap(1, 0, 12, 0, TIMER), -30)"
     series2b = expr_preview.hud_series(bpy.context, obj=attr, frames=8)
     report.check("已实机确认的 Unary10（saturate）/ Func21 不再算未知档",
                  series2b.confidence != _expr.CONFIDENCE_UNKNOWN, str(series2b.confidence))
@@ -322,7 +322,7 @@ def verify_series_and_confidence(report: Report, attr, curve) -> None:
                  str(fallback.clamp_mode))
 
     # 除零：求值器的约定是 note + 0.0
-    curve.formula = "TIMER / (TIMER - 5)"
+    curve.formula = "(TIMER + (TIMER / 5))"
     series3 = expr_preview.hud_series(bpy.context, obj=attr, frames=8)
     report.check("除零那一帧有 note", any("除零" in n for n in series3.notes),
                  str(series3.notes))
@@ -335,7 +335,7 @@ def verify_series_and_confidence(report: Report, attr, curve) -> None:
     report.check("整条都算不出来时几何返回 None（不画一条平在 0 的假线）",
                  _plot.build(series4) is None)
 
-    curve.formula = "Lerp(Clamp(TIMER, 12, 0), 190, -30)"
+    curve.formula = "Lerp(SmoothStep(TIMER, 12, 0), 190, -30)"
 
 
 def verify_subtree_values_and_plot(report: Report, attr, curve) -> None:
@@ -349,7 +349,7 @@ def verify_subtree_values_and_plot(report: Report, attr, curve) -> None:
     print("\n=== 逐节点值 / 子树曲线")
     from blender_efx_re import expr_edit
 
-    curve.formula = "Lerp(Clamp(TIMER, 12, 0), 190, -30)"
+    curve.formula = "Lerp(SmoothStep(TIMER, 12, 0), 190, -30)"
     expr_edit.rebuild_rows(curve)
     bpy.context.scene.frame_current = 6
     rows = expr_edit.read_rows(curve)
@@ -379,7 +379,7 @@ def verify_subtree_values_and_plot(report: Report, attr, curve) -> None:
     curve.nodes_active_index = 1
     text, is_root = expr_preview.active_subtree(bpy.context, curve)
     report.check("选中 Clamp 时子公式文本正确",
-                 (not is_root) and text == "Clamp(TIMER, 12, 0)", text)
+                 (not is_root) and text == "SmoothStep(TIMER, 12, 0)", text)
     sub_series = expr_preview.hud_series(bpy.context, obj=attr, frames=24)
     report.check("子树曲线是 Clamp 自己（0 -> 1 -> 饱和在 1），不是整条公式",
                  sub_series.values[0] == 0.0 and abs(sub_series.values[12] - 1.0) < 1e-6

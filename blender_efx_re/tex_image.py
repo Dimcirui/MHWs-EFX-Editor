@@ -123,7 +123,7 @@ def format_name(fmt: int) -> str:
 
 def version_from_path(path) -> int | None:
     """从文件名后缀取格式版本号，**照抄 `PathUtils.ParseFileFormat()` 的严格规则**
-    （铁律 #4）：扩展名从 basename 的**第一个**点算起，版本号必须紧跟其后。
+    （铁律 #3）：扩展名从 basename 的**第一个**点算起，版本号必须紧跟其后。
 
     `a.tex.241106027` -> 241106027；`a.b.tex.241106027` -> None（第一个点后面是 `b`，
     不是 `tex`）。宽松判断（"文件名里出现过 .tex.<数字>"）在这个项目里是明令禁止的。
@@ -141,7 +141,7 @@ def extract_mip0(data: bytes, version: int | None = None) -> tuple[bytes, dict]:
     返回 `(payload, header)`。头部解析复用 `wilds_vecfield_io._read_tex_header()`——那份是
     对照两个独立实现、用真实文件逐字节验过的，另抄一份只会让两处慢慢漂开。
 
-    `version` 给了就**用它**决定头部布局分支，而不是用文件里那个字段——**铁律 #13：
+    `version` 给了就**用它**决定头部布局分支，而不是用文件里那个字段——**docs/PITFALLS.md：
     RE Engine 的格式版本号在文件名里，不在文件内容里**（vendor 的 `FileHandler.FileVersion`
     同样从路径算）。真实命中过：RE-Mesh 解包出来的 `#UNKN#….tex.241106027` 头里的 version
     字段是 `1`，照它走会把 `imageCount/mipCount` 读成 `192/1`（真值是 `1/12`）而拒绝加载。
@@ -293,7 +293,7 @@ def load_image(path, name: str | None = None, reuse: bool = True) -> bpy.types.I
 
 
 def describe(path) -> dict:
-    """只读元信息（给面板/报错用），不解码。版本号同样以**文件名**为准（铁律 #13）。"""
+    """只读元信息（给面板/报错用），不解码。版本号同样以**文件名**为准（docs/PITFALLS.md）。"""
     data = Path(path).read_bytes()[:64]
     if not is_tex_data(data):
         return {}

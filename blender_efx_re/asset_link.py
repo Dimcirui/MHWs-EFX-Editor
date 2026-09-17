@@ -469,7 +469,7 @@ def _ensure_material_applied(new_objects, mdf_local: Path, material_path: str,
     52/52 的 mdf2 都是单材质；网格侧多材质是常事（实测 `POD042_000.mesh` 有 6 个材质槽
     Base3~Base8，mdf2 只有一个 `lambert1`，全不匹配——那 6 个槽原来全是空节点树，
     在视口里就是纯黑）。
-    mdf2 **本身**有多个材质时才是真歧义：不猜，记一条 problem 如实说（铁律 #2/#7）。
+    mdf2 **本身**有多个材质时才是真歧义：不猜，记一条 problem 如实说（铁律 #2/#6）。
 
     这一步调的是 RE Mesh Editor 的**内部函数** `importMDF()`，不是算子：它没有"把某个
     mdf2 套到某个已存在的材质上"的算子入口（`re_mdf.apply_mdf` 要的是一整套 MDF 对象集合

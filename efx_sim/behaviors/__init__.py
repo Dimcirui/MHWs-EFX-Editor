@@ -11,7 +11,9 @@ P0 已实现（覆盖全语料 37.7% 的属性实例）
     Life             寿命与淡入淡出
     EmitterShape3D   生成位置（Box / Sphere / Cylinder + 扫描角）
     TypeBillboard3D  渲染主体（P0 只画纯色片）
-    Velocity3D       初速度 + 逐帧积分，**只支持 VelocityType=Direction**
+    Velocity3D       初速度 + 逐帧积分。四档方向模型（Direction / Normal / Radial /
+                     Spread）和姊妹项目 EFX-Editor 是同一个，字段对应关系经全语料
+                     分桶实测（见 velocity3d.py 的对照表）；`ScreenSpace`/`Max` 零样本未做
     UVSequence       序列帧（帧表由胶水层从 `.uvs` 解析后经 SimResources 注入）
 
 `Transform3D`（7.83%）**只贡献增量，不认识矩阵本身**：本仓的 Entry 用 Blender 原生
@@ -25,7 +27,13 @@ parent-child，`transform3d_view.py` 编辑时就把静态值烘进父对象的 
 `entry_obj.matrix_world` 和 entry 下面的内容之间，**逐分量近似，不是严格矩阵合成**，
 基准本身非恒等时会有偏差（见 `transform3d.py` 说明）。⚠ 它和上游 EFX-Editor 的
 `TRANSFORM3D` 同名不同物——那边带三组**速度**，MHWs 把动态部分拆成了独立的
-`Transform3DModifier`，静态的只有 4 个字段。见 docs/SIM_PORT_PLAN.md §5.1。
+`Transform3DModifier`。见 docs/SIM_PORT_PLAN.md §5.1。
+
+`Transform3DModifier`（Entry 持续变换，55 个字段全部匿名）**目前是全表唯一一个 confidence
+只有 guess 的 behavior**（2026-09-17 新增）：字段语义纯靠语料统计推出来，没有游戏内实测，
+`on_emitter_init` 里每次都会 `em.note()` 提醒这一点。往 `em.drift`/`em.rotation_drift`/
+`em.scale_drift` 上叠加，ORDER 必须晚于 `transform3d.py` 的 -10，见 transform3dmodifier.py
+说明。
 
 P0 之后追加（渲染主体的另外几档）
 ---------------------------------
@@ -82,12 +90,13 @@ from . import ribbonfollow     # noqa: F401
 from . import ribbonlength     # noqa: F401
 from . import rotateanim       # noqa: F401
 from . import scaleanim        # noqa: F401
-from . import spawn            # noqa: F401
-from . import transform3d      # noqa: F401
-from . import uvsequence       # noqa: F401
-from . import velocity3d       # noqa: F401
+from . import spawn                # noqa: F401
+from . import transform3d          # noqa: F401
+from . import transform3dmodifier  # noqa: F401
+from . import uvsequence           # noqa: F401
+from . import velocity3d           # noqa: F401
 
 __all__ = ["spawn", "life", "emittershape3d", "billboard3d", "velocity3d",
            "uvsequence", "polygon", "polygontrail", "ribbonlength", "ribbonfollow",
            "gpupolygon", "gpuribbonlength", "meshv2", "scaleanim", "rotateanim",
-           "transform3d", "parentoptions", "nodraw", "ptlife"]
+           "transform3d", "transform3dmodifier", "parentoptions", "nodraw", "ptlife"]

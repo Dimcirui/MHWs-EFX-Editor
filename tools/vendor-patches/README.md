@@ -1,8 +1,13 @@
 # vendor-patches
 
-`vendor/RE-Engine-Lib` 默认铁律是不改源码（CLAUDE.md #5）——发现的缺陷记 `KNOWN_UPSTREAM_ISSUES.md`，
+`vendor/RE-Engine-Lib` 默认铁律是不改源码（CLAUDE.md #4）——发现的缺陷记 `KNOWN_UPSTREAM_ISSUES.md`，
 能绕就在 `tools/EfxBridge/Program.cs` 里绕。这个目录放的是**例外**：绕不开、又足够小、足够有
-把握的补丁，才收在这里。别把这当成绕开铁律 #5 的旁路——新增前先确认真的够小、够有把握。
+把握的补丁，才收在这里。别把这当成绕开铁律 #4 的旁路——新增前先确认真的够小、够有把握。
+
+⚠ **第一步永远是先证明这真是 vendor 的错**，不是我们喂错了。判据：跑一条完全不经我们
+代码的路径复现（`roundtrip` 是二进制→对象图→二进制，不过 JSON；`dump`/`load` 过 JSON，
+复现不了就说明锅在我们这层）。0005 就是这么定的：撤掉补丁后纯二进制路径 0/4 与原文件
+相同，打上后 3/4——一个字节都没经过我们的代码，所以确凿是 vendor 写错。
 
 ## 0001-efx-expression-func18-19-20-args2-dispatch.patch
 
@@ -88,6 +93,56 @@ attribute body 当不透明字节数组读写"的类，不解释字段、不暴�
 `EFXAttributeTypeStrainRibbonV2` 现成的写法逐字同构。Program.cs 层面没有挂钩点——C# 没法从外部给一个类
 追加接口实现，而 `SetupBoneReferences()` 和写出侧都是靠 `is IBoneRelationAttribute` 做类型判断的。
 
+## 0007 —— `BinaryExpressionOperator.Pow` 改名 `PowOp`，消除和函数 `Pow`（操作码 20）的文本撞名
+
+上游 `a96e1d9` 把操作码 0 命名为 `Pow`，而 `EfxExpressionFunction.Pow` 是操作码 20，两者
+`ToString()` 都写成 `Pow(a, b)`。`EfxExpressionStringParser.ParseFunction()` 的 `args == 2`
+分支**先试 `BinaryExpressionOperator`**，所以文本读回来一律是操作码 0——**每次
+`dump`/`load` 都把操作码 20 静默改写成 0**。
+
+字节级实测（`11_em0159_00_308.efx.5571972`，公式 `Pow((0.01 * TIMER), 3)`）：
+
+```
+原文件    : 03 00 00 00 14 00 00 00   = (type=3, value=20) 函数 Pow
+dump->load: 01 00 00 00 00 00 00 00   = (type=1, value=0)  运算符 Pow
+```
+
+补丁把**操作码 0** 改名成 `PowOp`（用户看不到这个字面量，界面显示中缀 `**`），文本因此
+无歧义。修补后同一文件 `dump`->`load` **逐字节相同**。
+
+⚠ 这条符合铁律 #4 的三条判据：① 拿完全不经我们代码的路径复现（字节对照），②
+改动是一个枚举成员改名 + 三处引用，③ 文本是 vendor 解析器自己产/自己吃的，
+`Program.cs` 没有干净挂钩点。
+
+## 0006-efx-attractor-unknwild-float-fields.patch
+
+跟前 5 个不一样，**这个不是修 bug**——`UndeterminedFieldType` 本来就是 vendor 给"类型待定"
+字段留的合法占位（4 字节原样读写，`GetMostLikelyValueTypeObject()`/`GetMostLikelyValueTypeString()`
+两个 helper 就是给这种字段以后确定类型用的），改之前它读写完全正确，不存在"往返对不上"这回事，
+所以 README 开头那条"先证明是 vendor 的错"的判据在这里不适用——没有错可证明，纯粹是**类型精化**：
+拿到了足够的证据把"待定"收窄成"确定是 float"。
+
+对应 `EFXAttributeAttractor`（`Attractor` attribute）MHWilds 专属块里的 `unknWild1`/`unknWild10`。
+全语料 1105 个实例用 `fieldstats`/`condstats` 扫出来的取值分布：两个字段的非零取值按 IEEE754
+位模式解出来全部是干净的十进制数——`unknWild1` 只有 7 种非零取值 {0.1, 0.2, 0.3, 0.8, 1.0, 8.0,
+10.0}；`unknWild10` 只在 `Flags==8` 时非零（102 个同 Flags 实例里 74 个），落在 -0.68~2.0 弧度。
+按裸 `int` 读会是 1036831949 这种没有意义的天文数字，8 次不同实例全部"恰好"是圆整小数的概率
+按纯随机 int 分布算趋近于 0，判定这两个字段是原始类型精度丢失（vendor 保守存成 undetermined），
+不是我们瞎猜。语义（`unknWild1`/`unknWild10` 分别是什么物理量）仍然完全不知道，**只订正数据类型，
+不改字段名、不下语义结论**——那部分留给 `mhws_field_labels.json`，等真机验证后再补。
+
+风险评估：这个改动**无论解读对不对，都不会丢数据**——`float`/`UndeterminedFieldType` 都是 4 字节
+原样读写，位模式的重新解读只影响 JSON 里怎么显示这个数（嵌套 `{"value": N}` 还是裸浮点数），不影响
+二进制布局；`float` 读进来再写出去是 `BitConverter` 级别的位对位还原，NaN payload 也不例外。改动
+只有 2 行有效改动（外加一段注释），Program.cs 层面没有合适的挂钩点——这两个字段的"真实类型"是
+结构体自身声明决定的，桥接层没法在不碰 `EfxJsonTypeResolver`/反射的前提下让同一个 `[$type]` 判别
+出来的字段按不同类型序列化。
+
+**实测确认**：改前改后 `fieldstats` 扫到的实例数、文件数、失败数完全一致（1105 / 9175 / 46），
+非零取值从 `unknWild1.value: {"1036831949": 75, ...}` 变成 `unknWild1: {"0.1": 75, ...}`，数值
+逐一对应验证过是同一批位模式；全语料 `roundtrip` 稳定/异常分布（9175 稳定 / 0 不稳定 / 46 异常）
+和改动前完全一致，无回归。
+
 ## 怎么用
 
 **vendor 是 submodule，工作区改动不会随 `git submodule update` 保留**——每次重新 checkout /
@@ -98,6 +153,8 @@ git apply tools/vendor-patches/0001-efx-expression-func18-19-20-args2-dispatch.p
 git apply tools/vendor-patches/0002-efx-rszfixedsizearray-implicit-length-write.patch --directory=vendor/RE-Engine-Lib
 git apply tools/vendor-patches/0003-efx-opaque-unknown-attribute-types.patch --directory=vendor/RE-Engine-Lib
 git apply tools/vendor-patches/0004-efx-bonerelation-strainribbon-fluidsim.patch --directory=vendor/RE-Engine-Lib
+git apply tools/vendor-patches/0005-efx-inline-wstring-bytesize-fields.patch --directory=vendor/RE-Engine-Lib
+git apply tools/vendor-patches/0006-efx-attractor-unknwild-float-fields.patch --directory=vendor/RE-Engine-Lib
 ```
 
 （`git apply` 认不出就说明补丁跟当前 vendor commit 对不上下文了，去对应源文件里手动照着补丁
@@ -124,3 +181,11 @@ git apply tools/vendor-patches/0004-efx-bonerelation-strainribbon-fluidsim.patch
 `dotnet tools/EfxBridge/bin/Debug/net8.0/EfxBridge.dll bonealign <语料目录> <输出.json> --extra __NONE__`，
 如果不打补丁"数量对不上的作用域"已经是 0，说明上游自己修好了，删掉这个文件、撤掉那两个类上的
 改动、`KNOWN_UPSTREAM_ISSUES.md` #9 标一下已解决即可。
+
+**0005**：跑 `python tools/check_inline_wstring_size.py <语料目录> [数量]`（dump -> load -> 和原文件
+逐字节比），如果不打补丁受影响文件已经是 0，说明上游自己修好了，删掉这个文件、撤掉那 18 个
+字段上的 `ByteSize = true`、`KNOWN_UPSTREAM_ISSUES.md` #11 标一下已解决即可。
+
+**0006**：这个不是"上游修不修"的问题（本来就没错），只在上游自己给 `Attractor` 的 MHWilds
+专属字段配了正式类型/名字时才需要处理——那时大概率连字段名都不一样，直接对照上游的类型定义，
+删掉这个文件、把 `unknWild1`/`unknWild10` 换成上游版本即可，不需要"先确认没打补丁也一样"这一步。
