@@ -49,10 +49,16 @@ from blender_efx_re import bridge, io_tree, mdf_catalog, model, operators, struc
 _DEFAULT_GAME_DIR = r"E:\Program\Steam\steamapps\common\MonsterHunterWilds"
 # MHWilds 的 .mdf2 版本号后缀。pak 里的条目按完整内部路径算哈希，少这个后缀就查不到。
 _MDF2_VERSION = 45
-_DEFAULT_EFX = (
+#: 解包根换过一次（`MHWILDS_EXTRACT/EFX/natives/STM/...` -> `MHWILDS_EXTRACT/natives/STM/...`），
+#: 两条都试，全落空仍然报错退 1。
+_DEFAULT_EFX_CANDIDATES = (
+    r"E:\Program\Steam\steamapps\common\MonsterHunterWilds\MHWILDS_EXTRACT\natives\STM"
+    r"\Art\VFX\EffectEditor\Weapon\it13\11_it13_400.efx.5571972",
     r"E:\Program\Steam\steamapps\common\MonsterHunterWilds\MHWILDS_EXTRACT\EFX\natives\STM"
-    r"\Art\VFX\EffectEditor\Weapon\it13\11_it13_400.efx.5571972"
+    r"\Art\VFX\EffectEditor\Weapon\it13\11_it13_400.efx.5571972",
 )
+_DEFAULT_EFX = next((p for p in _DEFAULT_EFX_CANDIDATES if pathlib.Path(p).is_file()),
+                    _DEFAULT_EFX_CANDIDATES[0])
 
 
 def _script_args() -> list[str]:
@@ -551,4 +557,14 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # ⚠ 必须自己兜住异常再 sys.exit(1)：`blender --background --python x.py` 在脚本抛出
+    # **未捕获异常**时**退出码仍然是 0**（实测），`sys.exit(main())` 那行根本轮不到执行——
+    # 净效果是"门禁崩在第一行"和"门禁全过"对调用方长得一模一样，正是静默全绿。
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except BaseException:
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

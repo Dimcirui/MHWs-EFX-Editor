@@ -26,6 +26,7 @@ import pathlib
 import shutil
 import sys
 import tempfile
+import types
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
@@ -34,7 +35,7 @@ if str(_REPO_ROOT) not in sys.path:
 import bpy  # noqa: E402
 
 import blender_efx_re  # noqa: E402
-from blender_efx_re import bridge, uvs_io, uvs_operators  # noqa: E402
+from blender_efx_re import bridge, uvs_io, uvs_model, uvs_operators  # noqa: E402
 
 _DEFAULT_SAMPLE = pathlib.Path(
     r"E:\Program\Steam\steamapps\common\MonsterHunterWilds\MHWILDS_EXTRACT\natives\STM\Art\VFX"
@@ -212,6 +213,87 @@ def verify_version_suffix(report: Report) -> None:
     )
 
 
+def verify_wrapper_collection_grouping(sample: pathlib.Path, workdir: pathlib.Path,
+                                       report: Report) -> None:
+    """UVS 根从 Collection 改成 Empty Object 之后新加的机制：单个导入一个 Object 配一个专属
+    包裹集合，批量导入（含 EFX 侧"一并导入引用的 .uvs"）一批 Object 共享同一个集合。
+
+    直接测底层的 `uvs_io.new_uvs_collection()` + `build_uvs_root()` 协作（第一段），再测真正
+    会被用户触发的 `efx_uvs.import` 算子在单文件/多文件两条路各自建了几个包裹集合（第二段）
+    ——两段都要过，只测底层函数会漏掉算子里"先数一遍、再决定建几个集合"那段两段式逻辑本身
+    的 bug。
+    """
+    print("\n=== 包裹集合：单个 vs 批量共享")
+    scene_col = bpy.context.scene.collection
+    data = bridge.dump_uvs(sample)
+
+    wrapper = uvs_io.new_uvs_collection(scene_col, "UVS Batch Probe")
+    obj1 = uvs_io.build_uvs_root(data, wrapper, "probe_a")
+    obj2 = uvs_io.build_uvs_root(data, wrapper, "probe_b")
+    report.check("共享包裹集合装下了两个 UVS Object",
+                 set(wrapper.objects) == {obj1, obj2})
+    report.check("两个 Object 都带 ~TYPE 标记，集合本身不带",
+                 obj1.get("~TYPE") == uvs_model.TYPE_UVS_ROOT
+                 and obj2.get("~TYPE") == uvs_model.TYPE_UVS_ROOT
+                 and wrapper.get("~TYPE") is None)
+
+    wrapper_single = uvs_io.new_uvs_collection(scene_col, "probe_single")
+    obj_single = uvs_io.build_uvs_root(data, wrapper_single, "probe_single")
+    report.check("单个导入的包裹集合只装了这一个 Object",
+                 list(wrapper_single.objects) == [obj_single])
+
+    prev_active = bpy.context.scene.efx_uvs_active_root
+    bpy.context.scene.efx_uvs_active_root = None
+
+    ctx_batch = types.SimpleNamespace(object=None, collection=wrapper, scene=bpy.context.scene)
+    report.check("批量集合下 resolve_uvs_root 不瞎猜（返回 None）",
+                 uvs_io.resolve_uvs_root(ctx_batch) is None)
+
+    ctx_single = types.SimpleNamespace(object=None, collection=wrapper_single,
+                                       scene=bpy.context.scene)
+    report.check("单个集合下 resolve_uvs_root 能唯一确定",
+                 uvs_io.resolve_uvs_root(ctx_single) is obj_single)
+    bpy.context.scene.efx_uvs_active_root = prev_active
+
+    print("--- efx_uvs.import 算子：单文件 vs 多文件")
+    a = workdir / "grp_a.uvs.8"
+    b = workdir / "grp_b.uvs.8"
+    shutil.copy(sample, a)
+    shutil.copy(sample, b)
+
+    def _uvs_objs():
+        return {o.name for o in bpy.data.objects if o.get("~TYPE") == uvs_model.TYPE_UVS_ROOT}
+
+    import_op = getattr(bpy.ops.efx_uvs, "import")  # "import" 是 Python 关键字，只能 getattr
+
+    before = _uvs_objs()
+    import_op(directory=str(workdir) + "\\", files=[{"name": a.name}])
+    new_names = _uvs_objs() - before
+    new_objs = [bpy.data.objects[n] for n in new_names]
+    report.check("单文件导入产出恰好 1 个 UVS Object", len(new_objs) == 1, str(new_names))
+    if new_objs:
+        cols = new_objs[0].users_collection
+        report.check("单文件导入：这个 Object 的包裹集合里只有它自己",
+                     len(cols) == 1 and list(cols[0].objects) == [new_objs[0]])
+
+    before2 = _uvs_objs()
+    import_op(directory=str(workdir) + "\\", files=[{"name": a.name}, {"name": b.name}])
+    new_names2 = _uvs_objs() - before2
+    new_objs2 = [bpy.data.objects[n] for n in new_names2]
+    report.check("多文件导入产出恰好 2 个 UVS Object", len(new_objs2) == 2, str(new_names2))
+    if len(new_objs2) == 2:
+        cols2 = [tuple(o.users_collection) for o in new_objs2]
+        report.check(
+            "多文件导入：两个 Object 共享同一个包裹集合（不是各建各的）",
+            len(cols2[0]) == 1 and cols2[0] == cols2[1],
+            str(cols2),
+        )
+        report.check(
+            "共享包裹集合里正好是这两个 Object（没有多建/漏建）",
+            set(cols2[0][0].objects) == set(new_objs2),
+        )
+
+
 def main() -> int:
     opts = _parse_args(_script_args())
 
@@ -240,6 +322,7 @@ def main() -> int:
     verify_sample(sample, workdir, report)
     verify_texture_path_separators(report)
     verify_version_suffix(report)
+    verify_wrapper_collection_grouping(sample, workdir, report)
 
     if report.failures:
         print(f"\n===== {len(report.failures)} 项失败")

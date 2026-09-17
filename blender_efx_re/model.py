@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import struct
 
 import bpy
@@ -55,6 +56,10 @@ TYPE_ROOT = "EFX_RE_ROOT"
 TYPE_ENTRY = "EFX_RE_ENTRY"
 TYPE_ACTION = "EFX_RE_ACTION"
 TYPE_ATTRIBUTE = "EFX_RE_ATTRIBUTE"
+# 导入时一并拉进来的网格放的那个集合（`asset_link._meshes_collection()`）。不是 EFX 数据的
+# 一部分，只是大纲视图里的归拢；导出完全不看它（`export_root_to_efxfile()` 只走
+# `root_entries()` / `root_actions()`）。
+TYPE_MESH_GROUP = "EFX_RE_MESHES"
 
 # 新建空白 EFX 时 Header 需要的两个字段。只有这两个——2026-09-10 拿语料里最小的真实空文件
 # （11_evc0023_50_039.efx.5571972，56 字节，Entries/Actions/... 全空）跟纯手写的裸 JSON 逐字节
@@ -65,6 +70,20 @@ TYPE_ATTRIBUTE = "EFX_RE_ATTRIBUTE"
 # 原始注释。
 MHWILDS_EFX_VERSION = 5571972  # = vendor EfxVersion.MHWilds
 MHWILDS_EFX_DIMENSION_TYPE = 1
+
+# attribute 里引用外部资源的路径字段名。同一件事在不同 attribute 变体里叫法不同：
+# `EFXAttributeTypeMeshV2`/`TypeGpuMesh` 用大写开头的 `MeshPath`/`MaterialPath`
+# （EfxTypeMesh.cs:125/127、:400/402），更老的 `EFXAttributeTypeMesh`/`TypeGpuMeshTrail`
+# 用小写的 `meshPath`/`mdfPath`（同文件 :52/:53、:537/:539）。**按字段名判断，不按类名**
+# ——同一套路径字段挂在好几个类上，写死类名只会漏。
+#
+# MHWs 实测（2026-09-13，语料里 3089 个引用 mesh 的文件中随机抽 70 个 / 213 个实例）：
+# 命中的 key 只有 `MeshPath`，类型只有 `EFXAttributeTypeMeshV2`（152）和
+# `EFXAttributeTypeGpuMesh`（61），`MaterialPath` 213/213 全部非空，而
+# `MirrorMeshPath` 213/213 全部为空——所以 asset_link.py 只跟主 mesh 路径，不跟镜像那条。
+MESH_PATH_KEYS = ("MeshPath", "meshPath")
+MATERIAL_PATH_KEYS = ("MaterialPath", "mdfPath")
+UVS_PATH_KEY = "UVSPath"
 
 
 def short_attr_name(attr_type: str) -> str:
@@ -397,6 +416,42 @@ def _promote_null_to_string(self, context) -> None:
         self.string_value = fixed
     if self.key == "ParentBone" and not _suppress_field_updates:
         _mirror_parent_bone_to_inline(self)
+    _on_field_edited(self, context)
+
+
+def _on_field_edited(self, context) -> None:
+    """`float_value` / `int_value` / `string_value` 的 update 回调：字段被**用户**改过之后，
+    把依赖它的纯视觉产物重算一遍。目前两件事：Transform3D -> 所属 Entry 的 `matrix_basis`，
+    EmitterShape3D -> 生成区域线框叠加层标脏。
+
+    没有这一步的话，视口和粒子预览摆的是**上一次 `sync_all_transform3d()` 时的**姿态——
+    导入之后除非用户手动点 Refresh Transform3D View，改 LocalPosition 在视口里完全没反应，
+    而 `sim_preview` 的宿主矩阵正是读这个 `matrix_world`（见 `sim_preview._entry_matrix()`），
+    于是"本地位置明明是 1，粒子还在原点"。对齐姊妹项目 EFX-Editor 的实时联动行为。
+
+    只写 object transform（`matrix_basis`，不参与导出，见 transform3d_view.py 头部说明），
+    不碰任何字段数据——所以它不可能污染导出字节。
+
+    不是 Transform3D 形状的 attribute 直接返回：`apply_transform3d()` 内部靠
+    `transform3d_field_values()` 的四键结构判断，不命中就什么都不做，不需要在这里再维护一份
+    类型名单。批量填充（导入/粘贴/新建）期间由 `suppress_field_updates()` 关掉——那条路上
+    每个标量都会触发一次，而调用方在填完之后自己会烘一遍（见
+    `io_tree.apply_attribute_content()`）。
+    """
+    if _suppress_field_updates:
+        return
+    obj = getattr(self, "id_data", None)
+    if obj is None or obj.get("~TYPE") != TYPE_ATTRIBUTE:
+        return
+    if short_attr_name(obj.efx_attr_type) == "EmitterShape3D":
+        # ⚠ 不要在这儿列字段白名单：RangeX/Y/Z、ScaleHorizontal/Vertical、LocalRotation*、
+        # RotationOrder 全都进线框，漏一个就是"改了参数框不动"。整个 attribute 一律标脏。
+        from . import es3d_overlay
+        es3d_overlay.invalidate()
+    if obj.parent is None:
+        return
+    from . import transform3d_view
+    transform3d_view.apply_transform3d(obj)
 
 
 def _read_packed_int(node: "EFXValueNode") -> int:
@@ -419,6 +474,41 @@ def _write_packed_int(node: "EFXValueNode", value: int) -> None:
         node.uint_str = str(value)
     else:
         node.int_value = value
+
+
+_INT32_SPAN = 1 << 32
+_INT32_BIAS = 1 << 31
+
+
+def as_int32(value: int) -> int:
+    """把一个 32 位整数折进**有符号** int32 的范围。
+
+    `EnumProperty` 的 items 第 4 位（以及 get/set 交换的那个数）是 **C `int`**，
+    塞一个 > 2^31-1 的值进去会**直接崩掉 Blender**——不是抛异常，是整个进程没了。
+
+    实测踩法：`ExpressionAssignType` 这类枚举字段，vendor 的成员表里有
+    `ForceWord = -1`（`EfxCommon.cs`），而 `_read_packed_int()` 为了位域显示统一把负数
+    读成无符号（-1 -> 4294967295）。两边一个用有符号、一个用无符号，于是
+    `_enum_proxy_items()` 认为"当前值不在列举范围内"，往 items 里补了一条数值
+    4294967295 的兜底项——越界，崩。
+
+    折叠是 32 位上的双射，所以不会让两个不同的取值撞到同一个枚举数值
+    （真正 >32 位的枚举字段不存在；万一有，`_enum_proxy_items()` 会跳过并记一笔）。
+    """
+    return ((int(value) + _INT32_BIAS) % _INT32_SPAN) - _INT32_BIAS
+
+
+def _read_enum_proxy(node: "EFXValueNode") -> int:
+    """`enum_proxy` 的 getter：读出来的值必须和 items 里的数值同一套表示，见 `as_int32()`。"""
+    return as_int32(_read_packed_int(node))
+
+
+def _write_enum_proxy(node: "EFXValueNode", value: int) -> None:
+    """`enum_proxy` 的 setter：Blender 给的是有符号 int32，按存储槽的约定写回去
+    （`int_value` 本来就是有符号；`uint_str` 存的是无符号十进制，负数要加回 2^32）。"""
+    if node.data_type == "BIGINT" and value < 0:
+        value += _INT32_SPAN
+    _write_packed_int(node, value)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -450,7 +540,9 @@ def set_inline_enum_items(node: "EFXValueNode", items: list) -> None:
 
 def _enum_proxy_items(self, context):
     items = _INLINE_ENUM_CONTEXT.get((self.id_data, self.path_from_id())) or []
-    current = _read_packed_int(self)
+    # 全程用 `as_int32()` 的表示——items 的数值和 getter 返回值必须是同一套，
+    # 不然会走下面"当前值不在列举范围内"的兜底、插进一条越界的枚举数值把 Blender 崩掉。
+    current = _read_enum_proxy(self)
     cache_key = (tuple(tuple(it) for it in items), i18n.get_lang(), current)
     cached = _INLINE_ENUM_ITEMS_CACHE.get(cache_key)
     if cached is not None:
@@ -463,14 +555,23 @@ def _enum_proxy_items(self, context):
         zh = it[1] if len(it) > 1 else str(value)
         en = it[2] if len(it) > 2 else ""
         label = (en or zh) if lang_en else zh
+        number = as_int32(value)
+        if number != int(value) and int(value) != as_int32(int(value)):
+            # 超过 32 位的枚举取值（现实里不存在）——跳过而不是折叠，折叠可能撞车
+            continue
         # 下拉里带上原始数值（"1 跟随玩家移动"）——转成下拉之后裸数字不再直接可见了，
         # 但导出的还是这个数字，社区文档/010 模板对照的也是这个数字，不能让它彻底消失。
-        built.append((str(value), f"{value} {label}", "", value))
-        seen.add(value)
+        # 标签和标识符用**原样的值**（`-1` 就显示 -1），只有第 4 位那个给 Blender 的数值
+        # 走 `as_int32()`。
+        built.append((str(value), f"{value} {label}", "", number))
+        seen.add(number)
     if current not in seen:
         # 当前值不在列举范围内（语料里没见过的组合）：临时插一条"原值"，绝不静默改掉它
-        # ——和 bitfield.py 弹窗里同样的兜底。
-        built.append((str(current), f"{current}（原值）", "语料里没见过这个取值，原样保留", current))
+        # ——和 bitfield.py 弹窗里同样的兜底。**数值必须也走 `as_int32()`**，这里曾经
+        # 直接用无符号原值，给 `ForceWord = -1` 这种负数枚举插出一条 4294967295 的项，
+        # 直接崩 Blender（见 `as_int32()` 的说明）。
+        built.append((str(current), f"{current}（原值）", "语料里没见过这个取值，原样保留",
+                      current))
     if not built:
         built = [("0", "-", "", 0)]
     _INLINE_ENUM_ITEMS_CACHE[cache_key] = built
@@ -491,8 +592,12 @@ class EFXValueNode(PropertyGroup):
         description="仅影响面板显示的折叠状态，不参与导出",
     )
 
-    float_value: FloatProperty(name="Value")
-    int_value: IntProperty(name="Value")
+    # update：字段改了要立刻反映到纯视觉产物上（Transform3D -> Entry 的 matrix_basis、
+    # EmitterShape3D -> 生成区域线框）
+    # （见 _on_field_edited()）。`degrees_value` / `enum_proxy` 两个代理属性的 set
+    # 都是 setattr 回这两个槽，所以角度显示模式、RotationOrder 下拉一并覆盖到。
+    float_value: FloatProperty(name="Value", update=_on_field_edited)
+    int_value: IntProperty(name="Value", update=_on_field_edited)
     uint_str: StringProperty(name="Value")
     bool_value: BoolProperty(name="Value")
     string_value: StringProperty(name="Value", update=_promote_null_to_string)
@@ -537,7 +642,7 @@ class EFXValueNode(PropertyGroup):
     # enum_proxy 相关函数的说明。
     enum_proxy: EnumProperty(
         name="Value", items=_enum_proxy_items,
-        get=_read_packed_int, set=_write_packed_int,
+        get=_read_enum_proxy, set=_write_enum_proxy,
     )
 
 
@@ -624,8 +729,10 @@ def sr_children_ordered(node: EFXValueNode):
 #: 而不像"基值+浮动"：`VanishFrame` 的 `(30,40) (60,80) (80,100) (100,120)`、`KeepFrame`
 #: 的 `(150,200)`，而 `r==s`（两端填一样 = 不随机）占 71~99.8%。
 #:
-#: ⚠ 只有 `Life` 这四个是语料验证过的。`RgbCommon.GreenChAppearFrame` /
-#: `TexelChannelOperator.Appear` 等同概念字段**没验**，按铁律 #7 不先斩后奏地加进来。
+#: ⚠ **同概念不等于同语义**：`RgbCommon.*AppearFrame/KeepFrame/VanishFrame` 全族看着和 `Life`
+#: 那四个一模一样，实测却是 static/random——`副值<主值` 大量出现（1 万~2 万例），高频组合
+#: `(5,0)` `(10,0)` `(30,0)` 就是"值 5、不随机"。`VanishArea3D.VanishFrame` 同理
+#: （1018/1319 副值<主值）。所以这张表只收**逐个查过**的，不按名字外推。
 #:
 #: 镜像在 `efx_sim/shapes.py::PAIR_MIN_MAX_FIELDS`，由 `tests/test_sim_core.py` 钉住一致。
 _PAIR_MIN_MAX_FIELDS = frozenset({
@@ -633,6 +740,40 @@ _PAIR_MIN_MAX_FIELDS = frozenset({
     ("Life", "KeepFrame"),
     ("Life", "VanishFrame"),
     ("Life", "KeepHoldFrame"),
+    # --- `EmitterShape3D` 的三个逐轴区间。2026-09-13 全语料定的，判据是**外边界是 `q`
+    # 还是 `p+q`**（min+max vs MHWI 那种 min+offset），不是 static/random：
+    #   `q < p` 0/62492，而主值非零的有 36590/20748/36840 例（58.6%/33.2%/59.0%）——
+    #   min+offset 下 `q` 是**厚度**，半径 1.0 厚 0.1 的薄壳就该写成 `(1.0, 0.1)` 即 `q < p`，
+    #   这种组合一次都没出现，等于说"从来没人做过半径大于厚度的壳"，讲不通。
+    #   反过来看"厚度"：读作 min+max 时 `q-p == 0`（粒子正好落在壳面上）占 69.2%/33.3%/60.0%，
+    #   是最常见的写法；读作 min+offset 时 `q == 0` 占 0.0%/11.1%/0.0%——没人做过纯表面
+    #   发射器，每个都非得有个中位 0.5~1.0 的厚度，不成立。
+    #   另有 Y 轴的对称负数对 `(-0.1,0.1)×588` `(-0.5,0.5)×507` `(-1,1)×489`：min+max 读作
+    #   "以原点为中心上下对称"，min+offset 则要求作者恰好挑一个等于 |min| 的 offset，挑了 1584 次。
+    ("EmitterShape3D", "RangeX"),
+    ("EmitterShape3D", "RangeY"),
+    ("EmitterShape3D", "RangeZ"),
+    # --- 以下 13 个是 2026-09-13 用 `EfxBridge pairstats` + `tools/audit_range_fields.py`
+    # 全语料排查出来的（223 个二元字段扫了一遍），此前一直被当成 (静态值, 随机量) 读。
+    # 共同判据：**副值 < 主值 0 例**（min/max 的必要条件），且**"副值==主值且主值≠0"占比高**
+    # ——static/random 下那等于"浮动幅度恰好等于基值"，不可能成规模。括号里是那个占比。
+    #
+    # ⚠ **必须按 (类型, 字段) 键**，这批里真有撞名的：`AngularVelocity3D.Radius`（1796 例）
+    # 和 `PtVortexelPhysics.BounceRate`（2192 例）都是**确证的 static/random**，用裸字段名会
+    # 把它们一起误伤。
+    ("PtCollision", "Radius"),                       # 94.7%  (0.1,0.1)×869
+    ("PtCollision", "BounceNum"),                    # 81.4%  (2,2) (1,1) (3,3) (2,3)
+    ("PtCollision", "BounceRate"),                   # 70.0%  (0.1,0.1) (0.1,0.2)
+    ("PlaneCollider", "BounceNum"),                  # 54.0%  (1,1) (1,2) (2,3)
+    ("PlaneCollider", "BounceRate"),                 # 16.1%  (0.4,0.5) (0.5,0.8)
+    ("PlaneCollider", "IdleTime"),                   # 12.6%  (10,10) (60,60) (500,500)
+    ("UVSequenceModifier", "PlaySpeedInit"),         # 83.4%  (1,1) (2,2) (1.5,1.5)
+    ("UVSequenceModifier", "PlaySpeedFinal"),        # 74.5%  (0.5,0.5) (0.3,0.3)
+    ("UVSequenceModifier", "PlaySpeedChangeTimeCoef"),  # 93.4%  (0.97,0.97) (0.98,0.98)
+    ("EmitterHSV", "Range1"),                        # 77.5%  (100,100) (100,650)
+    ("EmitterHSV", "Range3"),                        # 75.0%  (100,100) (240,650)
+    ("TexelChannelOperator", "Keep"),                # 26.3%  (20,60) (100,100) (0,5)
+    ("TexelChannelOperator", "Vanish"),              # 73.7%  (80,80) (20,20)
 })
 
 
@@ -674,8 +815,40 @@ def is_static_random_node(node: EFXValueNode, attr_type: str | None = None) -> b
 # - `PatternNo`：全语料 s>r 恒成立但差值自由变化（不像 SequenceNo 钉死在 1），是真正的
 #   min/max 范围，只是 s/r 顺序和 `is_min_max_node()` 的 x/y 相反——画成 Max(s)/Min(r)。
 # `PlaySpeed` 反过来 s<=r 恒成立、顺序跟 x/y 一致，画成 Min(s)/Max(r)。
+# - `PartsStartNo`（`TypeMesh`/`TypeGpuMesh`，`RangeI`，主值 `r`）：全语料 10886 个实例
+#   （TypeMesh 7366 + TypeGpuMesh 3520）里 **`s <= r` 0 例、`s == 0` 0 例**——静态/随机语义
+#   下"随机量=0"本该是多数（大部分实例不随机），一例都没有直接把那条假说排除掉。
+#   另有 `s <= MaxPartsNum` 7361/7366 成立（唯一的越界是 `MaxPartsNum=44, s=45`，5 例），
+#   说明 `s` 跟的是部件总数、是**左闭右开的上界**，不是一个和静态值无关的随机幅度。
+#   高频组合 `(0,1)` / `(0,4)` / `(2,3)` / `(12,15)` 读作"用第 0 个部件"/"用第 0~3 个"
+#   /"用第 2 个"/"用第 12~14 个"，和 `PatternNo` 完全同构。
 _SR_INDEX_FIELD_NAMES = frozenset({"SequenceNo"})
-_SR_MIN_MAX_FIELD_NAMES = frozenset({"PatternNo", "PlaySpeed"})
+_SR_MIN_MAX_FIELD_NAMES = frozenset({"PatternNo", "PlaySpeed", "PartsStartNo"})
+
+# min/max 字段里**上界取不到**（左闭右开 `[Min, Max)`）的那些。
+#
+# 判据是"`Max == Min` 在语料里出现过没有"——闭区间里 `Max == Min` 是"固定一个值"的常规写法，
+# 半开区间里它恰好是**空区间**，作者永远不会写。全语料（`EfxBridge pairstats` +
+# `tools/audit_range_fields.py`）两边没有灰带：
+#
+#     PatternNo      66165 例   Max==Min 0 例      Max==Min+1 23085 例  -> 半开
+#     PartsStartNo   10886 例   Max==Min 0 例      Max==Min+1  5943 例  -> 半开
+#     Life.*Frame    91248 例   Max==Min 65051~91026 例                 -> 闭
+#     Spawn.*        91147 例   Max==Min 80160~89813 例                 -> 闭
+#
+# **只对整数字段有意义**：`PlaySpeed` 这种浮点区间的开闭是零测度，不进这张名单。
+#
+# 这张名单同时供三处用，别在别处再算一遍：面板按它提示"Max 取不到"、
+# `efx_sim/shapes.py` 的 `roll_sr_min_max_int()` 按它决定取样上界、镜像由单测钉住。
+_HALF_OPEN_MAX_FIELD_NAMES = frozenset({"PatternNo", "PartsStartNo"})
+
+
+def is_half_open_max_node(node: EFXValueNode) -> bool:
+    """这个 min/max 节点的上界是不是**取不到**（`[Min, Max)`）。
+
+    只对 `is_sr_min_max_node()` 为真的节点有意义；别的形状一律 False。
+    """
+    return is_sr_min_max_node(node) and node.key in _HALF_OPEN_MAX_FIELD_NAMES
 
 
 def is_sr_index_node(node: EFXValueNode) -> bool:
@@ -862,6 +1035,94 @@ def is_expression_attribute_dict(attr_dict: dict) -> bool:
     bits 键），不会和这两个键撞名，本轮不处理，继续走通用树透传。
     """
     return "Expression" in attr_dict and "ExpressionBits" in attr_dict
+
+
+#: vendor 源码里"没起真名，只是编号占位"的字段一律长这个形状：`unkn1`、`unkn5`、`ukn1_7`……
+#: （见 EfxCommon.cs/EfxTransform.cs 等），用来把 bit 显示名里的这类占位名和真正有意义的名字
+#: （`rotationX` 这种）区分开——见 bit_display_label()。
+_PLACEHOLDER_FIELD_NAME_RE = re.compile(r"^(?:unkn|ukn|unk)\d", re.IGNORECASE)
+
+
+def resolve_expression_bit_name(attr_type: str, bit_index: int) -> str:
+    """给一个 `IExpressionAttribute` 的 (`$type`, 0-based bit_index) 查它在 vendor 源码里的
+    真实字段名——`EfxBridge bitnames` 反射出的静态表（`semantics/mhws_bit_names.json`），
+    覆盖面比单个文件 dump 出的 `ExpressionBits.bitNames`（只包含 vendor 手写进
+    `BitNameDict` 的那部分）更全：没起过别名的字段（`ukn1_7` 这种）依然是真实声明的字段，
+    这张表按声明顺序把它们也收了进来。查不到（这个类型没实现 `IExpressionAttribute`，或
+    bit_index 超出这个类型的字段数）返回空字符串——和 `EFXExpressionCurveItem.bit_name`
+    "查不到就留空"的既有约定一致，`sim_preview.collect_expressions()` 靠这个空串跳过没法
+    定位目标字段的曲线，不能返回编出来的占位名。"""
+    from . import semantics
+    names = semantics.get_expression_bit_names(attr_type)
+    if not names or bit_index < 0 or bit_index >= len(names):
+        return ""
+    return names[bit_index] or ""
+
+
+def resolve_clip_bit_name(attr_type: str, bit_index: int) -> str:
+    """同 resolve_expression_bit_name()，查 `IClipAttribute`。Clip 的曲线数据全部挤在同一个
+    共享的 `clipData` 里，没有 per-bit 具名字段可反射，绝大多数类型这里永远查不到——如实反映
+    vendor 源码里确实没给这些 bit 起过名字（例外见 `EfxBridge bitnames` 的说明），不是我们
+    没查到就该编一个。"""
+    from . import semantics
+    names = semantics.get_clip_bit_names(attr_type)
+    if not names or bit_index < 0 or bit_index >= len(names):
+        return ""
+    return names[bit_index] or ""
+
+
+def bit_display_label(bit_index: int, bit_name: str) -> str:
+    """把 (bit_index, bit_name) 变成面板/下拉菜单里给人看的一行文字。`EFXClipCurveItem`/
+    `EFXExpressionCurveItem` 的 `bit_name` 字段本身必须保持"真实字段名或空串"（`sim_preview.
+    collect_expressions()` 拿它去精确匹配 sibling attribute 的字段名，不能是装饰过的文本），
+    这个函数只用于展示，不回写到 `bit_name` 上。
+
+    三种情况：没有任何名字来源（多数 Clip 类型）-> 裸 `"bit{N}"`；vendor 自己也只给了个占位名
+    （`unkn5`/`ukn1_7` 这种）-> `"bit{N} ({name})"`，光看名字分不清彼此时把编号带上；其余
+    情况直接显示名字本身，比"第几位"更能说明这一位驱动的是哪个字段。"""
+    if not bit_name:
+        return f"bit{bit_index}"
+    if _PLACEHOLDER_FIELD_NAME_RE.match(bit_name):
+        return f"bit{bit_index} ({bit_name})"
+    return bit_name
+
+
+def expression_bit_index_for_field(attr_type: str, field_key: str) -> "int | None":
+    """`resolve_expression_bit_name()` 的反函数：给一个字段名，反查它在这个
+    `IExpressionAttribute` 类型里对应哪个 bit。bit 和字段是反射验证过的 1:1
+    （全语料核查 58 个类型，54 个完全对应，见 docs/EXPRESSION_SEMANTICS.md §7.1），
+    所以字段那一行可以直接画一个"加/减这条公式"的按钮，不需要再单独维护一份
+    "选哪个字段"的下拉——bit_index 只是这份数据在文件里的存储位置，不是用户需要
+    关心的另一个身份。查不到（这个类型没有反射表，或这个字段名不在表里——多数
+    `TextureUnitExpression` 这类数组形态、以及少数声明位数多于字段数的类型）返回
+    `None`，调用方据此判断要不要退回按 bit_index 操作的旧列表 UI（见
+    `panels._draw_expression_bit_toggle()` / `EFX_RE_UL_expression_curves.filter_items()`）。"""
+    from . import semantics
+    names = semantics.get_expression_bit_names(attr_type)
+    if not names:
+        return None
+    try:
+        return names.index(field_key)
+    except ValueError:
+        return None
+
+
+def find_expression_curve(obj, bit_index: int):
+    """`obj.efx_expression_curves` 里 `bit_index` 匹配的那一条，没有则 `None`。"""
+    for curve in obj.efx_expression_curves:
+        if curve.bit_index == bit_index:
+            return curve
+    return None
+
+
+def find_expression_curve_index(obj, bit_index: int) -> "int | None":
+    """同 `find_expression_curve()`，返回下标而不是对象——`efx_expression_curves_active_index`
+    要的是下标，`collection.remove()` 也要下标，找对象再反查下标容易踩 bpy_struct 相等性的坑，
+    不如按 `bit_index` 直接扫一遍拿下标。"""
+    for i, curve in enumerate(obj.efx_expression_curves):
+        if curve.bit_index == bit_index:
+            return i
+    return None
 
 
 def json_float_in(value) -> float:
@@ -1280,6 +1541,72 @@ class EFXClipCurveItem(PropertyGroup):
     keyframes_active_index: IntProperty()
 
 
+def _expression_node_changed(self, context) -> None:
+    """节点行改了值/名字 -> 立刻把整条公式重新拼回 `formula`。
+
+    行视图是文本的视图，不是第二份数据（见 `efx_sim/expr.py` 的结构化编辑一节）：
+    每次编辑都全量重拼，不做增量、不留脏标志。"""
+    from . import expr_edit
+    expr_edit.on_node_edited(self)
+
+
+class EFXExpressionNodeItem(PropertyGroup):
+    """`EFXExpressionCurveItem.formula` 那条公式的**一行**——整棵表达式树按前序摊平成
+    这个列表（编码规则和重建逻辑全在 `efx_sim/expr.py` 的 `to_rows()`/`from_rows()`，
+    这里只是它那份 dict 的 Blender 容器）。
+
+    为什么摊平：`CollectionProperty` 装不了递归类型，Blender 里表达"树"只能靠线性编码 +
+    `depth` 缩进画。`arity`（子节点个数）才是结构的真相，`depth` 是派生的显示量。
+
+    **不参与导出**。导出只读 `formula` 字符串（`io_tree._export_expression_attribute()`），
+    这些行任何时候坏掉，最坏也只是拼出一段不同的**文本**——会被桥接的解析器或字节门禁
+    抓住，而不是绕过文本偷改二进制。
+    """
+
+    kind: EnumProperty(
+        name="Kind",
+        items=[
+            ("CONST", "Constant", "浮点字面量"),
+            ("VAR", "Variable", "具名参数或内置外部变量"),
+            ("NEG", "Negate", "一元负号"),
+            ("CALL", "Call", "中缀运算符或函数调用"),
+        ],
+        default="CONST",
+    )
+    depth: IntProperty(name="Depth", min=0)
+    arity: IntProperty(name="Arity", min=0)
+    #: CALL 行存运算符符号（`+ - * /`）或函数名；VAR 行存变量名；其余为空
+    name: StringProperty(name="Name", update=_expression_node_changed)
+    #: CONST 行的值。文本形式最多 6 位小数（vendor `ExpressionFloat.ToString()` 的 F6），
+    #: 但**全语料 9066 个常量里最多只用到 4 位**（1044 个文件实测：0 位 6685、1 位 1574、
+    #: 2 位 633、3 位 132、4 位 42，5/6 位一个都没有），所以 precision 给 4——既不会把
+    #: `0.0025` 这种真实取值显示成 `0.003`，又不用让 68% 的整数常量顶着 `15.000000`
+    #: 那一串零（用户反馈的"数字占满整行、像一张数字表"里的一半原因）。
+    value: FloatProperty(name="Value", precision=4, update=_expression_node_changed)
+
+    # 同 `EFXValueNode.degrees_value`（同一个 `subtype="ANGLE"` 技巧：Blender 的属性控件
+    # 自动按度显示/接受输入，get/set 原样传回弧度，不需要手动 math.degrees()/radians()）。
+    # 只在这个 CONST 槽位被 `expr_edit._curve_wants_degrees()` 判定"和这条曲线的目标字段
+    # 同一个单位（角度）"时才画它而不是裸的 `value`——**不是**"这条曲线里的每个常量都换算"，
+    # `Lerp(Clamp(TIMER, 120, 0), 190, -30)` 的 `120`/`0` 是帧数阈值，被当角度换算会把
+    # `Clamp` 的重映射区间整个改坏，见 `efx_sim/expr.py::propagate_same_unit_as_root()`。
+    degrees_value: FloatProperty(
+        name="Value", subtype="ANGLE",
+        get=lambda self: self.value,
+        set=lambda self, value: setattr(self, "value", value),
+    )
+
+
+def _expression_formula_changed(self, context) -> None:
+    """公式文本改了（用户手打、导入、结构化编辑以外的任何来源）-> 重新解析成节点行。
+
+    解析失败不清空文本、也不静默放过：记进 `formula_error`、把行清空，面板据此只显示
+    错误和原始文本框（铁律 #2：宁可让用户看见一条炸了的公式，也不给他一棵半成品的树）。
+    """
+    from . import expr_edit
+    expr_edit.on_formula_edited(self)
+
+
 class EFXExpressionCurveItem(PropertyGroup):
     """对应 `IExpressionAttribute` 的一条公式（`ExpressionBits` 里的一个置位 + 它驱动的一个
     `EFXExpressionObject`）。和 `EFXClipCurveItem` 是同一个 BitSet 家族——`bit_index` 的
@@ -1298,8 +1625,19 @@ class EFXExpressionCurveItem(PropertyGroup):
 
     bit_index: IntProperty(name="Bit Index", min=0)
     bit_name: StringProperty(name="Bit Name")
-    formula: StringProperty(name="Formula", default="0")
+    formula: StringProperty(name="Formula", default="0",
+                            update=_expression_formula_changed)
     formula_error: StringProperty(name="Error")
+    #: `formula` 的结构化视图，见 `EFXExpressionNodeItem`。派生量，不参与导出。
+    nodes: CollectionProperty(type=EFXExpressionNodeItem)
+    #: **当前选中的那个槽位**（= 该槽位内容所在的行下标）。界面纵向展开的那条链、
+    #: 检查器编辑谁、视口 HUD 画哪一级曲线，全由它一个整数决定（按钮不逐行摆，
+    #: 理由见 `expr_edit.draw_nodes()`）。纯 UI 态。
+    nodes_active_index: IntProperty(name="Active Node")
+    #: `a  |  b` 第二根值的原始文本（vendor `ExpressionRootValueOption`，语义未证实）。
+    #: 结构化编辑只动第一支，这一支原样存着、拼回去时原样带上——没证实语义不是丢数据的
+    #: 理由（铁律 #2）。
+    second_branch: StringProperty(name="Second Root Value")
 
 
 # ---------------------------------------------------------------------------
@@ -1334,7 +1672,10 @@ def load_opaque(obj) -> dict:
 
 _CLASSES = (
     EFXValueNode, EFXGroupTag, EFXBoneItem, EFXFieldParameterItem, EFXUvarGroupItem,
-    EFXExpressionParamItem, EFXClipKeyframeItem, EFXClipCurveItem, EFXExpressionCurveItem,
+    EFXExpressionParamItem, EFXClipKeyframeItem, EFXClipCurveItem,
+    # EFXExpressionNodeItem 必须排在 EFXExpressionCurveItem 前面：后者的
+    # `nodes: CollectionProperty(type=...)` 在注册时就要求前者已经注册过。
+    EFXExpressionNodeItem, EFXExpressionCurveItem,
 )
 
 
@@ -1455,6 +1796,21 @@ def register():
         name="Source Filename",
         description="导入时的原始文件名（含版本号后缀），导出时作为默认文件名",
     )
+    # EFX_ROOT 专属：导入时这个文件所在的**目录**。给资源解析用——它引用的 .mesh/.uvs/.tex
+    # 绝大多数就在它自己那棵 natives/STM 树里，从这里向上回溯就能找到那棵树的根
+    # （见 asset_paths.roots_from()）。不参与导出，纯编辑期状态。
+    Collection.efx_source_dir = StringProperty(
+        name="Source Directory",
+        description="导入时这个 EFX 所在的目录，用来在它旁边的 natives 树里找引用的资源",
+        subtype="DIR_PATH",
+    )
+    # EFX_ROOT 专属：导入时是**在首选项里勾了"绕过骨骼绑定对齐校验"**的情况下放行的
+    # （正常出厂行为是直接拒绝导入，见 preferences.py / io_tree.check_bone_relation_alignment()）。
+    # 只用来在导出这个树时再警告一次"绑定可能已错位、导出会丢槽位"，不参与导出字节。
+    Collection.efx_bone_alignment_bypassed = BoolProperty(
+        name="Bone Alignment Bypassed",
+        description="这个树导入时骨骼绑定索引对不上、是按设置放行的，导出前请确认绑定是否正确",
+    )
 
     # 以下四组挂在 **Collection** 上而不是 Object：EFX_ROOT 就是那个紫色集合本身
     # （见 io_tree.build_root_from_efxfile），没有根 Empty。
@@ -1548,6 +1904,8 @@ def unregister():
     del Collection.efx_field_parameters
     del Collection.efx_bones_active_index
     del Collection.efx_bones
+    del Collection.efx_bone_alignment_bypassed
+    del Collection.efx_source_dir
     del Object.efx_source_filename
     del Collection.efx_source_filename
     del Object.efx_entry_assignment

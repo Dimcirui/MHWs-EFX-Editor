@@ -9,25 +9,45 @@ EFXValueNode 那套通用递归树，也不需要区分"结构性字段 vs 内�
 from __future__ import annotations
 
 import bpy
-from bpy.types import Collection
+from bpy.types import Collection, Object
 
-from . import io_tree, uvs_model
+from . import uvs_model
 
 _UVS_COLOR_TAG = "COLOR_04"  # 橙色：和 EFX_ROOT 的紫色（COLOR_06）区分，Outliner 里一眼分清
 
+#: 纯数据容器，视口里不需要显眼的尺寸——同 io_tree._new_empty() 给 EFX 那些 ~TYPE 对象用的值。
+_EMPTY_DISPLAY_SIZE = 0.1
 
-def build_uvs_root(data: dict, parent_collection: Collection, name: str) -> Collection:
-    """把一个 uvsdump JSON dict 建成一个 `~TYPE = EFX_UVS` 集合，返回该集合。"""
+
+def new_uvs_collection(parent_collection: Collection, name: str) -> Collection:
+    """新建一个纯视觉的包裹集合（只挂颜色标签，不带 `~TYPE`——那个标记现在在 Object 上）。
+
+    单个导入：调用方每次都新建一个，一个集合正好装一个 UVS Object（同旧版行为）。
+    批量导入（手动多选、或 EFX 侧"一并导入引用的 .uvs"一次带出多个不同的 .uvs）：调用方只
+    新建一次，把这批 Object 都 link 进同一个集合——不是各建各的，见 uvs_operators.py /
+    asset_link.link_uvs() 里"先数一遍有几个，再决定建几个集合"的两段式流程。
+    """
     col = bpy.data.collections.new(name)
     parent_collection.children.link(col)
     col.color_tag = _UVS_COLOR_TAG
-    col["~TYPE"] = uvs_model.TYPE_UVS_ROOT
+    return col
+
+
+def build_uvs_root(data: dict, parent_collection: Collection, name: str) -> Object:
+    """把一个 uvsdump JSON dict 建成一个 `~TYPE = EFX_RE_UVS` 的 Empty Object，link 进
+    `parent_collection`（调用方传入的应当已经是 `new_uvs_collection()` 建出来的包裹集合），
+    返回该 Object。**不在这里建包裹集合**——单个 vs 共享由调用方决定，见本模块头部说明。
+    """
+    obj = bpy.data.objects.new(name, None)
+    obj.empty_display_size = _EMPTY_DISPLAY_SIZE
+    parent_collection.objects.link(obj)
+    obj["~TYPE"] = uvs_model.TYPE_UVS_ROOT
 
     header = data.get("header") or {}
-    col.efx_uvs_cutout_related = bool(header.get("attributes", 0) or 0)
+    obj.efx_uvs_cutout_related = bool(header.get("attributes", 0) or 0)
 
     for tex_dict in data.get("textures", []) or []:
-        item = col.efx_uvs_textures.add()
+        item = obj.efx_uvs_textures.add()
         item.path = tex_dict.get("path") or ""
         item.state_holder = str(int(tex_dict.get("stateHolder", 0) or 0))
         item.tex_handle1 = str(int(tex_dict.get("texHandle1", 0) or 0))
@@ -35,7 +55,7 @@ def build_uvs_root(data: dict, parent_collection: Collection, name: str) -> Coll
         item.tex_handle3 = str(int(tex_dict.get("texHandle3", 0) or 0))
 
     for seq_index, seq_dict in enumerate(data.get("sequences", []) or []):
-        seq_item = col.efx_uvs_sequences.add()
+        seq_item = obj.efx_uvs_sequences.add()
         seq_item.name = f"Sequence {seq_index}"
         for pat_dict in seq_dict.get("patterns", []) or []:
             pat_item = seq_item.patterns.add()
@@ -46,7 +66,7 @@ def build_uvs_root(data: dict, parent_collection: Collection, name: str) -> Coll
             pat_item.texture_index = int(pat_dict.get("textureIndex", 0) or 0)
             pat_item.flags = str(int(pat_dict.get("flags", 0) or 0))
             # -1（cutout_related 关闭）和 0（cutout_related 开启但这一帧不裁剪）在这里统一
-            # 折成 False——两者的区别完全由集合级 efx_uvs_cutout_related 表达，pattern 自己
+            # 折成 False——两者的区别完全由 efx_uvs_cutout_related 表达，pattern 自己
             # 只需要知道"裁不裁"，不需要记住原始整数是哪一种"不裁剪"。
             pat_item.use_cutout = int(pat_dict.get("cutoutUVCount", -1) or 0) > 0
             for point_dict in pat_dict.get("cutoutUVs") or []:
@@ -54,11 +74,11 @@ def build_uvs_root(data: dict, parent_collection: Collection, name: str) -> Coll
                 point_item.x = float(point_dict.get("X", 0.0) or 0.0)
                 point_item.y = float(point_dict.get("Y", 0.0) or 0.0)
 
-    return col
+    return obj
 
 
-def export_uvs_root(col: Collection) -> dict:
-    """build_uvs_root() 的反函数：把一个 EFX_UVS 集合导出成 uvsload 需要的 JSON dict。
+def export_uvs_root(obj: Object) -> dict:
+    """build_uvs_root() 的反函数：把一个 UVS Object 导出成 uvsload 需要的 JSON dict。
 
     `patternCount`/`patternTableOffset`/`cutoutUVCount`/Header 的各种 count/offset 字段一律
     不写——vendor `UvsFile.DoWrite()` 按列表实际内容重新计算，写了也会被覆盖（见
@@ -74,7 +94,7 @@ def export_uvs_root(col: Collection) -> dict:
     `tools/EfxBridge/Program.cs` 的 `uvsload` 在写完之后做二次字节 patch。
     """
     textures = []
-    for item in col.efx_uvs_textures:
+    for item in obj.efx_uvs_textures:
         textures.append({
             "stateHolder": int(item.state_holder or "0"),
             "texHandle1": int(item.tex_handle1 or "0"),
@@ -86,9 +106,9 @@ def export_uvs_root(col: Collection) -> dict:
             "path": (item.path or "").replace("\\", "/"),
         })
 
-    cutout_related = col.efx_uvs_cutout_related
+    cutout_related = obj.efx_uvs_cutout_related
     sequences = []
-    for seq in col.efx_uvs_sequences:
+    for seq in obj.efx_uvs_sequences:
         patterns = []
         for pat in seq.patterns:
             pattern_dict = {
@@ -127,17 +147,25 @@ def export_uvs_root(col: Collection) -> dict:
     }
 
 
-def resolve_uvs_root(context) -> Collection | None:
-    """当前操作该落在哪个 EFX_UVS 集合上：先看活动集合沿父集合链网上找带 EFX_UVS 标记的那个，
-    找不到就退到 `Scene.efx_uvs_active_root`（同 io_tree.resolve_root() 对 EFX_ROOT 的处理，
-    见 panels.py register()）。EFX_UVS 下面没有 Object（纯数据表，见 uvs_model.py 模块头
-    说明），所以不像 io_tree.resolve_root() 那样需要"活动对象所在的树"这一档。
+def resolve_uvs_root(context) -> Object | None:
+    """当前操作该落在哪个 UVS Object 上：
+
+    1. 活动对象本身就是一个 UVS Object——最直接的一档；
+    2. 活动集合下**恰好只有一个** UVS Object 时用它——单个导入的场景（一个包裹集合正好装
+       一个 Object）里，点中那个集合就该认出里面唯一的那个。批量导入时一个集合装好几个
+       Object，这一档没法猜该是哪个，交给下一档；
+    3. 兜底 `Scene.efx_uvs_active_root`（各算子导入/新建后自动指向，见 uvs_operators.py /
+       asset_link.link_uvs()）。
     """
+    obj = getattr(context, "object", None)
+    if obj is not None and obj.get("~TYPE") == uvs_model.TYPE_UVS_ROOT:
+        return obj
+
     active_col = getattr(context, "collection", None)
     if active_col is not None:
-        col = _root_of_collection(active_col)
-        if col is not None:
-            return col
+        matches = [o for o in active_col.objects if o.get("~TYPE") == uvs_model.TYPE_UVS_ROOT]
+        if len(matches) == 1:
+            return matches[0]
 
     active = getattr(context.scene, "efx_uvs_active_root", None)
     if active is not None and active.get("~TYPE") == uvs_model.TYPE_UVS_ROOT:
@@ -149,12 +177,12 @@ def active_sequence(context):
     """当前活动 UVS 根里，`efx_uvs_sequences_active_index` 指向的 Sequence，取不到返回
     `None`。给 uvs_operators.py 和 uvs_image_editor.py 共用，避免各自维护一份同样的下标判断。
     """
-    root_col = resolve_uvs_root(context)
-    if root_col is None:
+    root_obj = resolve_uvs_root(context)
+    if root_obj is None:
         return None
-    index = root_col.efx_uvs_sequences_active_index
-    if 0 <= index < len(root_col.efx_uvs_sequences):
-        return root_col.efx_uvs_sequences[index]
+    index = root_obj.efx_uvs_sequences_active_index
+    if 0 <= index < len(root_obj.efx_uvs_sequences):
+        return root_obj.efx_uvs_sequences[index]
     return None
 
 
@@ -166,16 +194,4 @@ def active_pattern(context):
     index = seq.patterns_active_index
     if 0 <= index < len(seq.patterns):
         return seq.patterns[index]
-    return None
-
-
-def _root_of_collection(col: Collection | None) -> Collection | None:
-    """从一个集合沿父集合链往上找第一个 EFX_UVS（含它自己）。复用
-    io_tree.collection_parent()，不重新实现一遍父集合反查。"""
-    seen = set()
-    while col is not None and col.name not in seen:
-        seen.add(col.name)
-        if col.get("~TYPE") == uvs_model.TYPE_UVS_ROOT:
-            return col
-        col = io_tree.collection_parent(col)
     return None

@@ -270,7 +270,11 @@ def load_image(path, name: str | None = None, reuse: bool = True) -> bpy.types.I
 
     if reuse:
         existing = bpy.data.images.get(img_name)
-        if existing is not None and existing.has_data:
+        # ⚠ 不能只看 `has_data`：它是"像素缓冲**此刻**在内存里"，而不是"这张图有内容"。
+        # 刚 pack 进 .blend、还没有人真正取过像素的图，`has_data` 是 False——只按它判断的话
+        # 复用永远不命中，同一张贴图会堆出一串 `.001/.002/...` 数据块（实测一个 mod 的 24 个
+        # 网格把 7 张贴图复制成了 64 份，.blend 直接胖几十倍）。`packed_file` 在则内容一定在。
+        if existing is not None and (existing.has_data or existing.packed_file is not None):
             return existing
 
     if is_tex_file(path):

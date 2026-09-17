@@ -154,18 +154,18 @@
       },
       "ParticleUseLocal": {
         "label_zh": "粒子跟踪开关",
-        "tooltip_zh": "疑为粒子是否使用本地/跟踪坐标系的开关。",
-        "confidence": "guess",
-        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释；该结构体本身标记为 //unconfirmed，未经游戏内实测验证",
-        "tester": "community (NSACloud/RE-Engine-EFX-Template fork)",
+        "tooltip_zh": "粒子出生后是否继续跟随发射器移动。",
+        "confidence": "likely",
+        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释起点（原标 //unconfirmed）。行为层交叉验证：一个真实 mod 文件里 Transform3DExpression 逐帧驱动 LocalPosition.Y、本字段=1，预览中粒子确实需要逐帧跟随 origin 才能匹配观察到的现象（否则粒子焊死在出生位置），efx_sim/behaviors/parentoptions.py 按这个读法实现，tests/test_sim_behaviors.py::TestParentOptions + tests/test_sim_expr.py::TestTransform3DExpressionDrivesTrackedParticles 钉住",
+        "tester": "community (NSACloud/RE-Engine-EFX-Template fork) + 本仓行为交叉验证",
         "date": "2026-07-04"
       },
       "ConstInheritRate": {
-        "label_zh": "跟踪继承比例（存疑）",
-        "tooltip_zh": "疑为粒子跟踪比例，作用未知。",
-        "confidence": "guess",
-        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释（原注释带\"？\"），该结构体本身标记为 //unconfirmed",
-        "tester": "community (NSACloud/RE-Engine-EFX-Template fork)",
+        "label_zh": "跟踪继承比例",
+        "tooltip_zh": "跟踪比例，1=完全跟随发射器，0=不跟随。",
+        "confidence": "likely",
+        "evidence": "010 Editor 模板 RE_EFX_STRUCTS.btx 内联注释起点（原注释带\"？\"）。行为层交叉验证同 ParticleUseLocal（同一份真实样本 s=1 即完全跟随），见 efx_sim/behaviors/parentoptions.py 说明",
+        "tester": "community (NSACloud/RE-Engine-EFX-Template fork) + 本仓行为交叉验证",
         "date": "2026-07-04"
       },
       "ConstFrame": {
@@ -607,6 +607,14 @@
         "evidence": "字段名本身足以说明作用，直接翻译，未参考 MHWI 的详细说明内容",
         "tester": "user+assistant",
         "date": "2026-09-09"
+      },
+      "Rotation": {
+        "label_zh": "旋转",
+        "confidence": "likely",
+        "evidence": "用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
+        "tester": "assistant",
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       }
     },
     "ReeLib.Efx.Structs.Main.EFXAttributeTypeBillboard3DMaterialExpression": {
@@ -663,12 +671,12 @@
         "date": "2026-09-10"
       },
       "PartsStartNo": {
-        "label_zh": "起始网格编号",
-        "tooltip_zh": "调用 mesh 文件中网格的顺序（起始编号 + 变化区间，Range 类型）。",
-        "confidence": "likely",
-        "evidence": "vendor 源码里 PartsStartNo 是 via.RangeI（占 2 个物理槽位）；010 模板里紧跟在其后的 MeshGroup1（注释\"调用mesh文件中网格的顺序\"）、MeshGroup2（注释\"上面值+1\"）正好是 2 个连续 uint，按物理顺序和槽位数对应上",
-        "tester": "assistant (vendor source + template physical order cross-check)",
-        "date": "2026-09-10"
+        "label_zh": "使用的部件区间",
+        "tooltip_zh": "用 mesh 里第几个部件：左闭右开区间 [Min, Max)，Max = Min+1 即固定用一个",
+        "confidence": "confirmed",
+        "evidence": "全语料 10886 个实例（TypeMesh 7366 + TypeGpuMesh 3520）联合分布：s<=r 0 例、s==0 0 例（静态/随机语义下随机量为 0 本该是多数，一例都没有即排除该假说）；s<=MaxPartsNum 7361/7366（唯一越界 MaxPartsNum=44,s=45 共 5 例），说明 s 跟的是部件总数、是左闭右开上界。与 PatternNo 同构。EfxBridge condstats 按 PartsStartNo 整对分桶得出",
+        "tester": "assistant (EfxBridge condstats, full corpus)",
+        "date": "2026-09-13"
       },
       "EmissiveRate": {
         "label_zh": "自发光倍率",
@@ -968,6 +976,14 @@
         "evidence": "010 模板里这个字段实际叫 null1_5，按物理顺序紧跟在 ShapeType 之后，与 vendor 源码字段顺序一致；模板注释比较简略，具体行为未逐一验证",
         "tester": "assistant (vendor source + template physical order cross-check)",
         "date": "2026-09-10"
+      },
+      "LocalRotation": {
+        "label_zh": "本地旋转",
+        "confidence": "likely",
+        "evidence": "字段名与 EmitterShape3D.LocalRotation（已用 fieldstats 确认为弧度制角度）对称，是同一套 EmitterShape 家族的 2D 版本；全语料实测该字段取值恒为 0.0（未见非零样本，无法通过分布反证或强confirm）；按同结构里已用 fieldstats 确认为弧度制角度的兄弟字段 EmitterShape3D.LocalRotation 做命名/结构对称性判断，标 likely，等有非零样本或游戏内实测再升级。",
+        "tester": "assistant",
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       }
     },
     "ReeLib.Efx.Structs.Transforms.EFXAttributeEmitterShape3D": {
@@ -1990,44 +2006,50 @@
       "RotationAddX": {
         "label_zh": "X 轴旋转速度",
         "confidence": "likely",
-        "evidence": "010 模板对应字段实际叫 rotateSpeedX/rotateSpeedXRandom；vendor 源码（EfxTransform.cs）字段类型序列与模板物理顺序完全一致（15/15 槽位对齐，无插队）",
-        "tester": "assistant (vendor source physical order cross-check)",
-        "date": "2026-09-10"
+        "evidence": "010 模板对应字段实际叫 rotateSpeedX/rotateSpeedXRandom；vendor 源码（EfxTransform.cs）字段类型序列与模板物理顺序完全一致（15/15 槽位对齐，无插队）；用 EfxBridge fieldstats 对全语料实测取值分布复核：主流非零取值集中在 π/180 的整数倍附近（如 0.017453294≈1°、0.08726647≈5°、0.1308997≈7.5°），是逐帧叠加的旋转增量，单位仍是弧度，和 Transform3D.LocalRotation 同一套弧度常数吻合，标 unit=angle_radians，confidence 保持 likely。",
+        "tester": "assistant",
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "RotationAddY": {
         "label_zh": "Y 轴旋转速度",
         "confidence": "likely",
-        "evidence": "见 RotationAddX 的 evidence，对应模板 rotateSpeedY/rotateSpeedYRandom",
-        "tester": "assistant (vendor source physical order cross-check)",
-        "date": "2026-09-10"
+        "evidence": "见 RotationAddX 的 evidence，对应模板 rotateSpeedY/rotateSpeedYRandom；用 EfxBridge fieldstats 对全语料实测取值分布复核：主流非零取值集中在 π/180 的整数倍附近（如 0.017453294≈1°、0.08726647≈5°、0.1308997≈7.5°），是逐帧叠加的旋转增量，单位仍是弧度，和 Transform3D.LocalRotation 同一套弧度常数吻合，标 unit=angle_radians，confidence 保持 likely。",
+        "tester": "assistant",
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "RotationAddZ": {
         "label_zh": "Z 轴旋转速度",
         "confidence": "likely",
-        "evidence": "见 RotationAddX 的 evidence，对应模板 rotateSpeedZ/rotateSpeedZRandom",
-        "tester": "assistant (vendor source physical order cross-check)",
-        "date": "2026-09-10"
+        "evidence": "见 RotationAddX 的 evidence，对应模板 rotateSpeedZ/rotateSpeedZRandom；用 EfxBridge fieldstats 对全语料实测取值分布复核：主流非零取值集中在 π/180 的整数倍附近（如 0.017453294≈1°、0.08726647≈5°、0.1308997≈7.5°），是逐帧叠加的旋转增量，单位仍是弧度，和 Transform3D.LocalRotation 同一套弧度常数吻合，标 unit=angle_radians，confidence 保持 likely。",
+        "tester": "assistant",
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "RotationCoefX": {
         "label_zh": "X 轴旋转加速度",
-        "confidence": "likely",
-        "evidence": "见 RotationAddX 的 evidence，对应模板 rotateSpeedXacceleration/rotateSpeedXaccelerationRandom",
-        "tester": "assistant (vendor source physical order cross-check)",
-        "date": "2026-09-10"
+        "tooltip_zh": "每帧对旋转速度乘一次，1=匀速，<1 变慢，>1 加速；0 效果等同于 1（不衰减），不是瞬间归零。",
+        "confidence": "confirmed",
+        "evidence": "见 RotationAddX 的 evidence，对应模板 rotateSpeedXacceleration/rotateSpeedXaccelerationRandom；全语料 fieldstats 显示该轴众数是 1.0（9372/16725），字面 0.0 只占 0.3%（47 例），和 Velocity3D.SpeedCoef 已确认的衰减系数指纹一致；用户实机分别测过 0（恒速）和 0.1（几帧内迅速停转），确认引擎把 0 特判成'不衰减'（等同 1），字面乘 0 的读法是错的。",
+        "tester": "user (in-game) + assistant (corpus fingerprint cross-check)",
+        "date": "2026-09-13"
       },
       "RotationCoefY": {
         "label_zh": "Y 轴旋转加速度",
-        "confidence": "likely",
-        "evidence": "见 RotationAddX 的 evidence，对应模板 rotateSpeedYacceleration/rotateSpeedYaccelerationRandom",
-        "tester": "assistant (vendor source physical order cross-check)",
-        "date": "2026-09-10"
+        "tooltip_zh": "每帧对旋转速度乘一次，1=匀速，<1 变慢，>1 加速；0 效果等同于 1（不衰减），不是瞬间归零。",
+        "confidence": "confirmed",
+        "evidence": "见 RotationCoefX 的 evidence，对应模板 rotateSpeedYacceleration/rotateSpeedYaccelerationRandom；用户实机验证的是三轴同时测试，结论对 Y/Z 同样适用。",
+        "tester": "user (in-game) + assistant (corpus fingerprint cross-check)",
+        "date": "2026-09-13"
       },
       "RotationCoefZ": {
         "label_zh": "Z 轴旋转加速度",
-        "confidence": "likely",
-        "evidence": "见 RotationAddX 的 evidence，对应模板 rotateSpeedZacceleration/rotateSpeedZaccelerationRandom",
-        "tester": "assistant (vendor source physical order cross-check)",
-        "date": "2026-09-10"
+        "tooltip_zh": "每帧对旋转速度乘一次，1=匀速，<1 变慢，>1 加速；0 效果等同于 1（不衰减），不是瞬间归零。",
+        "confidence": "confirmed",
+        "evidence": "见 RotationCoefX 的 evidence，对应模板 rotateSpeedZacceleration/rotateSpeedZaccelerationRandom；用户实机验证的是三轴同时测试，结论对 Y/Z 同样适用。",
+        "tester": "user (in-game) + assistant (corpus fingerprint cross-check)",
+        "date": "2026-09-13"
       }
     },
     "ReeLib.Efx.Structs.Transforms.EFXAttributeTransform2D": {
@@ -2038,6 +2060,14 @@
         "evidence": "010 模板对应字段实际叫 pos_x/pos_y；vendor 源码（EfxTransform.cs）字段类型序列与模板物理顺序完全一致（5/5 槽位对齐）",
         "tester": "assistant (vendor source physical order cross-check)",
         "date": "2026-09-10"
+      },
+      "LocalRotation": {
+        "label_zh": "本地旋转",
+        "confidence": "likely",
+        "evidence": "字段名与 Transform3D.LocalRotation（已confirmed为弧度制欧拉角）对称，是同一套 Transform 家族的 2D 版本；全语料实测该字段取值恒为 0.0（未见非零样本，无法通过分布反证或强confirm）；按同结构里已用 fieldstats 确认为弧度制角度的兄弟字段 Transform3D.LocalRotation 做命名/结构对称性判断，标 likely，等有非零样本或游戏内实测再升级。",
+        "tester": "assistant",
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       }
     },
     "ReeLib.Efx.Structs.Basic.EFXAttributeUVScroll": {
@@ -2222,6 +2252,14 @@
         "evidence": "见 SizeScalar 的 evidence，对应模板 ScaleY/ScaleYRandom",
         "tester": "assistant (vendor source physical order cross-check)",
         "date": "2026-09-10"
+      },
+      "Rotation": {
+        "label_zh": "旋转",
+        "confidence": "likely",
+        "evidence": "用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
+        "tester": "assistant",
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       }
     },
     "ReeLib.Efx.Structs.Main.EFXAttributeTypePolygon": {
@@ -2245,6 +2283,30 @@
         "evidence": "见 SizeScalar 的 evidence，对应模板 ScaleY/ScaleYRandom",
         "tester": "assistant (vendor source structural block cross-check)",
         "date": "2026-09-10"
+      },
+      "RotationX": {
+        "label_zh": "X 轴旋转",
+        "confidence": "likely",
+        "evidence": "用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
+        "tester": "assistant",
+        "date": "2026-09-13",
+        "unit": "angle_radians"
+      },
+      "RotationY": {
+        "label_zh": "Y 轴旋转",
+        "confidence": "likely",
+        "evidence": "用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。形状同 RotationX。",
+        "tester": "assistant",
+        "date": "2026-09-13",
+        "unit": "angle_radians"
+      },
+      "RotationZ": {
+        "label_zh": "Z 轴旋转",
+        "confidence": "likely",
+        "evidence": "用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。形状同 RotationX。",
+        "tester": "assistant",
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       }
     },
     "ReeLib.Efx.Structs.Pt.EFXAttributePtBehavior": {
@@ -2566,6 +2628,30 @@
         "evidence": "010 Editor 模板对应字段注释 \"粒子y轴大小\"，按 vendor 字段声明顺序对齐，未做游戏内验证",
         "tester": "assistant",
         "date": "2026-09-10"
+      },
+      "RotationX": {
+        "label_zh": "X 轴旋转",
+        "confidence": "likely",
+        "evidence": "用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。同为 GPU 系类型的 TypeGpuMesh.RotationX 已用同样的 fieldstats 判据确认为弧度制角度，形状一致。",
+        "tester": "assistant",
+        "date": "2026-09-13",
+        "unit": "angle_radians"
+      },
+      "RotationY": {
+        "label_zh": "Y 轴旋转",
+        "confidence": "likely",
+        "evidence": "用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。形状同 RotationX。",
+        "tester": "assistant",
+        "date": "2026-09-13",
+        "unit": "angle_radians"
+      },
+      "RotationZ": {
+        "label_zh": "Z 轴旋转",
+        "confidence": "likely",
+        "evidence": "用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。形状同 RotationX。",
+        "tester": "assistant",
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       }
     },
     "ReeLib.Efx.Structs.Misc.EFXAttributeAttractor": {
@@ -2764,23 +2850,26 @@
       "RotationX": {
         "label_zh": "初始旋转X",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译",
+        "evidence": "字段名本身足以说明作用，直接翻译；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "RotationY": {
         "label_zh": "初始旋转Y",
         "confidence": "direct_translation_self_evident",
-        "evidence": "同 RotationX",
+        "evidence": "同 RotationX；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "RotationZ": {
         "label_zh": "初始旋转Z",
         "confidence": "direct_translation_self_evident",
-        "evidence": "同 RotationX",
+        "evidence": "同 RotationX；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "InitAngularVelocityX": {
         "label_zh": "初始角速度X",
@@ -2975,44 +3064,50 @@
       "RotationAxisX": {
         "label_zh": "旋转轴角速度X",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译",
+        "evidence": "字段名本身足以说明作用，直接翻译；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "RotationAxisY": {
         "label_zh": "旋转轴角速度Y",
         "confidence": "direct_translation_self_evident",
-        "evidence": "同 RotationAxisX",
+        "evidence": "同 RotationAxisX；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "RotationAxisZ": {
         "label_zh": "旋转轴角速度Z",
         "confidence": "direct_translation_self_evident",
-        "evidence": "同 RotationAxisX",
+        "evidence": "同 RotationAxisX；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "AddRotationAxisX": {
         "label_zh": "旋转轴角速度增量X",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译",
+        "evidence": "字段名本身足以说明作用，直接翻译；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在小幅度的 π/180 整数倍附近（如 0.017453292≈1°、0.034906585≈2°），是逐帧叠加在 RotationAxis* 上的增量，单位仍是弧度，和同结构的 RotationAxisX/Y/Z（已用同样判据确认）一致，标 unit=angle_radians，confidence 保持 likely。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "AddRotationAxisY": {
         "label_zh": "旋转轴角速度增量Y",
         "confidence": "direct_translation_self_evident",
-        "evidence": "同 AddRotationAxisX",
+        "evidence": "同 AddRotationAxisX；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在小幅度的 π/180 整数倍附近（如 0.017453292≈1°、0.034906585≈2°），是逐帧叠加在 RotationAxis* 上的增量，单位仍是弧度，和同结构的 RotationAxisX/Y/Z（已用同样判据确认）一致，标 unit=angle_radians，confidence 保持 likely。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "AddRotationAxisZ": {
         "label_zh": "旋转轴角速度增量Z",
         "confidence": "direct_translation_self_evident",
-        "evidence": "同 AddRotationAxisX",
+        "evidence": "同 AddRotationAxisX；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在小幅度的 π/180 整数倍附近（如 0.017453292≈1°、0.034906585≈2°），是逐帧叠加在 RotationAxis* 上的增量，单位仍是弧度，和同结构的 RotationAxisX/Y/Z（已用同样判据确认）一致，标 unit=angle_radians，confidence 保持 likely。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "AddRotationCoef": {
         "label_zh": "角速度增量系数",
@@ -3461,9 +3556,10 @@
       "AreaAngle": {
         "label_zh": "区域角度",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译",
+        "evidence": "字段名本身足以说明作用，直接翻译；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "VanishFrame": {
         "label_zh": "消亡帧数",
@@ -3778,9 +3874,10 @@
       "Rotation": {
         "label_zh": "旋转",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译",
+        "evidence": "字段名本身足以说明作用，直接翻译；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "Scale": {
         "label_zh": "缩放",
@@ -3887,16 +3984,18 @@
       "FinishParticleAngleMaxRad": {
         "label_zh": "结束角度上限（弧度）",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译",
+        "evidence": "字段名本身足以说明作用，直接翻译；字段名本身带 Rad 后缀；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 1.308997≈75°、1.2217306≈70°、0.7853982=45°），确认为弧度制角度字段。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "FinishParticleAngleMinRad": {
         "label_zh": "结束角度下限（弧度）",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译",
+        "evidence": "字段名本身足以说明作用，直接翻译；字段名本身带 Rad 后缀，与同结构的 FinishParticleAngleMaxRad（已用 fieldstats 确认）是同一对 min/max；全语料实测该字段取值恒为 0.0，标 likely。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "FinishParticleAngleFrame": {
         "label_zh": "结束角度渐变帧数",
@@ -4249,9 +4348,10 @@
       "rotation": {
         "label_zh": "旋转",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译。结构体绝大多数字段是匿名 unkn*，只有这个和 scale 有真名字",
+        "evidence": "字段名本身足以说明作用，直接翻译。结构体绝大多数字段是匿名 unkn*，只有这个和 scale 有真名字；字段名与 Transform3D.LocalRotation 同名同构；全语料实测该字段取值恒为 0.0（未见非零样本，无法通过分布反证或强confirm）；按同结构里已用 fieldstats 确认为弧度制角度的兄弟字段 Transform3D.LocalRotation 做命名/结构对称性判断，标 likely，等有非零样本或游戏内实测再升级。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "scale": {
         "label_zh": "缩放",
@@ -4371,16 +4471,18 @@
       "FinishAngleMin": {
         "label_zh": "结束角度下限",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译",
+        "evidence": "字段名本身足以说明作用，直接翻译；全语料实测该字段取值恒为 0.0；与同结构的 FinishAngleMax（已用 fieldstats 确认为弧度制角度）是同一对 min/max，标 likely，等有非零样本或游戏内实测再升级。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "FinishAngleMax": {
         "label_zh": "结束角度上限",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译",
+        "evidence": "字段名本身足以说明作用，直接翻译；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       }
     },
     "ReeLib.Efx.Structs.Misc.EFXAttributeFakeDoF": {
@@ -4475,9 +4577,10 @@
       "rotation": {
         "label_zh": "旋转",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译",
+        "evidence": "字段名本身足以说明作用，直接翻译；字段名与 Transform3D.LocalRotation 同名同构（PtTransform3D 是逐粒子版 Transform3D）；全语料实测该字段取值恒为 0.0（未见非零样本，无法通过分布反证或强confirm）；按同结构里已用 fieldstats 确认为弧度制角度的兄弟字段 Transform3D.LocalRotation 做命名/结构对称性判断，标 likely，等有非零样本或游戏内实测再升级。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "scale": {
         "label_zh": "缩放",
@@ -4778,9 +4881,10 @@
       "Rotation": {
         "label_zh": "平面旋转",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译",
+        "evidence": "字段名本身足以说明作用，直接翻译；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "BounceNum": {
         "label_zh": "反弹次数",
@@ -4799,9 +4903,10 @@
       "FaceNormalRotation": {
         "label_zh": "法线旋转",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译",
+        "evidence": "字段名本身足以说明作用，直接翻译；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "IdleTime": {
         "label_zh": "静止判定时间",
@@ -5542,23 +5647,26 @@
       "RotationX": {
         "label_zh": "旋转X",
         "confidence": "direct_translation_self_evident",
-        "evidence": "字段名本身足以说明作用，直接翻译",
+        "evidence": "字段名本身足以说明作用，直接翻译；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "RotationY": {
         "label_zh": "旋转Y",
         "confidence": "direct_translation_self_evident",
-        "evidence": "同 RotationX",
+        "evidence": "同 RotationX；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "RotationZ": {
         "label_zh": "旋转Z",
         "confidence": "direct_translation_self_evident",
-        "evidence": "同 RotationX",
+        "evidence": "同 RotationX；用 EfxBridge fieldstats 对全语料实测取值分布复核：非零取值集中在 π/180 的整数倍附近（如 π/6、π/4、π/2、π），和已确认的 Transform3D.LocalRotation 同一套弧度制角度常数高度重合，判定为弧度制角度字段（unit=angle_radians），confidence 标 likely（分布比对不能替代游戏内实测）。",
         "tester": "assistant",
-        "date": "2026-09-10"
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       },
       "SizeScalar": {
         "label_zh": "整体大小",
@@ -6396,6 +6504,16 @@
         "tooltip_en": "Second copy of the parent bone name stored in this attribute. Follows Parent Bone automatically; not edited directly.",
         "confidence": "confirmed",
         "evidence": "全语料 9175 个文件 / 11927 个作用域用 EfxBridge bonealign 核对：索引表解析出来的骨骼名与内联字段逐实例比对 95204 次，不一致只有 1 次（`11_em0162_00_063`，Capcom 自己的数据）。写出侧只根据 ParentBone 重建 BoneRelations（EfxFile.cs:1398-1406），内联字段单独原样写回。详见 KNOWN_UPSTREAM_ISSUES.md #9。"
+      }
+    },
+    "ReeLib.Efx.Structs.Transforms.EFXAttributeMeshEmitterV2": {
+      "LocalRotation": {
+        "label_zh": "本地旋转",
+        "confidence": "likely",
+        "evidence": "字段名与 Transform3D.LocalRotation / EmitterShape3D.LocalRotation（均已确认为弧度制角度）同名同构；全语料实测该字段取值恒为 0.0（未见非零样本，无法通过分布反证或强confirm）；按同结构里已用 fieldstats 确认为弧度制角度的兄弟字段 Transform3D.LocalRotation / EmitterShape3D.LocalRotation 做命名/结构对称性判断，标 likely，等有非零样本或游戏内实测再升级。",
+        "tester": "assistant",
+        "date": "2026-09-13",
+        "unit": "angle_radians"
       }
     }
   }

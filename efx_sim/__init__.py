@@ -49,15 +49,17 @@ docs/SIM_PORT_PLAN.md。
 """
 
 from .config import UNKNOWNS, SimConfig
+from .expr import EvalContext, ExprError, ParsedExpr, evaluate as expr_evaluate, parse as expr_parse
 from .registry import (Behavior, BoundBehavior, build_behaviors, implements,
                        register, registered_names)
 from .rng import (DIST_GAUSSIAN, DIST_ONESIDED, DIST_SYMMETRIC, emitter_seed,
                   emitter_stream_rng, noise1, noise3, noise_smooth1, noise_smooth3,
                   particle_rng, roll_static_random, roll_static_random_int,
                   roll_uniform, roll_uniform_int)
-from .simulator import EmitterState, Simulator, is_render_body_name
+from .simulator import EmitterState, Simulator, is_render_body_name, resolve_expr_field_name
 from .shapes import (MIN_MAX_INT2_FIELDS, PAIR_MIN_MAX_FIELDS, SR_INDEX_FIELDS,
-                     SR_MIN_MAX_FIELDS, FieldShapeError, FieldView)
+                     SR_MIN_MAX_FIELDS, HALF_OPEN_MAX_FIELDS,
+                     FieldShapeError, FieldView)
 from .stages import (CONSTRAIN, FORCE, INTEGRATE, RENDER_BODY, RENDER_MOD, SHADE,
                      STAGE_LABELS, STAGE_NAMES, XFORM, stage_name)
 from .state import (ONE, ZERO, Particle, RenderItem, SpawnRequest, Vec3,
@@ -71,9 +73,12 @@ from .vecmath import (DEFAULT_ROTATION_ORDER, ROTATION_ORDER, quantize_angle,
 __all__ = [
     # 顶层
     "Simulator", "EmitterState", "SimConfig", "UNKNOWNS", "is_render_body_name",
+    "resolve_expr_field_name",
     # 扩展点
     "Behavior", "register", "registered_names", "BoundBehavior", "build_behaviors",
     "implements",
+    # Expression 公式求值
+    "expr_parse", "expr_evaluate", "EvalContext", "ParsedExpr", "ExprError",
     # 阶段
     "FORCE", "INTEGRATE", "CONSTRAIN", "XFORM", "SHADE",
     "RENDER_BODY", "RENDER_MOD", "STAGE_NAMES", "STAGE_LABELS", "stage_name",
@@ -83,7 +88,8 @@ __all__ = [
     "SimResources", "Frame", "from_uvs_dict",
     # 字段读取
     "FieldView", "FieldShapeError",
-    "SR_INDEX_FIELDS", "SR_MIN_MAX_FIELDS", "MIN_MAX_INT2_FIELDS",
+    "SR_INDEX_FIELDS", "SR_MIN_MAX_FIELDS", "HALF_OPEN_MAX_FIELDS",
+    "MIN_MAX_INT2_FIELDS",
     "PAIR_MIN_MAX_FIELDS",
     # 随机
     "roll_static_random", "roll_static_random_int", "roll_uniform", "roll_uniform_int",

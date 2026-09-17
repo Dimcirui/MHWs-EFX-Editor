@@ -51,18 +51,58 @@ Python 胶水层（`blender_efx_re/`）↔ C# 桥接 CLI（`tools/EfxBridge`）�
    字节，对原文件本来就有既有差异——拿原文件当基线只会得到一个永远红的测试。（[PLAN.md:679](PLAN.md:679)）
 10. 门禁脚本：`tools/verify_blender_roundtrip.py`、`tools/verify_blender_uvs_roundtrip.py`、
     `tools/verify_blender_mdf_property.py`，退出码 0/1，找不到样本会报错退 1 而不是静默全绿。
-    改了 IO 路径就跑一遍。另有 `tools/verify_blender_bone_binding.py`（骨骼绑定的落点数学，
-    改 `coords.py` / `transform3d_view.py` / `bone_binding.py` 时跑）、
+    改了 IO 路径就跑一遍。另有 `tools/verify_blender_bone_binding.py`（骨骼绑定的落点数学
+    **+ Transform3D 编辑的实时生效**——改字段要立刻烘进 Entry 的 `matrix_basis`，粒子预览的
+    宿主矩阵读的就是它；改 `coords.py` / `transform3d_view.py` / `bone_binding.py` /
+    `model.py` 的字段 update 回调 / `io_tree.apply_attribute_content()` 时跑）、
     `tools/verify_blender_sr_pair.py`（`{s,r}` 字段主值定位，改 `model.py` 的
     `sr_children_ordered()` / 四张 `{s,r}` 语义名单 / `panels.py` 的并排画法时跑）、
     `tools/verify_blender_sim_preview.py`（粒子预览，**含"预览跑完再导出、字节必须与跑之前
     逐字节相同"** —— 预览误写 `efx_fields` 这种错对 roundtrip 门禁完全免疫；改
-    `sim_preview.py` / `efx_sim/` 时跑）、`tools/verify_blender_tex_image.py`（`.tex` 解码，
-    **自带"旧的坏路径"反例对照组**，改 `tex_image.py` 时跑）。
+    `sim_preview.py` / `efx_sim/` / `es3d_overlay.py` 时跑；ES3D 线框叠加层的检查也在这里，
+    含"粒子出生位置必须落在线框包围盒内"）、`tools/verify_blender_tex_image.py`（`.tex` 解码，
+    **自带"旧的坏路径"反例对照组**，改 `tex_image.py` 时跑）、
+    `tools/verify_blender_asset_link.py`（导入时的资源联动，**含"联动跑完再导出、字节必须
+    与跑之前逐字节相同"+ 反例对照组**；改 `asset_link.py` / `asset_paths.py` 时跑）、
+    `tools/verify_blender_expression_edit.py`（Expression 公式的结构化编辑，改
+    `expr_edit.py` / `efx_sim/expr.py` 的文本↔行那半边时跑。**两层判据不能互相顶替**：
+    "行重拼的文本 == 导入时的文本"抓排版级改动，"全量拆开再拼回后导出的字节 == 纯 CLI
+    往返基线"抓树形级改动——纯排版差异经桥接重新解析后产物字节完全相同，字节比对对它
+    免疫，实测见该脚本 docstring 的注入对照表）、
+    `tools/verify_blender_enum_proxy.py`（内联枚举下拉 `EFXValueNode.enum_proxy`，
+    **防的是"给枚举字段选一个负数取值直接崩掉 Blender"**——`ExpressionAssignType` 有
+    `ForceWord = -1`，而 `_read_packed_int()` 为位域显示把负数读成无符号
+    （`-1 -> 4294967295`），两边表示不一致导致 items 里被插进一条越界的枚举数值，
+    而 `EnumProperty` 的 items 第 4 位是 **C `int`**。改 `model.py` 的
+    `as_int32()`/`enum_proxy`/`_read_packed_int()` 或 `attribute_types.enum_members()`
+    时跑。⚠ 这类 bug **纯 Python 单测碰不到**（`model.py` import bpy）、**逐字节门禁也
+    免疫**（崩在 UI 交互，文件内容没变），只能在真 Blender 里把那条 RNA 赋值做一遍；
+    注回 bug 实测是 `EXCEPTION_ACCESS_VIOLATION`、退出码 11）、
+    `tools/verify_blender_expression_preview.py`（Expression 公式的数值可视化 / 视口 HUD
+    曲线图，改 `expr_preview.py` / `efx_sim/plot.py` / `efx_sim/expr.py` 的求值那半边时跑。
+    **HUD 的 `gpu`/`blf` 绘制本身跑不到**，所以几何全挤进零 bpy 的 `efx_sim/plot.py`
+    （由 `tests/test_sim_plot.py` 覆盖：自动缩放、刻度取整、`None` 断开、退化区间），
+    这条门禁测数据层：真实样本上的采样值、归一化坐标、置信度取最差档、note 透传、
+    "跑完预览路径后导出字节不变"、以及"`sim_preview` 建 track 时真的把具名参数传进了
+    `Simulator`"。⚠ 两个别指望它的地方写在该脚本 docstring 里：「面板读数 == `efx_sim`
+    求值」抓不到变量表漂移（两边喂同一个 dict），几何形状质量归单测（这里只到"不崩"级别）。
+    **改了 HUD 布局要去有界面的 Blender 实测**）。
     纯 Python 那层（`efx_sim/`，零 bpy）走 `python -m unittest discover -s tests`。
     ⚠ **`--background` 下没有 GPU 上下文，`gpu` 绘制那条路门禁跑不到**，只能在有界面的
-    Blender 里实测。
+    Blender 里实测。同理 `--factory-startup` 下**第三方插件全部不加载**，`asset_link` 调
+    RE Mesh Editor 那一半门禁也跑不到（要实测得 `addon_utils.enable()` 单独开它，并且先把
+    它的 `showConsole` 偏好关掉——`--background` 下 `wm.console_toggle` 会直接把 Blender 崩掉）。
 11. **新的回归防护必须把 bug 注回去、确认它真的 FAIL**，只看它绿不算数。（[PLAN.md:676](PLAN.md:676)）
+    ⚠ **`blender --background --python x.py` 在脚本抛出未捕获异常时退出码仍然是 0**（实测），
+    `sys.exit(main())` 那行根本轮不到执行——"门禁崩在第一行"和"门禁全过"对调用方长得一模一样。
+    所以每个门禁的入口都要自己兜：`try: sys.exit(main()) / except SystemExit: raise /
+    except BaseException: traceback.print_exc(); sys.exit(1)`。**只看 `echo $?` 不够，
+    要确认输出里真的有 PASS 行。**（`asset_link` / `tex_image` / `mdf_property` / `sr_pair` /
+    `expression_edit` / `expression_preview` 六个已经兜上了，其余的还没。）
+    ⚠ 另一半同样容易骗人：**门禁"没测到东西"也会全绿**。`expression_edit` 为此做了两件事，
+    新门禁照抄：样本里一条 Expression 公式都没有时**退 1**，以及打印"样本实际覆盖到哪些
+    节点种类"（现有 `diag/` 的 13 条公式里一个一元负号都没有，负号那条规则只由内存里造的
+    公式覆盖——不打印出来没人会知道）。
 12. 手工跑 `EfxBridge load` 时**输出路径必须带 `.efx.<version>` 后缀**，用裸 `.efx` 会炸出
     `Header.Version = -1` 和垃圾 typeId——那是假故障，已经为此白排查过一整轮。（[TOPLEVEL:594](docs/TOPLEVEL_STRUCTURE.md:594)）
 
@@ -83,6 +123,10 @@ Python 胶水层（`blender_efx_re/`）↔ C# 桥接 CLI（`tools/EfxBridge`）�
     按错误的（更少的）消费者数量整体重建，静默丢槽位。已经真的漏过两个类型（#9）。
     判据靠 `Header.boneAttributeEntryCount`（游戏自己写的槽位数）对消费者个数，导入时由
     `io_tree.check_bone_relation_alignment()` 硬拦；批量核查用 `EfxBridge bonealign`。
+    **唯一的例外**：插件首选项里有个默认关的「绕过骨骼绑定索引对齐校验」开关
+    （`preferences.py`）。勾上之后导入放行并逐文件 WARNING，被放行的根在导出时再 WARNING
+    一次（`Collection.efx_bone_alignment_bypassed` 标记）。默认行为、以及拿不到首选项的
+    环境（测试）一律保持硬拦——这是受控逃生口，不是把默认改松。
     顺带：`ParentOptions.BoneName` 和 `ParentBone` 是**同一个值的两种编码**（一个内联在 attribute
     字节里、一个走文件级索引表），对齐正确时永远一致——看到两者不一致，先怀疑索引流错位，
     别当成"其中一个是死字段"。
@@ -139,14 +183,242 @@ Python 胶水层（`blender_efx_re/`）↔ C# 桥接 CLI（`tools/EfxBridge`）�
     子系统**，UI 分开设计。（架构决策 8）
 28. [ATTRIBUTE_TYPES.md](ATTRIBUTE_TYPES.md) 是机械生成的，**只有名字 + 类型，不解释字段做什么**。
     没解释的名字当"未知"，不要当"显然是 X"。
+29. **Expression 里的 `Clamp` 不是"夹住"，是重映射、两端饱和、而且中段带 smoothstep
+    缓动**：`Clamp(value, hi, lo)` = `u = saturate((value - lo) / (hi - lo))`，返回
+    **`u²(3 - 2u)`**（2026-09-16 实机确认缓动那一层：拿**不经过任何待测函数**的线性基准
+    `TIMER/100`（= `100 - TIMER`，除法已确认）对拍，`Clamp` 的残差是 S 形摆动；再和
+    `smoothstep` 参考曲线对拍则死平，和正弦缓动对拍则 ±1 摆动。**端点和饱和不受影响**，
+    所以下面那条"`hi` 翻倍只改到达时间"的旧结论仍然成立——它只约束饱和、对中段不敏感，
+    这也是缓动能藏这么久的原因）。⚠ **这个缓动不属于 `Func21`**：`Func21` 的重映射是
+    线性的，两者之差就是这层缓动（铁律 #33），`_eval_func21()` 故意**不复用**
+    `_eval_clamp()`。⚠ **测这类"中段形状"必须换一个不经过待测函数的基准**：此前所有测试
+    里 `Lerp(Clamp(…))` 要么当时间轴（Z 轴用的就是它，横纵同样扭曲、图形不变）、要么和
+    自己比（零差网的扫描量两边同一个表达式，缓动整项抵消），所以一直测不出来。
+    读法开关 `SimConfig.expr_clamp_mode` 默认 `remap_smoothstep`，线性那档降级为对拍。
+    下面这段是**饱和**那一层的依据：把 value 从 `[lo, hi]` 映到 `[0, 1]`，**上界钳**
+    （2026-09-16 实机确认：同一个 `Lerp(Clamp(TIMER,hi,0),-1,0.5)`，`hi` 翻倍只让到达终点
+    的时间翻倍、终点位置不变，直接排除了"上界不钳"；语料里 95 处 `Min(Clamp(...), 1)`
+    以前当过"上界不钳"的证据，**铁律 #32 之后彻底解释清楚了**：`Min(a,b)` 其实是 `b - a`，
+    那 95 处就是最常见的淡出写法 `1 - Clamp(...)`，和上界钳不钳毫无关系——
+    "作者手写的防御性冗余封顶"这个中间解释也一起作废）。**下界钳 0 没被
+    这次实机测试覆盖**（测试恒用 `lo=0`、`TIMER≥0`，`value` 从没低于 `lo` 过），仍是语料
+    间接证据（默认档 `remap_saturate_both` 照对称假设钳了下界，没独立验证过）。`Lerp`/`InvLerp`/`Clamp`
+    这三个名字和 `Unary0`~`Unary12` 一样**都只是 vendor 在枚举里起的名，不是确认过的
+    语义**——别因为它叫 Clamp 就当 clamp 用，这个坑已经踩过一次（旧读法让全语料 31.5%
+    的公式算出的量级差几个数量级）。读法开关 `SimConfig.expr_clamp_mode`，逐条语料证据见
+    [EXPRESSION_SEMANTICS.md](docs/EXPRESSION_SEMANTICS.md)。`InvLerp` 也已实机确认：`InvLerp(a, b, t)` == `b + (a-b)*saturate(t)`，**就是 `Lerp`、系数挪到最后一个参数**，不做任何反向的事。
+    界面上的参数角色名（`efx_sim/expr.py` 的 `CALL_ARG_ROLES`）**只准收语义已定、
+    而且参数顺序反直觉的调用**——现在是 `Clamp`/`Lerp`/`InvLerp`/`Min`/`Max`/`Func20`/
+    `Func21` 七条。对称运算（`Func18`/`Func19` = min/max）和一元函数**故意不收**：
+    标了没有信息量。判据是"不标会不会写错"，不是"反正已经确认了就都标上"——
+    和 #25 是同一条纪律的字段级版本。
+    另一条和界面直接相关的语料事实：**没有"一定是常量"的参数槽位**——每个槽位都出现过
+    字面量/变量/子表达式三种（`Lerp.to` 1729/483/24、`Clamp.hi` 1503/4/20，槽位 1 现在
+    叫 `to` 见铁律 #31），而且
+    "输入在第几个参数"是**逐函数固定**的（`Func21` 在最后、`Max`/`InvLerp` 不在第 0 位）。
+    所以别写"第一个参数是输入"这种硬编码，也别按内容类型给槽位分三种画法——
+    公式编辑器为此重做过一次，依据见 [EXPRESSION_SEMANTICS.md 第 8 节](docs/EXPRESSION_SEMANTICS.md)。
+30. **`ExpressionAssignType` 的五个取值语义已实机确认**（2026-09-16）：`Assign` 直接
+    替换目标字段，`Add`/`Subtract`/`Multiply`/`Divide` 是**在导入时的原始值基础上**做
+    对应运算（`efx_sim/simulator.py` 的 `_EXPR_ASSIGN_OPS` + `base_value` 快照就是这个
+    模型，实现无需改动）。这条之前一直是"vendor 起的名、没实机验过"，而同一文件家族的
+    `BinaryExpressionOperator` 战绩是 0/6 全错，所以它是当时最大的未验证风险，现在关了。
+    ⚠ **界面上不要提供 `ForceWord = -1`**——它是 C# 侧用来强制枚举宽度的占位，不是游戏
+    语义；选它曾经直接崩 Blender（见铁律 #10 门禁清单里 `verify_blender_enum_proxy.py`
+    那条）。
+31. **`Lerp(t, a, b)` 的方向和直觉反着来：`t=0` 取第 3 参 `b`、`t=1` 取第 2 参 `a`**
+    （2026-09-16 实机确认，此前实现是反的：`a+(b-a)*t`，已改成 `b+(a-b)*t`）。依据：两条
+    对照粒子轨迹只交换 `Lerp` 的第 2/3 参（`Lerp(Clamp(TIMER,15,0),-1,0.5)` 和
+    `Lerp(Clamp(TIMER,15,0),0.5,-1)`），`ExpressionAssignType` 确认是 `Assign`（排除基准值
+    叠加的混淆），实机观察到的运动方向两次都只和"新读法"对得上、和"旧读法"对不上。
+    **语料本身测不出这个方向**——`Lerp(Clamp(EM_SPEED,6,3),0,8)` 落在 `[0,8]` 这条旧证据
+    只能确认"哪个参数是 t"，两种方向下输出都同样落在 `[0,8]` 集合里，从没独立测过方向。
+    `CALL_ARG_ROLES["Lerp"]` 已从 `("t","from","to")` 改成 `("t","to","from")`，UI 上
+    第 2 参的标签变成"to"、第 3 参变成"from"。改了这两个函数相关的代码/文档，记得连带查一遍
+    是不是依赖了旧方向：`efx_sim/expr.py::_eval_ternary_known()`、
+    `tests/test_sim_expr.py`/`test_sim_expr_edit.py`、
+    `tools/verify_blender_expression_edit.py`/`verify_blender_expression_preview.py`，
+    逐条证据见 [EXPRESSION_SEMANTICS.md 第 1.1 节](docs/EXPRESSION_SEMANTICS.md)。
+
+32. **Expression 文本里的六个二元运算符，vendor 标的名字一个都不对**（2026-09-16 实机
+    逐个测出来）。文本符号 → 真实语义：
+
+    | 操作码 | 文本写法 | vendor 叫它 | **真实语义** |
+    |---|---|---|---|
+    | 0 | `Max(a, b)` | Max | `pow(b, a)`（指数在左，语料推断）|
+    | 1 | `a + b` | Add | **`a * b`** |
+    | 2 | `a - b` | Sub | **`b / a`**（被除数在右；除零按 0，引擎实测行为）|
+    | 3 | `a * b` | Mul | **`fmod(b, a)`**（模数在左；C 语义，符号跟被除数）|
+    | 4 | `a / b` | Div | **`a + b`** |
+    | 5 | `Min(a, b)` | Min | **`b - a`**（被减数在右）|
+
+    **真正的 min/max 在这套表达式里不存在。** 一元负号是唯一没标错的。把操作数顺序
+    翻过来看（引擎的操作数顺序和 vendor 的 left/right 相反），六个操作码依次是
+    **幂/乘/除/模/加/减**——严格的优先级降序，像引擎按优先级排的枚举。
+    **写公式时要乘就打 `+`、要加就打 `/`**，别按符号字面意思写。实现在
+    `efx_sim/expr.py::_eval_binary_operator()`（逐点实机读数都在那条 docstring 里），
+    回归在 `tests/test_sim_expr.py::TestBinaryOperatorsAreAllMislabeled`。
+    ⚠ **文本符号本身必须原样保留**——那是 vendor 解析器认的字面量，换符号就往返不回来。
+    只有"符号算什么"是我们这层的事。
+    ⚠ **这个坑躲得过所有往返验证**：文本↔操作码两边用同一套错误约定，所以逐字节门禁、
+    文本重拼门禁、`exprcheck`、300 个单测全部绿灯——**往返自洽性对"双向一致的错误"
+    完全免疫**（和铁律 #17"两个字段不一致只是对称证据"同一类教训）。唯一能测出来的是
+    实机：`Lerp(Clamp(TIMER,15,0),0.5,-1)` 驱动 Y 当时间轴、Z 填被测公式、单粒子
+    `TypeRibbonFollow` 的轨迹当示波器，读数靠"直接填常量"校准，交换操作数顺序对拍。
+    `efx_sim/expr.py` 模块 docstring 里原来有一段把 `+ - * /` 划进"完全确认"档的作用域
+    论证（"操作码↔符号的对应是文件→文本这一步的问题，不在本模块范围"），**那段论证连同
+    它为什么错已经留在原处当教训**，别再照它推理。
+    逐条语料翻译对照见 [EXPRESSION_SEMANTICS.md 第 9 节](docs/EXPRESSION_SEMANTICS.md)。
+
+33. **`Unary<N>` 12 个全部已实机测出语义，`Func21` 也定了**（2026-09-16）：
+    `Unary0`=`sin`、`Unary1`=`cos`（**弧度**）、`Unary4`=`floor`、`Unary5`=`ceil`、
+    `Unary6`=`ln`、`Unary7`=`log10`、`Unary8`=`exp`、`Unary9`=`abs`、
+    **`Unary10`=`saturate`（clamp01，全语料最高频 2063 次）**、
+    `Unary11`=`sin`、`Unary12`=`cos`（**这两个是角度制**）、`Unary2`=`asin`。
+    **`Func21(a, b, hi, lo, t)` == `Lerp(Clamp(t, hi, lo), a, b)`**（线性，`t` 在 `lo`
+    端取第 2 参）。于是语料高频写法 `Unary11(Func21(90, 0, hi, 0, TIMER))` 完全读通了：
+    角度在 hi 帧内从 0° 线性升到 90°、再取正弦 = 0→1 的缓出——那个 `90` 是**度数**。
+    **`Func18` = `min`、`Func19` = `max`、`Func20` = `pow(b, a)`** —— 二元操作码 0~5 里
+    没有 min/max，那个空缺就是 `Func18`/`Func19` 填的（**别和文本里的 `Min(`/`Max(`
+    搞混**，那两个是操作码 5/0，实际是减法和幂）。**函数全部测完，`_UNKNOWN_FUNC_ARGC`
+    已经空了。**
+    `Func20` 和 `Max(`（操作码 0）**都是幂，这不是异常**：二元操作码表是**中缀运算符
+    表**（按优先级降序：幂/乘/除/模/加/减，所以幂在 0 号），函数表是**内建函数表**，
+    同时有中缀 `^` 和函数 `pow()` 是绝大多数语言的常态。
+    整张表定完之后做了一张**零差自检网**（9 条恒等式，`docs/EXPRESSION_SEMANTICS.md`
+    第 12 节、`tests/test_sim_expr.py::TestSelfConsistencyIdentities`）：用已确认语义
+    搭恒等式，正确时恒为 0、乘 20 放大后实机应画出死平在 0 的线。逐个投毒验证过它真的
+    会破（`Unary0`→cos 破 3 条、`/`→除法破 2 条等）。**这九条可以直接拿进游戏跑，
+    实机全平才算端到端确认**——单测绿只证明"文本和我们的表自洽"。**枚举里没有的 3/13/14 也测过了**（改字节绕开解析器，
+    工具 `tools/patch_expression_opcode.py`）：**3 = `acos`**（0/1/2/3 = sin/cos/asin/acos
+    齐了，但插件里仍然写不出来——解析器不认这个名字，要等上游补枚举）；
+    **13/14 引擎没实现**（输出既不依赖操作数个数、也解释不成输入的任何函数，是未实现
+    操作码的退化路径），vendor 跳过它们是对的。
+    实现在 `efx_sim/expr.py::_eval_known_unary()`，回归在
+    `tests/test_sim_expr.py::TestKnownUnaryFunctions`。
+    ⚠ **测这类函数时输入必须扫 `[-2, 2]`，不能只喂 `[0, 1]`**——在 `[0,1]` 上
+    `identity`/`abs`/`saturate` 三者全等、`floor`/`trunc` 全等、`ceil`/`sign` 全等，
+    第一轮就是这么卡住的。宽扫之后每个候选画出的形状都不一样（直线 / V 字 / `_/‾` /
+    阶梯 / 两级台阶），一次运行一眼判读。
+    ⚠ **拿"未知函数"当测试样本前先查一遍这条**：`tools/verify_blender_expression_preview.py`
+    和 `tests/test_sim_expr.py` 里原来都用 `Unary10` 当"语义未知"的样本，它一确认这些
+    检查就静默失效了（已改成用 `Unary2`，并补了一条反向检查"已确认的不能再算未知档"）。
+    ⚠ **探针必须自带限幅**：信号一跑出画面幅度就读不出来（`±2` 和 `±21` 在屏幕上长得
+    一样，`Func21` 的插值方式为此来回翻了三次）。用 `Func18(0.4, Func19(-0.4, X))`
+    （= `min(0.4, max(-0.4, X))`）夹住，让"超出量程"表现为**可读的削平**。
+    ⚠ **零差检验必须配正对照**："完全平在 0"和"公式根本没生效"在画面上一模一样——
+    把参考曲线的端点故意改错、确认它真的画出已知偏差，再换回原式。
+    ⚠ **形状判读顶不住定量结论**：`Func21` 的插值方式被"直接画出来看形状"读错过一次
+    （1 米高配 4 米宽的浅斜线看着像缓 S）。可靠办法是**放大残差的零差检验**——拿已确认
+    语义搭一条参考曲线、和被测量相减、再乘个大系数（`20 + <差>` 就是 ×20），"完全平在
+    0"比"看着像"可靠得多；配一个正对照排掉"两项都恒 0"的假阳性。判读形状前还要先算
+    两个轴各占多少米，以及确认可视范围的上界在哪（`Unary2` 的"消失点"差点被当成画面边界）。
+    **语义定下来之后要连带过一遍这三处界面/推导层**（2026-09-16 已做）：
+    ① `CALL_SEMANTICS`（`efx_sim/expr.py`）—— 编辑器菜单里每个调用后面显示真实语义，
+    **必须显示**：名字全是错的，只给名字等于让用户照字面写错公式；
+    ② `CALL_ARG_ROLES` —— 只给"参数顺序反直觉、不标会写错"的加角色名
+    （`Min`/`Max`/`Func20`/`Func21`），对称运算（`Func18`/`Func19`）和一元函数**故意不标**；
+    ③ **`_UNIT_PRESERVING_ARG_POSITIONS` 必须重算** —— 旧表按 vendor 的名字收了
+    `+`/`-`/`Max`，而它们实际是乘/除/幂，**都不保持单位**，会让"角度显示"开关去换算
+    一个其实是无量纲系数的常量、静默改坏不相关的数值。现在收的是 `/`（加）、`Min`（减）、
+    `*`（取模）、`Func18`/`Func19`（真 min/max）、`Lerp`、`Func21`、`abs`/`floor`/`ceil`。
+    逐条判据和语料回读见
+    [EXPRESSION_SEMANTICS.md 第 10、11 节](docs/EXPRESSION_SEMANTICS.md)。
 
 ## 遇到怪现象先查这里，别从头排查
+
+- **公式面板卡顿：别逐行"重建子树文本 -> 重新解析 -> 求值"，那是 O(N²)。**
+  `expr_preview.subtree_values()`（结构树变调试器的数据源）每次面板重绘都跑一遍，
+  原来的逐行做法实测 225 行 8.8 ms / 449 行 16 ms / 897 行 36 ms / 1793 行 88 ms，
+  而**完整求值一次只要 0.45 ms**。已改成 `efx_sim/expr.py::evaluate_rows()` 一次自底向上
+  遍历算完（提速 47~64 倍，复杂度回到线性）。⚠ **`_eval_collect()` 必须和 `_collect_rows()`
+  逐字同序**（前序 + `-字面量` 折叠成一行），差一个节点面板上每行的值就静默错位到隔壁
+  子树——由 `tests/test_sim_expr_edit.py::TestEvaluateRows` 钉住（两种顺序漂移都注入验证过
+  会 FAIL）。顺带：真实语料的表达式中位数才 4 个组件、最大 12，这条只在人为构造的复杂
+  公式上才显形（实机用傅里叶级数压到 64 阶时发现的）。
 
 - **`.tex` 别走 `bridge.convert_tex_to_dds()`**，走 `tex_image.load_image()`。MHWs 的 tex
   载荷是 **GDeflate 压缩**的，vendor 的 `ConvertToDDS()` 把压缩字节直接套个 DDS 头，产物是
   **纯噪声**（不是 vendor 缺陷：`TexFile` 有 `DecompressGDeflate(callback)`，是我们的
   `Program.cs` 没传过回调）。⚠ **噪声和正确图像在统计上分不开**（非零占比/均值/最大值几乎
   一样），判断解码对不对**只能看图**或靠"解压后字节数 == 理论紧凑大小"这种结构性等式。
+- **引用资源（`.mesh`/`.mdf2`/`.uvs`/`.tex`）的搜索根，首选是"被导入的那个 efx 自己的位置
+  向上回溯到含 `natives/` 的那一层"**，资产库（Asset Browser）的语料目录只是**兜底**。
+  语料目录是"随便一堆官方 efx 放哪儿"的设置，和当前文件没有必然关系——拿它当首选会在
+  mod 工程场景下静默加载到官方原版的同名文件，界面上完全看不出来。来源目录由导入算子记在
+  `Collection.efx_source_dir` 上，优先级全在 `asset_paths.search_roots()`。
+- **导进来的 VFX 网格是纯白/纯黑，八成不是路径问题**，是这两件事：
+  ① **`.mdf2` 常常只是个占位材质**（贴图槽全填 `NullWhite.tex` / `NullBlack.tex`），
+  真正的贴图在 **EFX attribute 的 `properties` 覆盖表**里运行时顶上去——那张表存在的意义
+  就是这个。只导 mdf2 不管覆盖表 = 纯白。走
+  `asset_link._apply_property_overrides()`：靠 `PropertyNameUTF8Hash` 查
+  `mdf_catalog.candidates()` 得到槽名（`BaseMap`/`EmissiveMap`/…），再换掉材质里 `label`
+  等于该槽名的贴图节点（RE Mesh Editor 建节点时就拿槽名当 label，实测 7/7 命中）。
+  ② **`MeshPath` 和 `MaterialPath` 不是配套的一对**，两边材质名可以完全不一样（实测 52 对
+  真实引用里 11 对对不上，极端例子是网格 6 个材质槽 `Base3~Base8` 配 mdf2 一个 `lambert1`）。
+  RE Mesh Editor 按材质名绑，对不上时把节点树清空就走 = 纯黑。走
+  `asset_link._ensure_material_applied()`：**mdf2 只有一个材质**时就往全部材质槽上套
+  （EFX 的 attribute 只有一个 `MaterialPath`、一张覆盖表，没有"第几个 submesh 用哪个"这一维）；
+  mdf2 本身多材质才是真歧义，不猜、如实记 problem。
+- **粒子预览里网格的颜色必须从材质上取，不能只信模拟层的 `Color`/`EmissiveColor`**：
+  实测一个真实 mod 的全部 24 个 `TypeMeshV2`，这两个字段都是纯白 `(1,1,1)`——EFX 侧压根
+  没有颜色信息，颜色在材质的 `EmissiveParam` 里。而且 `_resolve_mesh_tris()` 原来只收顶点
+  位置、不收 UV 也不收贴图，`_collect_mesh()` 于是恒定落进 FLAT_COLOR 分支 = 一块纯白。
+  现在逐三角形带上 UV + 材质贴图名 + 材质染色（`_material_preview_look()`），
+  `_gpu_texture()` 同时认"游戏内部路径"和"`bpy.data.images` 的名字"两种 key。
+- **一个 `.mesh` 里装着好几段，`PartsStartNo` 决定用哪几段**（`asset_link._keep_parts()`）。
+  不筛的话每个 attribute 都把整份网格导一遍全堆在一起（实测一个 mod：18 段 × 24 个
+  attribute），视口里就是一坨互相盖住的白块。⚠ **下标是"这份 mesh 里第几段"（把出现过的
+  `Group_<N>` 去重排序后的序号），不是 `Group_` 后面那个数字**——拆过的 mesh 里那个数字
+  保留着原模型编号（`POD042_001.mesh` 只有 `Group_15/16/17`，它的三个 attribute 写的是
+  0/1/2）。拿段号直接对下标会看起来像左开右闭，实际是**左闭右开**：`POD042_000.mesh` 段号
+  0~17 连续，attribute `[base5]` 的 `(6,7)` 正好命中材质为 `Base5` 的 `Group_6`，
+  `base9_7` ↔ `(7,8)` ↔ `Group_7`——attribute 名字自己就把下标写在里面。
+- **RE Mesh Editor 的 alpha 硬裁剪链对 VFX 遮罩会整条退化成 0**：它按 mdf 的 alpha-test
+  标志接 `RGBtoBW(遮罩) -> GREATER_THAN(0.5) -> BSDF.Alpha`，而 VFX 遮罩常常很淡（实测
+  `01_ring_alpha000` 最大亮度 0.216、`04_ring_alpha000` 只有 0.085），**整张图没有一个像素
+  过得了 0.5**，那个 attribute 一点都画不出来。`asset_link._soften_degenerate_alpha_test()`
+  只在这种**可证明退化**（贴图最大亮度 < 阈值）时拆阈值 + 转 `BLEND`；过得了阈值的不动。
+  另外 VFX 遮罩**在哪个通道不固定**（`base9.tex` 是 RGB 纯白、形状全在 alpha 里），
+  `_retarget_mask_channel()` 按"哪个通道真的有变化"改接。
+- **VFX 材质的自发光要我们自己接**：RE Mesh Editor 的 `newEMINode()` 只认
+  `Emissive_Color`/`EmissiveIntensity` 那几个拼法，VFX 材质用的是
+  `EmissiveParam`/`EmissiveIntensityParam`，它那条通路整条静默不触发，
+  `Emission Strength` 留在 0 —— 模型在视口里就是一块白。
+  `asset_link._wire_emission()` 补上，**接法逐节点照抄 `newEMINode()`**
+  （`EmissiveMap × 颜色参数 -> Emission Color`；`RGBtoBW(EmissiveMap) × 强度 ×
+  EMISSION_MULTIPLIER -> Clamp -> Emission Strength`），连那个 0.1 的
+  `EMISSION_MULTIPLIER` 都是从它模块里读的，不抄成字面量。**它自己接过的不抢**
+  （`Emission Strength` 已有连线就跳过）。补的参数名只有 `EmissiveParam` /
+  `EmissiveColorParam` / `EmissiveIntensityParam` 三个（扫 40 个真实 VFX mdf2 定的），
+  `RimEmissive*` / `EmissiveMask*` / `Allover_Emissive_Intensity` 是别的特性，**不要收进来**。
+- **覆盖表里同名条目可能不止一条**：覆盖表按 `PropertyNameUTF8Hash` 认参数，
+  `mdfPropertyIndex` 只是快路径，mod 作者改过 mdf2 之后下标会漂（实测 POD042 有两条都
+  哈希成 `EmissiveParam`，下标一条 3 一条 4，而 mdf2 里 4 号其实叫 `RimEmissive_Color`）。
+  取值时挑"和材质默认值不一样"的那条（作者真正改过的那条），别无脑取最后一条。
+- **`tex_image.load_image(reuse=True)` 判"这张图已经载过"不能只看 `has_data`**：它是
+  "像素缓冲此刻在内存里"，刚 pack 进 .blend 还没人取过像素时是 False，复用永远不命中，
+  同一张贴图会堆出一串 `.001/.002/…`（实测把 7 张贴图复制成 64 份）。要连 `packed_file`
+  一起判。这条错不报任何错，只是 .blend 悄悄胖几十倍。
+- **`.tex` / `.mesh` 在游戏里各存两份，`natives/STM/streaming/<路径>` 那份才是完整的。**
+  `.tex` 非 streaming 那份是降采样小图（实测 `11_glow_000_ALPG`：128×128/1 mip vs
+  512×512/3 mip，**两份都能解码成功，拿错了只是糊**）；`.mesh` 非 streaming 那份**没有顶点
+  缓冲**，RE Mesh Editor 按 `<natives 根>/streaming/<相对路径>` 自己去拼那份，拼不到直接抛
+  "Streaming mesh file is missing"。`asset_paths.resolve()` 对 `.tex` 已经 streaming 优先，
+  `.mesh` 走 `asset_paths.ensure_streaming_companion()` 把伴生份落到**同一个** natives 根下。
+  这也是 pak 缓存必须按 `natives/STM/` 原样镜像、不能拍平文件名的原因。
+- **生成区域线框必须来自 `EmitterShape3D.outline()`，不许另算一套形状。** 它和 `on_particle_spawn()`
+  共用同一份区间读法（含 `es3d_range_mode` 标定开关）和同一条 `_apply_local_rotation()`，改一边
+  必须改另一边。姊妹项目为此删掉过一整个 Geometry Nodes 版本——那版对 range 字段的读法和模拟层
+  不一致，画出来的框和粒子实际落点互相矛盾。`tools/verify_blender_sim_preview.py` 用"粒子必须
+  落在线框包围盒内"钉住这条。顺带：**Box 是实心的**（逐轴 `U(lo,hi)` 独立取），只有球/圆柱的径向
+  幅度才是 `[lo,hi]` 壳层——照搬姊妹项目给 Box 画内层会画出一个"这里不会有粒子"的假空腔。
+  **`EmitterShape3D.RangeX/Y/Z` 是 `(min, max)`**，外边界就是第二个数——**不是** MHWI 那种
+  `min + offset`（外边界 = `min+offset`），更不是 (静态值, 随机量)。判据是"`max < min` 出现过
+  没有"：**0/62492**，而主值非零的有 36590/20748/36840 例；offset 读法下第二个数是**厚度**，
+  半径 1.0 厚 0.1 的薄壳就该写成 `(1.0, 0.1)` 即 `max < min`，一次都没有。原来那个
+  `SimConfig.es3d_range_mode` 标定开关**已删**（它的默认档把 `(-0.5, 0.5)` 这种对称圆柱读成
+  `[-0.5, 0]`，高度少一半）。
 - **`{s,r}` 字段的"主值"不是固定的 `s`**：`via.Range`(float) 声明成 `{s,r}`、`via.RangeI`(int)
   声明成 `{r,s}`（`RszValueType.cs:226`/`:264`），**二进制首字段恒为主值**（静态值 / min）。
   两者 **key 集合完全相同**，只能看子节点 `data_type` 区分——写死 `s` 会把全部 46 个 `RangeI`
@@ -155,6 +427,23 @@ Python 胶水层（`blender_efx_re/`）↔ C# 桥接 CLI（`tools/EfxBridge`）�
   （`_SR_INDEX_FIELD_NAMES` / `_SR_MIN_MAX_FIELD_NAMES` / `_PAIR_MIN_MAX_FIELDS` /
   `_MIN_MAX_FIELD_NAMES`），`efx_sim/shapes.py` 存镜像、由单测钉住一致。
   语料证据：[SIM_PORT_PLAN:8.6](docs/SIM_PORT_PLAN.md)
+- **要判"这个二元字段到底是 min/max 还是 静态值/随机量"，别靠字段名猜，跑审计**：
+  `EfxBridge pairstats <语料目录> out.json`（全语料一遍扫完，~50 秒，出**联合分布**原始计数）
+  + `python3 tools/audit_range_fields.py out.json`（判据在这儿，改判据不用重编 C#）。
+  判据两条：① **`副值 < 主值` 出现过（任意量）-> 默认回退 static/random**。这不只是
+  "max<min 讲不通"，更是**界面诚实性**：标成 Min/Max 会让用户默认 `Min <= Max` 恒成立，
+  语料里有反例时那个标签本身就在骗人；回退的代价只是少解释一层语义，标错的代价是用户照着
+  错的心智模型填数。② `副值<主值` **一次都没有**时看 **MM 招牌**（"区间退化成一个点"）：
+  闭区间是 `q == p 且 p != 0`，**半开区间是 `q == p+1`**（半开下 `q==p` 是空区间、结构上恒 0，
+  不分开算会把 `PatternNo`/`PartsStartNo` 误判成"没证据"）。占比成规模就判 min/max。
+  ⚠ **必须排掉 `p == 0`**：`(0,0)` 两种读法都满足，那是"没填"的默认值，零信息量。
+  ⚠ 别再单独统计 `q == 0` 当"不随机"的证据——`q<p` 已经把它包含了，而且 `p<0` 时
+  `(-0.25, 0)` 是个正常区间 `[-0.25, 0]`，单独统计会误伤。
+  ①回退掉、但 MM 招牌同时也成规模的额外标成**有争议**（17 个，如两个 `BasingPoint`）。
+  开闭同理靠语料：**`Max == Min` 出现过 = 闭区间**（"固定一个值"的常规写法），
+  **一次都没有 = 左闭右开**（半开下它恰好是空区间，作者永远不会写）。半开名单
+  `_HALF_OPEN_MAX_FIELD_NAMES` 同时供面板提示和 `shapes.roll_sr_min_max_int()` 取样，
+  **别在 behavior 里自己写 `hi - 1`**（`PatternNo` 原本就是这么埋着的）。
 - `ExportHelper` 吃掉版本号后缀 → `check_extension = None`：[PLAN.md:592](PLAN.md:592)
 - `EfxClipData.*DataSize` 写出时不自愈，必须自己按 8/12/16 字节算：[TOPLEVEL:626](docs/TOPLEVEL_STRUCTURE.md:626)
 - **`RszByteSizeField` 标的字段一律不自愈**（代码生成器只处理 `RszArraySizeField`，
@@ -206,14 +495,18 @@ dotnet build tools/EfxBridge -p:LangVersion=preview
 "E:\Program\Steam\steamapps\common\Blender\blender.exe" --background --factory-startup --python tools/verify_blender_roundtrip.py
 ```
 
-全语料整批往返复核（9221 个官方 `.efx`）：
+全语料整批往返复核。⚠ **`MHWILDS_EXTRACT\EFX\` 这一层已经不存在了**，档案（PLAN.md /
+docs/ / KNOWN_UPSTREAM_ISSUES.md）里照抄的旧路径全部找不到目录。现在 `MHWILDS_EXTRACT`
+下有两份官方 `.efx`：`Art\VFX`（9221 个）和 `natives\STM\Art\VFX`（9241 个，旧路径去掉
+`EFX\` 之后的同一棵树）：
 
 ```bash
-dotnet tools/EfxBridge/bin/Debug/net8.0/EfxBridge.dll roundtrip "E:\Program\Steam\steamapps\common\MonsterHunterWilds\MHWILDS_EXTRACT\EFX\natives\STM\Art\VFX"
+dotnet tools/EfxBridge/bin/Debug/net8.0/EfxBridge.dll roundtrip "E:\Program\Steam\steamapps\common\MonsterHunterWilds\MHWILDS_EXTRACT\Art\VFX"
 ```
 
-`.uvs` 语料共 72 个（全是 v8），**没有统一目录**，散在 `MHWILDS_EXTRACT/**/*.uvs.8`、
-`natives/**/*.uvs.8` 和 `E:\Data\MOD工具\MHWS MOD\**\UNKNOWN\` 三处。
+`.uvs` 语料共 80 个（去重文件名 74 个，全是 v8），**没有统一目录**，散在
+`MHWILDS_EXTRACT/**/*.uvs.8`（50 个）、游戏目录 `natives/**/*.uvs.8`（2 个）和
+`E:\Data\MOD工具\MHWS MOD\**\UNKNOWN\`（28 个）三处。
 
 材质参数覆盖表（TypeMesh 的 `properties`）要用户手上有一个真的 `.mdf2` 当参考。VFX 材质一般
 没人专门解包，从 pak 里按内部路径现捞一个（`natives/STM/` 前缀 + `.45` 后缀，少一段就查不到，

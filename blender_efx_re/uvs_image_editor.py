@@ -62,13 +62,13 @@ def _visible_patterns(context):
     pattern"，根因就是这个过滤条件。改成只按 Sequence 分组、不管 `texture_index`，同一个
     Sequence 里的所有 pattern 边框都画出来（活动的亮黄色，其它暗蓝色）。
     """
-    root_col = uvs_io.resolve_uvs_root(context)
-    if root_col is None:
+    root_obj = uvs_io.resolve_uvs_root(context)
+    if root_obj is None:
         return
-    seq_idx = root_col.efx_uvs_sequences_active_index
-    if not (0 <= seq_idx < len(root_col.efx_uvs_sequences)):
+    seq_idx = root_obj.efx_uvs_sequences_active_index
+    if not (0 <= seq_idx < len(root_obj.efx_uvs_sequences)):
         return
-    seq = root_col.efx_uvs_sequences[seq_idx]
+    seq = root_obj.efx_uvs_sequences[seq_idx]
     active_idx = seq.patterns_active_index
     for i, pat in enumerate(seq.patterns):
         yield i, pat, (i == active_idx)
@@ -150,7 +150,7 @@ class EFX_UVS_OT_load_texture_preview(Operator, ImportHelper):
         return uvs_io.resolve_uvs_root(context) is not None
 
     def execute(self, context):
-        root_col = uvs_io.resolve_uvs_root(context)
+        root_obj = uvs_io.resolve_uvs_root(context)
         src_path = Path(self.filepath)
         if not src_path.is_file():
             self.report({"ERROR"}, f"文件不存在：{src_path}")
@@ -167,7 +167,7 @@ class EFX_UVS_OT_load_texture_preview(Operator, ImportHelper):
         except Exception as ex:   # noqa: BLE001
             self.report({"ERROR"}, f"贴图加载失败：\n{ex}")
             return {"CANCELLED"}
-        root_col.efx_uvs_preview_image = img
+        root_obj.efx_uvs_preview_image = img
         context.space_data.image = img
         meta = tex_image.describe(src_path)
         suffix = f"，{meta['format_name']}" if meta else ""
@@ -196,10 +196,10 @@ class EFX_UVS_OT_pick_pattern(Operator):
             x, y = region.view2d.region_to_view(event.mouse_region_x, event.mouse_region_y)
             y_data = _flip(y)
 
-            root_col = uvs_io.resolve_uvs_root(context)
-            seq_idx = root_col.efx_uvs_sequences_active_index
-            if 0 <= seq_idx < len(root_col.efx_uvs_sequences):
-                seq = root_col.efx_uvs_sequences[seq_idx]
+            root_obj = uvs_io.resolve_uvs_root(context)
+            seq_idx = root_obj.efx_uvs_sequences_active_index
+            if 0 <= seq_idx < len(root_obj.efx_uvs_sequences):
+                seq = root_obj.efx_uvs_sequences[seq_idx]
                 for i, pat, _is_active in _visible_patterns(context):
                     lo_y, hi_y = sorted((pat.top, pat.bottom))
                     lo_x, hi_x = sorted((pat.left, pat.right))
@@ -308,7 +308,7 @@ class EFX_UVS_OT_advanced_edit(Operator):
         return uvs_io.resolve_uvs_root(context) is not None
 
     def execute(self, context):
-        root_col = uvs_io.resolve_uvs_root(context)
+        root_obj = uvs_io.resolve_uvs_root(context)
 
         area = context.area
         # 记住跳转前的区域类型（这个按钮本身只出现在 VIEW_3D 侧栏，实际上恒为
@@ -319,8 +319,8 @@ class EFX_UVS_OT_advanced_edit(Operator):
         area.type = "IMAGE_EDITOR"
         space = area.spaces.active
         space.show_region_ui = True
-        if root_col.efx_uvs_preview_image is not None:
-            space.image = root_col.efx_uvs_preview_image
+        if root_obj.efx_uvs_preview_image is not None:
+            space.image = root_obj.efx_uvs_preview_image
 
         def _activate_category():
             # 刚切换 area.type 那一帧，Region 的候选分类列表还没跑完一次绘制生成
@@ -373,8 +373,8 @@ class EFX_UVS_PT_image_editor(Panel):
             translate=False,
         )
 
-        root_col = uvs_io.resolve_uvs_root(context)
-        if root_col is None:
+        root_obj = uvs_io.resolve_uvs_root(context)
+        if root_obj is None:
             layout.label(text="没有当前 UVS", translate=False)
             return
 
@@ -382,7 +382,7 @@ class EFX_UVS_PT_image_editor(Panel):
         row.operator("efx_uvs.load_texture_preview", icon="IMAGE_DATA")
         row.operator("efx_uvs.pick_pattern", icon="RESTRICT_SELECT_OFF")
 
-        layout.prop(root_col, "efx_uvs_cutout_related")
+        layout.prop(root_obj, "efx_uvs_cutout_related")
 
         # 比 3D 视口那套字段编辑面板多的"更多设置"：贴图/Sequence 都能在这里直接切换，不用
         # 跳回 MHWilds UVS 侧栏——图形编辑器里想改哪张图、哪条 Sequence 都是一站式的。基础
@@ -391,8 +391,8 @@ class EFX_UVS_PT_image_editor(Panel):
         layout.label(text=T("uvs.textures"), translate=False)
         row = layout.row()
         row.template_list(
-            "EFX_UVS_UL_textures", "", root_col, "efx_uvs_textures",
-            root_col, "efx_uvs_textures_active_index", rows=3,
+            "EFX_UVS_UL_textures", "", root_obj, "efx_uvs_textures",
+            root_obj, "efx_uvs_textures_active_index", rows=3,
         )
         col = row.column(align=True)
         col.operator("efx_uvs.texture_add", icon="ADD", text="")
@@ -402,17 +402,17 @@ class EFX_UVS_PT_image_editor(Panel):
         layout.label(text=T("uvs.sequences"), translate=False)
         row = layout.row()
         row.template_list(
-            "EFX_UVS_UL_sequences", "", root_col, "efx_uvs_sequences",
-            root_col, "efx_uvs_sequences_active_index", rows=3,
+            "EFX_UVS_UL_sequences", "", root_obj, "efx_uvs_sequences",
+            root_obj, "efx_uvs_sequences_active_index", rows=3,
         )
         col = row.column(align=True)
         col.operator("efx_uvs.sequence_add", icon="ADD", text="")
         col.operator("efx_uvs.sequence_remove", icon="REMOVE", text="")
 
-        seq_idx = root_col.efx_uvs_sequences_active_index
-        if not (0 <= seq_idx < len(root_col.efx_uvs_sequences)):
+        seq_idx = root_obj.efx_uvs_sequences_active_index
+        if not (0 <= seq_idx < len(root_obj.efx_uvs_sequences)):
             return
-        seq = root_col.efx_uvs_sequences[seq_idx]
+        seq = root_obj.efx_uvs_sequences[seq_idx]
 
         layout.separator()
         layout.label(text=T("uvs.patterns"), translate=False)
@@ -440,7 +440,7 @@ class EFX_UVS_PT_image_editor(Panel):
         row.prop(pat, "right")
         row.prop(pat, "bottom")
         box.prop(pat, "texture_index")
-        tex_list = root_col.efx_uvs_textures
+        tex_list = root_obj.efx_uvs_textures
         if 0 <= pat.texture_index < len(tex_list):
             hint = box.row()
             hint.enabled = False
@@ -456,7 +456,7 @@ class EFX_UVS_PT_image_editor(Panel):
         # 洋红色多边形叠加，改一个点马上能在图上看到效果。外层只在 cutout_related（文件级）
         # 开着的时候露出来；pattern 自己的 use_cutout（帧级）决定这一帧导出是 0 还是 8 点，
         # 关掉时下面这些点编辑控件跟着灰掉——不是不能编，是编了也不会被导出用到。
-        if root_col.efx_uvs_cutout_related:
+        if root_obj.efx_uvs_cutout_related:
             box.prop(pat, "use_cutout")
             sub = box.column()
             sub.enabled = pat.use_cutout
@@ -494,7 +494,7 @@ def register():
 
     # 记住最近一次加载/使用过的预览贴图，方便"进阶编辑"跳转时顺手把它摆上——不参与叠加矩形
     # 要画哪些 pattern 的判断（那个只认 efx_uvs_textures_active_index，见 _visible_patterns()）。
-    bpy.types.Collection.efx_uvs_preview_image = PointerProperty(
+    bpy.types.Object.efx_uvs_preview_image = PointerProperty(
         type=bpy.types.Image,
         name="Preview Image",
         description="最近一次加载的预览贴图",
@@ -522,7 +522,7 @@ def unregister():
         _draw_handle = None
 
     del bpy.types.WindowManager.efx_uvs_advanced_edit_prev_type
-    del bpy.types.Collection.efx_uvs_preview_image
+    del bpy.types.Object.efx_uvs_preview_image
 
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)

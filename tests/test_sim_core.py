@@ -30,6 +30,7 @@ if _REPO_ROOT not in sys.path:
 
 from efx_sim import (  # noqa: E402
     DIST_ONESIDED, DIST_SYMMETRIC, FieldShapeError, FieldView, MIN_MAX_INT2_FIELDS,
+    HALF_OPEN_MAX_FIELDS,
     PAIR_MIN_MAX_FIELDS, ROTATION_ORDER, SR_INDEX_FIELDS, SR_MIN_MAX_FIELDS,
     SimConfig, Vec3,
     build_behaviors, particle_rng, rotate_euler, rotation_order_name, sweep_fraction,
@@ -91,6 +92,18 @@ class TestFieldNameMirrors(unittest.TestCase):
             _literal_string_set(self.model["_SR_MIN_MAX_FIELD_NAMES"]),
             set(SR_MIN_MAX_FIELDS),
             "model._SR_MIN_MAX_FIELD_NAMES 和 shapes.SR_MIN_MAX_FIELDS 漂了")
+
+    def test_half_open_max_fields_match(self):
+        self.assertEqual(
+            _literal_string_set(self.model["_HALF_OPEN_MAX_FIELD_NAMES"]),
+            set(HALF_OPEN_MAX_FIELDS),
+            "model._HALF_OPEN_MAX_FIELD_NAMES 和 shapes.HALF_OPEN_MAX_FIELDS 漂了")
+
+    def test_half_open_is_subset_of_min_max(self):
+        """半开名单必须是 min/max 名单的子集——"上界取不到"只对 min/max 有意义，
+        把一个 static/random 字段写进半开名单只会让取样悄悄少一格。"""
+        self.assertTrue(set(HALF_OPEN_MAX_FIELDS) <= set(SR_MIN_MAX_FIELDS),
+                        f"{set(HALF_OPEN_MAX_FIELDS) - set(SR_MIN_MAX_FIELDS)} 不在 SR_MIN_MAX_FIELDS 里")
 
     def test_min_max_int2_fields_match(self):
         self.assertEqual(
@@ -244,17 +257,18 @@ class TestFieldViewShapes(unittest.TestCase):
         self.assertEqual(v.s("UVSPath"), "Art/VFX/UVS/a.uvs")
         self.assertEqual(v.f("NotThere", 7.0), 7.0)
 
-    def test_negative_random_amount_is_not_clamped(self):
-        """语料里 `r` 会是负数（`EmitterShape3D.RangeY = {s:-0.2, r:-0.2}`）。
+    def test_emitter_shape_range_is_min_max_not_static_random(self):
+        """`EmitterShape3D.RangeX/Y/Z` 是 `(min, max)`，**按 static/random 读会直接抛**。
 
-        单边分布下 `uniform(0, -0.2)` 合法（返回 [-0.2, 0]），不特判、不取绝对值——
-        "r 可以为负"本身是 `(s,r)` 到底是不是 static/random 的反证据，见 SIM_PORT_PLAN §8.5。
+        "`r` 可以为负"早先被当成"这不是 static/random"的旁证，现在全语料把它定死了
+        （`max < min` 0/62492，而主值非零的有 3.6 万例）——所以 `sr()` 必须拒绝，
+        不能让哪个 behavior 又按 `[s, s+r]` 读回去。
         """
-        v = FieldView({"RangeY": {"s": -0.2, "r": -0.2}}, "EmitterShape3D")
-        self.assertEqual(v.sr("RangeY"), (-0.2, -0.2))
-        got = v.roll("RangeY", particle_rng(1, 0), DIST_ONESIDED)
-        self.assertGreaterEqual(got, -0.4001)
-        self.assertLessEqual(got, -0.1999)
+        v = FieldView({"RangeY": {"s": -0.5, "r": 0.5}}, "EmitterShape3D")
+        with self.assertRaises(FieldShapeError):
+            v.sr("RangeY")
+        # 对称负数对读作"以原点为中心"，不是 `[-0.5, 0]`
+        self.assertEqual(v.min_max_pair("RangeY"), (-0.5, 0.5))
 
 
 # ---------------------------------------------------------------------------

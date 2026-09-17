@@ -98,11 +98,24 @@ def categories() -> list[str]:
     return _catalogue()["categories"]
 
 
+#: 不该出现在界面上的枚举成员名——**C# 侧用来强制枚举底层宽度的占位，不是游戏语义**。
+#: vendor 的 `ExpressionAssignType` 有 `ForceWord = -1`（`EfxCommon.cs`），全语料
+#: 9175 个文件 / 42 个类型 / 609 个字段 / 199613 个实例里**出现 0 次**；而把它放进下拉
+#: 还曾经直接崩掉 Blender（有符号/无符号表示不一致，见 `model.as_int32()`）。
+#: 按名字过滤而不是按值（`-1` 本身是合法取值，别的枚举可能真的用得上）。
+_PLACEHOLDER_MEMBER_NAMES = frozenset({"ForceWord"})
+
+
 def enum_members(attr_type_fullname: str, field_key: str) -> Optional[list]:
     """一个字段如果在 C# 侧声明成枚举，返回它的成员表 `[[值, 显示名], ...]`；否则 None。
 
     成员名去掉 `枚举名_` 前缀（vendor 里叫 `RotationOrder_XYZ`，面板上显示 `XYZ` 就够了，
     前缀是字段自己的标签在说的事）。
+
+    `ForceWord` 这类**枚举宽度占位**会被剔掉（见 `_PLACEHOLDER_MEMBER_NAMES`）——
+    它不是游戏语义、全语料零出现。⚠ 剔掉的只是**下拉里的选项**：如果某个文件里真的
+    存着这个值，`_enum_proxy_items()` 仍然会补一条"原值"项原样保留它（铁律 #2，
+    宁可拒绝也不静默改数据）。
     """
     cat = _catalogue()
     enum_name = cat["field_enums"].get((attr_type_fullname, field_key))
@@ -115,7 +128,10 @@ def enum_members(attr_type_fullname: str, field_key: str) -> Optional[list]:
     out = []
     for m in members:
         name = m.get("name") or str(m.get("value"))
-        out.append([m["value"], name[len(prefix):] if name.startswith(prefix) else name])
+        short = name[len(prefix):] if name.startswith(prefix) else name
+        if short in _PLACEHOLDER_MEMBER_NAMES:
+            continue
+        out.append([m["value"], short])
     return out
 
 

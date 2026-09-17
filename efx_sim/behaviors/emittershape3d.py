@@ -24,12 +24,18 @@ efx_sim/behaviors/emittershape3d.py —— `EmitterShape3D`（生成位置）
 起始角。门控与上游 EFX-Editor 依特效教程给的说法逐字吻合（"横向只有球/圆柱用、纵向只有
 球用"）。数据见 docs/SIM_PORT_PLAN.md §8.4。
 
-区间读法：`SimConfig.es3d_range_mode`
--------------------------------------
-`Range{s,r}` 默认按 (静态值, 随机量) 读 -> 区间 `[s, s+r]`；`min_max` 按 `[s, r]` 读。
-**两种读法在 `r` 为正的厚度时数值接近**（上游那边依教程给的"内边界 + 厚度"就等价于前者），
-但语料里 `r` 会出现负值（`RangeY = {s:-0.2, r:-0.2}`），那批样本 `min_max` 更自洽。
-P0 默认 `static_random`，标定时拖开关对拍。
+区间读法：**`[min, max]`**，外边界就是第二个数
+---------------------------------------------
+`RangeX/Y/Z` 是 `(min, max)`，**不是** MHWI 那种 `min + offset`（外边界 = `min + offset`），
+更不是 (静态值, 随机量)。全语料定的，判据是"`max < min` 出现过没有"：**0/62492**，而主值
+非零的有 36590/20748/36840 例——offset 读法下第二个数是**厚度**，半径 1.0 厚 0.1 的薄壳
+就该写成 `(1.0, 0.1)` 即 `max < min`，这种组合一次都没有。完整依据见
+`shapes.PAIR_MIN_MAX_FIELDS`。
+
+早先这里有个 `SimConfig.es3d_range_mode` 标定开关（默认按 static/random 读 `[s, s+r]`），
+**已经删掉**——语料把它定死了，留着只会让人以为还有得选，而默认的那一档是错的：
+它把 `(-0.5, 0.5)` 这种"以原点为中心对称"的圆柱读成了 `[-0.5, 0]`，高度只剩一半、整段偏到
+原点下方。
 
 ⚠ 逐轴的区间是**有符号位置偏移**，不是"半径"——`RangeY` 真的会是负的。所以 Box 直接按
 `U(lo, hi)` 逐轴取，**不做 ± 对称翻转**；球/圆柱把它当成沿该轴的径向幅度。
@@ -135,8 +141,21 @@ class EmitterShape3D(Behavior):
     def outline(self, em, segments=28):
         """返回成对的点 `[(a, b), ...]`，与粒子同一坐标空间（游戏系，相对发射器原点未加）。
 
-        画的是**外边界**（区间的 hi 端）。P0 的验收标准之一就是"看到粒子按形状分布"，
-        有这圈线框才看得出分布对不对。
+        画法对齐姊妹项目 EFX-Editor 的 `es3d_overlay`，但**按本仓的采样语义裁剪过**，
+        逐形状的依据就是上面那三个 `_sample_*`：
+
+        - **球 / 圆柱画内外双边界 + 径向棱**：径向幅度是 `_pick(rng, r)` 在 `[lo, hi]` 里取的，
+          `lo != 0` 时粒子真的只出现在一层壳里。只画内外两层而不连起来的话，"壳"这个概念在
+          画面上根本不存在——所以径向棱不是装饰。`lo == 0` 时内层退化成点，自动不画。
+        - **Box 只画外边界**：`on_particle_spawn()` 对 Box 是逐轴 `U(lo, hi)` 独立取，整个盒子
+          是**实心**的。照搬姊妹项目的内层盒会画出一个"这里不会有粒子"的假空腔——那边的
+          rangeXYZ 语义是"内边界 + 厚度"，和本仓的逐轴区间不是一回事。
+        - **扫描角靠两端的经线/竖棱封口**，不画实体扇面：`_azimuths()` 在不满整圈时必定包含
+          起点和终点，看得出是整圈还是只扫一段。
+
+        ⚠ 出口处必须和 `on_particle_spawn()` 一样过一遍 `_apply_local_rotation()`：粒子的
+        出生位置是转过的，线框不转的话，`LocalRotation` 非零时框和粒子对不上——而"框和粒子
+        对不对得上"正是这圈线的全部用途。
         """
         f = em.f(TYPE_NAME)
         if f is None:
@@ -149,42 +168,12 @@ class EmitterShape3D(Behavior):
         n = max(6, int(segments))
 
         if shape == SHAPE_SPHERE:
-            start, span = _sweep(f, "ScaleHorizontal", shape)
-            pts = [_ring(rx[1], rz[1], start + span * i / n, ry_val=0.0) for i in range(n + 1)]
-            segs = list(zip(pts[:-1], pts[1:]))
-            # 再加一圈子午线，光有赤道看不出是球
-            for i in range(n):
-                a = -math.pi / 2 + math.pi * i / n
-                b = -math.pi / 2 + math.pi * (i + 1) / n
-                segs.append((Vec3(math.cos(a) * rx[1], math.sin(a) * ry[1], 0.0),
-                             Vec3(math.cos(b) * rx[1], math.sin(b) * ry[1], 0.0)))
-            return segs
-
-        if shape == SHAPE_CYLINDER:
-            start, span = _sweep(f, "ScaleHorizontal", shape)
-            segs = []
-            for y in (ry[0], ry[1]):
-                pts = [_ring(rx[1], rz[1], start + span * i / n, ry_val=y)
-                       for i in range(n + 1)]
-                segs.extend(zip(pts[:-1], pts[1:]))
-            for i in range(4):
-                a = start + span * i / 4.0
-                segs.append((_ring(rx[1], rz[1], a, ry_val=ry[0]),
-                             _ring(rx[1], rz[1], a, ry_val=ry[1])))
-            return segs
-
-        # Box：12 条棱
-        xs, ys, zs = rx, ry, rz
-        corners = [Vec3(xs[i], ys[j], zs[k])
-                   for i in (0, 1) for j in (0, 1) for k in (0, 1)]
-        segs = []
-        for a in range(8):
-            for b in range(a + 1, 8):
-                # 只有恰好差一个坐标的两个角才是棱
-                diff = sum(1 for t in range(3) if corners[a][t] != corners[b][t])
-                if diff == 1:
-                    segs.append((corners[a], corners[b]))
-        return segs
+            segs = _sphere_outline(f, rx, ry, rz, n)
+        elif shape == SHAPE_CYLINDER:
+            segs = _cylinder_outline(f, rx, ry, rz, n)
+        else:
+            segs = _box_outline(rx, ry, rz)
+        return _rotated(f, segs, cfg)
 
     def duration_hint(self, em):
         return 0
@@ -195,9 +184,13 @@ class EmitterShape3D(Behavior):
 # ---------------------------------------------------------------------------
 
 def _axis_range(f, key, config):
-    """逐轴区间 -> `(lo, hi)`。**不保证 lo <= hi**（`r` 可以是负的），交给 `_pick` 处理。"""
-    s, r = f.sr(key)
-    return (s, r) if config.es3d_range_mode == "min_max" else (s, s + r)
+    """逐轴区间 -> `(lo, hi)`，就是文件里的 `(min, max)`（见模块说明）。
+
+    **仍然不保证 lo <= hi**：真实语料里恒成立（62492/62492），但用户可以在面板上手填出
+    `max < min`，那时照 `_pick` 的 `rng.uniform` 行为处理，不静默交换也不抛。
+    `config` 留着是因为调用点都传它，且以后可能还有别的标定项挂上来。
+    """
+    return f.min_max_pair(key)
 
 
 def _pick(rng, span):
@@ -216,8 +209,127 @@ def _sweep(f, key, shape):
     return f.sr(key)
 
 
-def _ring(radius_x, radius_z, angle, ry_val=0.0):
-    return Vec3(math.cos(angle) * radius_x, ry_val, math.sin(angle) * radius_z)
+#: 判"整圈"和"零跨度"的容差（弧度）
+_ANGLE_EPS = 1e-6
+#: 判"内层是不是退化成一个点"的容差（游戏单位）
+_SHELL_EPS = 1e-9
+
+
+def _azimuths(start, span, full):
+    """经线 / 竖棱所在的方位角。
+
+    整圈画 4 条（四等分，一眼看出是个回转体）；只扫一段时画 3 条，且**必定包含起点和终点**
+    ——端点就是这段扫描的封口，少了它看不出扫到哪儿为止。
+    """
+    if full:
+        return [start + 2.0 * math.pi * k / 4.0 for k in range(4)]
+    return [start + span * k / 2.0 for k in range(3)]
+
+
+def _arc_steps(n, span, full):
+    """一段弧分多少份。只扫一小段时按比例缩，免得 20° 的扇形上堆 28 个点。"""
+    if full:
+        return n
+    frac = abs(span) / (2.0 * math.pi)
+    return max(3, int(n * max(0.08, frac)))
+
+
+def _sphere_pt(radius, az, polar):
+    """和 `_sample_sphere()` 完全同一条参数化——改一个必须改另一个，否则框和粒子就分家了。"""
+    return Vec3(math.cos(az) * math.cos(polar) * radius[0],
+                math.sin(polar) * radius[1],
+                math.sin(az) * math.cos(polar) * radius[2])
+
+
+def _sphere_outline(f, rx, ry, rz, n):
+    h_start, h_span = _sweep(f, "ScaleHorizontal", SHAPE_SPHERE)
+    v_start, v_span = _sweep(f, "ScaleVertical", SHAPE_SPHERE)
+    full_h = abs(abs(h_span) - 2.0 * math.pi) <= _ANGLE_EPS
+    outer = (rx[1], ry[1], rz[1])
+    inner = (rx[0], ry[0], rz[0])
+    hollow = any(abs(c) > _SHELL_EPS for c in inner)
+    shells = [outer] + ([inner] if hollow else [])
+
+    polars = [v_start, v_start + v_span * 0.5, v_start + v_span]
+    if abs(v_span) <= _ANGLE_EPS:
+        polars = [v_start]
+    azs = _azimuths(h_start, h_span, full_h)
+
+    segs = []
+    for radius in shells:
+        # 纬度环（极点上 cos(polar)≈0，环退化成一个点，跳过）
+        for polar in polars:
+            if abs(math.cos(polar)) <= _ANGLE_EPS:
+                continue
+            steps = _arc_steps(n, h_span, full_h)
+            pts = [_sphere_pt(radius, h_start + h_span * i / steps, polar)
+                   for i in range(steps + 1)]
+            segs.extend(zip(pts[:-1], pts[1:]))
+        # 经线
+        if abs(v_span) > _ANGLE_EPS:
+            steps = _arc_steps(n, v_span, abs(abs(v_span) - math.pi) <= _ANGLE_EPS)
+            for az in azs:
+                pts = [_sphere_pt(radius, az, v_start + v_span * i / steps)
+                       for i in range(steps + 1)]
+                segs.extend(zip(pts[:-1], pts[1:]))
+    if hollow:
+        for az in azs:
+            for polar in polars:
+                segs.append((_sphere_pt(inner, az, polar), _sphere_pt(outer, az, polar)))
+    return segs
+
+
+def _cylinder_pt(radius_x, radius_z, az, y):
+    """和 `_sample_cylinder()` 同一条参数化（XZ 是横截面、Y 是高度）。"""
+    return Vec3(math.cos(az) * radius_x, y, math.sin(az) * radius_z)
+
+
+def _cylinder_outline(f, rx, ry, rz, n):
+    h_start, h_span = _sweep(f, "ScaleHorizontal", SHAPE_CYLINDER)
+    full_h = abs(abs(h_span) - 2.0 * math.pi) <= _ANGLE_EPS
+    # 高度是有符号区间，直接取两端；**不做 lo<=hi 规整**（`RangeY` 真的会是负的）
+    ys = [ry[0]] if ry[0] == ry[1] else [ry[0], ry[1]]
+    hollow = abs(rx[0]) > _SHELL_EPS or abs(rz[0]) > _SHELL_EPS
+    shells = [(rx[1], rz[1])] + ([(rx[0], rz[0])] if hollow else [])
+    azs = _azimuths(h_start, h_span, full_h)
+
+    segs = []
+    for radius_x, radius_z in shells:
+        for y in ys:
+            steps = _arc_steps(n, h_span, full_h)
+            pts = [_cylinder_pt(radius_x, radius_z, h_start + h_span * i / steps, y)
+                   for i in range(steps + 1)]
+            segs.extend(zip(pts[:-1], pts[1:]))
+        if len(ys) == 2:
+            for az in azs:
+                segs.append((_cylinder_pt(radius_x, radius_z, az, ys[0]),
+                             _cylinder_pt(radius_x, radius_z, az, ys[1])))
+    if hollow:
+        for y in ys:
+            for az in azs:
+                segs.append((_cylinder_pt(rx[0], rz[0], az, y),
+                             _cylinder_pt(rx[1], rz[1], az, y)))
+    return segs
+
+
+def _box_outline(rx, ry, rz):
+    """12 条棱。Box 是**实心**的（逐轴 `U(lo, hi)` 独立取），没有内层。"""
+    corners = [Vec3(rx[i], ry[j], rz[k])
+               for i in (0, 1) for j in (0, 1) for k in (0, 1)]
+    segs = []
+    for a in range(8):
+        for b in range(a + 1, 8):
+            # 只有恰好差一个坐标的两个角才是棱
+            diff = sum(1 for t in range(3) if corners[a][t] != corners[b][t])
+            if diff == 1:
+                segs.append((corners[a], corners[b]))
+    return segs
+
+
+def _rotated(f, segs, config):
+    """把线框的每个端点过一遍 `_apply_local_rotation()`（和粒子出生位置同一条换算）。"""
+    return [(_apply_local_rotation(f, a, config), _apply_local_rotation(f, b, config))
+            for a, b in segs]
 
 
 def _apply_local_rotation(f, offset, config):

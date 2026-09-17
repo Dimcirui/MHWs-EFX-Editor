@@ -227,7 +227,22 @@ def main() -> int:
         print("  INFO  拿不到序列帧图集，跳过像素级判据"
               "（结构性等式仍然覆盖了全部样本）")
 
-    # 4. 垃圾输入必须抛
+    # 4. 同一个文件载两次必须复用同一个数据块
+    #
+    #    `load_image(reuse=True)` 原来只看 `existing.has_data`，而 `has_data` 是"像素缓冲
+    #    **此刻**在内存里"——刚 pack 进 .blend、还没人取过像素的图它是 False，于是复用永远
+    #    不命中，同一张贴图堆出一串 `.001/.002/…`（实测一个 mod 的 24 个网格把 7 张贴图复制
+    #    成了 64 份）。这条错**不会报任何错**，只是 .blend 悄悄胖几十倍，必须有门禁钉住。
+    if samples:
+        before_names = set(bpy.data.images.keys())
+        first = tex_image.load_image(samples[0])
+        after_first = set(bpy.data.images.keys())
+        second = tex_image.load_image(samples[0])
+        _check(second is first and set(bpy.data.images.keys()) == after_first,
+               "同一个 .tex 载两次复用同一个数据块（不堆 .001）",
+               f"新增 {len(set(bpy.data.images.keys()) - before_names)} 个数据块")
+
+    # 5. 垃圾输入必须抛
     try:
         tex_image.extract_mip0(b"NOPE" + b"\0" * 64)
         _check(False, "非 TEX 输入必须抛 TexDecodeError")
@@ -242,4 +257,14 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # ⚠ 必须自己兜住异常再 sys.exit(1)：`blender --background --python x.py` 在脚本抛出
+    # **未捕获异常**时**退出码仍然是 0**（实测），`sys.exit(main())` 那行根本轮不到执行——
+    # 净效果是"门禁崩在第一行"和"门禁全过"对调用方长得一模一样，正是静默全绿。
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except BaseException:
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

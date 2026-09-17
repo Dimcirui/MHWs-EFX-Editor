@@ -43,6 +43,9 @@ import bpy
 from bpy.types import Collection, Object
 
 from . import model
+# transform3d_view 只在模块级 import model/coords，不 import io_tree（它对 io_tree 的调用是
+# 函数内延迟 import），所以这里正着 import 不成环。
+from . import transform3d_view
 
 _EMPTY_DISPLAY_SIZE = 0.1
 
@@ -96,7 +99,10 @@ def _populate_clip_attribute(obj: Object, attr_dict: dict) -> None:
     for bit_index, header in zip(sorted_bits, clip_data.get("clips") or []):
         curve = obj.efx_clip_curves.add()
         curve.bit_index = bit_index
-        curve.bit_name = (bit_names[bit_index] if bit_index < len(bit_names) else None) or ""
+        # 这个文件自己 dump 出来的 bitNames 优先（vendor 对这份具体数据算出的名字）；没覆盖到
+        # 这一位时退到静态反射表（见 model.resolve_clip_bit_name()），两边都没有就是真的没有。
+        name = bit_names[bit_index] if bit_index < len(bit_names) else None
+        curve.bit_name = name or model.resolve_clip_bit_name(attr_dict.get("$type", ""), bit_index)
         value_type = int(header.get("valueType", 5) or 5)
         curve.value_type = str(value_type)
 
@@ -140,8 +146,17 @@ def _populate_expression_attribute(obj: Object, attr_dict: dict) -> None:
     for bit_index, entry in zip(sorted_bits, parsed):
         curve = obj.efx_expression_curves.add()
         curve.bit_index = bit_index
-        curve.bit_name = (bit_names[bit_index] if bit_index < len(bit_names) else None) or ""
+        # 同 _populate_clip_attribute()：这份文件自己 dump 出来的 bitNames 优先，没覆盖到
+        # 这一位（vendor 没给它塞进 BitNameDict，如 RotateAnimExpression 的 ukn1_7..12）时
+        # 退到 model.resolve_expression_bit_name() 的静态反射表。
+        name = bit_names[bit_index] if bit_index < len(bit_names) else None
+        curve.bit_name = name or model.resolve_expression_bit_name(attr_dict.get("$type", ""), bit_index)
         curve.formula = entry.get("expression", "0") or "0"
+        # 显式建一次结构化视图，不指望 `formula` 的 update 回调——回调在"赋的值和原值
+        # 相同"时会不会触发是 RNA 的实现细节，导入路径不能押在那上面（默认值恰好是 "0"，
+        # 语料里 `formula == "0"` 的公式真实存在）。视图是派生量，重建一次不花钱。
+        from . import expr_edit
+        expr_edit.rebuild_rows(curve)
 
 
 def apply_attribute_content(obj: Object, attr_dict: dict) -> None:
@@ -196,6 +211,10 @@ def apply_attribute_content(obj: Object, attr_dict: dict) -> None:
         _populate_expression_attribute(obj, attr_dict)
     model.populate_dict_as_children(obj.efx_fields, content)
     collapse_mdf_properties(obj)
+    # 批量填充期间 update 回调是关掉的（见 model.suppress_field_updates()），所以在这里补一次：
+    # 导入/粘贴/从预设新建出来的 Entry 立刻就摆在它 Transform3D 声明的位置上，不用手动去点
+    # Refresh Transform3D View。不是 Transform3D 形状的 attribute 这里是无操作。
+    transform3d_view.apply_transform3d(obj)
 
 
 def collapse_mdf_properties(obj: Object) -> None:
@@ -842,6 +861,24 @@ def _bone_relation_consumers(scope: dict) -> int:
     )
 
 
+def bone_relation_alignment_problems(efxfile_dict: dict) -> list[str]:
+    """收集所有作用域里 `BoneRelations` 长度和消费者个数对不上的问题，一行一条；空 = 对齐正常。
+
+    给 `check_bone_relation_alignment()` 和"首选项里勾了绕过"的导入路径共用：前者拿它拼异常，
+    后者拿它拼放行警告，两边判据是同一份，不会出现"校验说错位、放行说没问题"。
+    """
+    problems = []
+    for path, scope in _bone_relation_scopes(efxfile_dict, ""):
+        relations = scope.get("BoneRelations")
+        if relations is None:
+            continue          # 拿不到就不判（正常 MHWs 文件不会走到这里）
+        consumers = _bone_relation_consumers(scope)
+        if len(relations) != consumers:
+            where = path or "顶层文件"
+            problems.append(f"{where}: 文件声明 {len(relations)} 个骨骼绑定槽位，实际只认出 {consumers} 个")
+    return problems
+
+
 def check_bone_relation_alignment(efxfile_dict: dict) -> None:
     """导入前校验：每个作用域里，`BoneRelations` 的长度必须等于会消费它的 attribute 个数。
 
@@ -858,23 +895,14 @@ def check_bone_relation_alignment(efxfile_dict: dict) -> None:
     再冒出第三个时当场拒绝导入，而不是让用户拿着错位的绑定改完再导出。
 
     按铁律 #1 整文件拒绝：错位是全局性的，没有"只坏了这一个 attribute"这种局部降级可言。
+    唯一的放行路径是插件首选项里的「绕过骨骼绑定索引对齐校验」，那一步在导入算子里做，不在这里。
     """
-    problems = []
-    for path, scope in _bone_relation_scopes(efxfile_dict, ""):
-        relations = scope.get("BoneRelations")
-        if relations is None:
-            continue          # 拿不到就不判（正常 MHWs 文件不会走到这里）
-        consumers = _bone_relation_consumers(scope)
-        if len(relations) != consumers:
-            where = path or "顶层文件"
-            problems.append(
-                f"  {where}: 文件声明 {len(relations)} 个骨骼绑定槽位，实际只认出 {consumers} 个"
-            )
+    problems = bone_relation_alignment_problems(efxfile_dict)
     if problems:
         raise BoneRelationAlignmentError(
             "骨骼绑定索引表对不上，已拒绝导入整个文件——继续导入会把特效绑到错误的骨骼上，"
             "导出时还会丢掉绑定关系：\n"
-            + "\n".join(problems)
+            + "\n".join(f"  {m}" for m in problems)
             + "\n这说明有一类 attribute 会占用骨骼绑定槽位但当前还没被识别出来。"
         )
 

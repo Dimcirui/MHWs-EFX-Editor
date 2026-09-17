@@ -29,11 +29,18 @@ tools/verify_blender_bone_binding.py —— 骨骼绑定（`bone_binding.py`）�
 7. 作用域只认 `ParentOptions`：别的 attribute 上的 `ParentBone` 不参与摆位（那三个类型的
    骨骼是各自效果自己的目标点，不是父级变换，见 `bone_binding.py` 模块说明）。
 
+9. **Transform3D 编辑实时生效**：在字段树里改 LocalPosition/LocalRotation/RotationOrder，
+   不调 `sync_all_transform3d()`，所属 Entry 的 `matrix_basis` 必须立刻跟上；导入/粘贴建出来的
+   attribute 也必须一出生就摆好。这一条护的是 `sim_preview` 的宿主矩阵——预览读的是
+   `matrix_world`，矩阵不刷新的表现是“本地位置明明是 1，粒子还在原点”，而前面所有门禁
+   （判据都是导出字节）对它完全免疫：这条联动根本不写字段数据。
+
 8. `check_bone_relation_alignment()`：真实文件必须通过；把 `BoneRelations` 长度改成和消费者
    数量对不上时必须拒绝（含嵌套 `efxrData` 作用域），并且真的能拦住 `bpy.ops.efx_re.import`。
    这道校验是 `KNOWN_UPSTREAM_ISSUES.md` #9 的回归防护：索引流错位会把特效绑到错骨头上、
    导出时还静默丢槽位，而前三个门禁全都看不见它（判据是"和纯 CLI 往返产物逐字节相同"，
-   两边错得一模一样）。
+   两边错得一模一样）。另半边：首选项里勾了「绕过骨骼绑定索引对齐校验」之后，同一个错位文件
+   必须能导进来并在根上留下 `efx_bone_alignment_bypassed` 标记（`verify_alignment_bypass()`）。
 
 退出码：全绿 0，有失败 1。
 """
@@ -53,7 +60,9 @@ import bpy  # noqa: E402
 from mathutils import Euler, Matrix  # noqa: E402
 
 import blender_efx_re  # noqa: E402
-from blender_efx_re import bone_binding, bridge, coords, io_tree, model, transform3d_view  # noqa: E402
+from blender_efx_re import (  # noqa: E402
+    bone_binding, bridge, coords, io_tree, model, preferences, transform3d_view,
+)
 
 # 游戏 Y-up -> Blender Z-up 的基变换，和 coords._G2B_BASIS 同一个量（这里独立写一份，
 # 免得门禁和被测代码共用同一个常量、一起错还一起绿）。
@@ -438,6 +447,134 @@ def verify_bone_name_mirror(sample: pathlib.Path, report: Report) -> None:
                      not model.is_inline_bone_name_field(fake, other.efx_attr_type, other))
 
 
+def verify_live_transform3d_sync(sample: pathlib.Path, report: Report) -> None:
+    """改 Transform3D 的字段 -> 所属 Entry 的 `matrix_basis` 立刻跟上（不手动调 sync）。
+
+    被测的是 `model.EFXValueNode.float_value`/`int_value` 上的 update 回调
+    （`model._on_field_edited()`）和 `io_tree.apply_attribute_content()` 末尾那次补烘。
+    没有它们，视口和粒子预览摆的是上一次 `sync_all_transform3d()` 时的姿态，用户改完
+    LocalPosition 什么都不会发生——而判据是导出字节的那几个门禁对此完全免疫。
+    """
+    data = bridge.dump_efx(sample)
+    col = io_tree.build_root_from_efxfile(data, bpy.context.scene.collection,
+                                          sample.name + "_live")
+    col.efx_source_filename = sample.name
+    entry = t3d = None
+    for candidate in io_tree.root_entries(col):
+        attr = _find_attribute(candidate, "Transform3D")
+        if attr is not None and model.transform3d_field_values(attr) is not None:
+            entry, t3d = candidate, attr
+            break
+    if t3d is None:
+        report.check("样本里有 Transform3D attribute", False)
+        return
+
+    # 建出来就该是烘好的：这里**不**调 sync_all_transform3d()，导入/粘贴路径自己要摆好
+    report.check("导入建出来的 Entry 一出生就按 Transform3D 摆好（不用手动 Refresh）",
+                 _matrix_close(entry.matrix_basis, transform3d_view.compute_local_matrix(t3d)),
+                 _matrix_str(entry.matrix_basis))
+
+    pos_node = model.find_field(t3d.efx_fields, "LocalPosition")
+    y_node = next((c for c in pos_node.children if c.key in ("y", "Y")), None)
+    if y_node is None:
+        report.check("LocalPosition 有 y 子节点", False)
+        return
+
+    before_export = json.dumps(io_tree.export_root_to_efxfile(col), sort_keys=True)
+    origin = (y_node.float_value, )
+
+    y_node.float_value = 7.5
+    expected = transform3d_view.compute_local_matrix(t3d)
+    report.check("改 LocalPosition.y 后 matrix_basis 立刻跟上（全程没调 sync_all_transform3d）",
+                 _matrix_close(entry.matrix_basis, expected),
+                 "实际 " + _matrix_str(entry.matrix_basis) + " / 期望 " + _matrix_str(expected))
+    # 这才是用户看到的那条链：粒子预览的宿主矩阵是 matrix_world（sim_preview._entry_matrix()）
+    bpy.context.view_layer.update()
+    report.check("matrix_world 跟着变（sim_preview 读的就是它，游戏 Y -> Blender Z）",
+                 abs(entry.matrix_world.translation.z - 7.5) <= _TOL,
+                 str(tuple(entry.matrix_world.translation)))
+
+    rot_node = model.find_field(t3d.efx_fields, "LocalRotation")
+    rx_node = next((c for c in rot_node.children if c.key in ("x", "X")), None) if rot_node else None
+    if rx_node is not None:
+        rx_before = rx_node.float_value
+        rx_node.float_value = math.radians(30.0)
+        report.check("改 LocalRotation.x 后 matrix_basis 立刻跟上",
+                     _matrix_close(entry.matrix_basis, transform3d_view.compute_local_matrix(t3d)))
+        rx_node.float_value = rx_before
+
+    order_node = model.find_field(t3d.efx_fields, "RotationOrder")
+    if order_node is not None and order_node.data_type == "INT":
+        order_before = order_node.int_value
+        order_node.int_value = (order_before + 1) % 6
+        report.check("改 RotationOrder（int_value，也是 enum_proxy 下拉写进来的那个槽）后立刻跟上",
+                     _matrix_close(entry.matrix_basis, transform3d_view.compute_local_matrix(t3d)))
+        order_node.int_value = order_before
+
+    # 实时联动只写 object transform，不许碰字段数据——否则就成了"看了一眼视口，导出字节变了"
+    y_node.float_value = origin[0]
+    report.check("字段改回原值后导出字节完全回到原样（联动没写进任何数据）",
+                 json.dumps(io_tree.export_root_to_efxfile(col), sort_keys=True) == before_export)
+
+    # 反例对照组：非 Transform3D 的 attribute 上改 float，不许动任何 Entry 的 matrix_basis
+    other = None
+    for candidate in io_tree.root_entries(col):
+        for attr in io_tree.typed_children(candidate, model.TYPE_ATTRIBUTE):
+            if model.transform3d_field_values(attr) is None:
+                node = next((n for n in attr.efx_fields if n.data_type == "FLOAT"), None)
+                if node is not None:
+                    other = node
+                    break
+        if other is not None:
+            break
+    if other is None:
+        report.check("找得到一个非 Transform3D 的 FLOAT 字段做反例", False)
+    else:
+        snapshot = [(e, e.matrix_basis.copy()) for e in io_tree.root_entries(col)]
+        other.float_value = other.float_value + 1.0
+        report.check("改非 Transform3D 的字段不会动任何 Entry 的 matrix_basis",
+                     all(_matrix_close(e.matrix_basis, m) for e, m in snapshot))
+        other.float_value = other.float_value - 1.0
+
+
+def verify_alignment_bypass(sample: pathlib.Path, report: Report) -> None:
+    """首选项里勾了「绕过骨骼绑定索引对齐校验」之后，同一个错位文件必须能导进来，并在根上留下
+    `efx_bone_alignment_bypassed` 标记（导出时会据此再警告一次）。
+
+    这是 `verify_alignment_check()` 的另一半：那半边钉住"默认硬拦"，这半边钉住"开关打开后确实
+    放行"——只测硬拦的话，开关写坏成永远返回 False 也没人发现。逐文件 WARNING 由算子发出，
+    这里拿不到 report 内容，只核落点（建了根 + 打了标记）。"""
+    real_dump = bridge.dump_efx
+    real_bypass = preferences.bypass_bone_alignment
+
+    def poisoned(path):
+        d = real_dump(path)
+        d["BoneRelations"] = (d.get("BoneRelations") or [])[:-1]
+        return d
+
+    before = set(bpy.data.collections)
+    bridge.dump_efx = poisoned
+    preferences.bypass_bone_alignment = lambda: True
+    try:
+        getattr(bpy.ops.efx_re, "import")(filepath=str(sample))
+    except RuntimeError as ex:
+        report.check("绕过开关打开时错位文件能导入", False, f"仍抛 RuntimeError: {ex}")
+    finally:
+        bridge.dump_efx = real_dump
+        preferences.bypass_bone_alignment = real_bypass
+
+    new_roots = [
+        col for col in bpy.data.collections
+        if col not in before and getattr(col, "efx_bone_alignment_bypassed", False)
+    ]
+    report.check("绕过放行时建出根并留下 efx_bone_alignment_bypassed 标记",
+                 len(new_roots) == 1, f"带标记的新根数 = {len(new_roots)}")
+    # 清掉这次导入建的集合，别污染同一批次后续（或将来追加）的检查。
+    for col in list(bpy.data.collections):
+        if col not in before:
+            bpy.data.collections.remove(col)
+
+
 def main() -> int:
     opts = _parse_args(_script_args())
     if "dll" in opts:
@@ -475,6 +612,10 @@ def main() -> int:
             verify_alignment_check(sample, samples, report)
             print(f"\n=== ParentBone / 内联骨骼名联动 / {sample.name}")
             verify_bone_name_mirror(sample, report)
+            print(f"\n=== Transform3D 编辑实时生效 / {sample.name}")
+            verify_live_transform3d_sync(sample, report)
+            print(f"\n=== 绕过对齐校验首选项 / {sample.name}")
+            verify_alignment_bypass(sample, report)
             break
     else:
         print("[ERROR] 所有样本里都没有同时带 Transform3D 和 ParentOptions 的 Entry")

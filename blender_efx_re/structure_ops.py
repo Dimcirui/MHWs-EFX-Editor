@@ -33,7 +33,7 @@ from bpy.props import EnumProperty, IntProperty, StringProperty
 from bpy.types import Object, Operator
 from bpy_extras.io_utils import ImportHelper
 
-from . import attribute_types, bridge, io_tree, mdf_catalog, model, semantics
+from . import attribute_types, bridge, io_tree, mdf_catalog, model, ptbehavior_catalog, semantics
 
 # 能承载 attribute 的父类型
 _ATTRIBUTE_PARENTS = (model.TYPE_ENTRY, model.TYPE_ACTION)
@@ -322,8 +322,9 @@ class EFX_RE_OT_attribute_add_search(Operator):
 # ---------------------------------------------------------------------------
 
 # 材质路径字段在不同 TypeMesh 变体里叫法不同：V2 是 `MaterialPath`（EfxTypeMesh.cs:127），
-# 老的那几个叫 `mdfPath`（同文件 :53 / :643）。
-_MATERIAL_PATH_KEYS = ("MaterialPath", "mdfPath")
+# 老的那几个叫 `mdfPath`（同文件 :53 / :643）。名单在 model.py，asset_link.py 也用同一份
+# ——两处各存一份迟早会漂开。
+_MATERIAL_PATH_KEYS = model.MATERIAL_PATH_KEYS
 
 
 def resolve_mdf_properties(obj: Object):
@@ -626,6 +627,241 @@ class EFX_RE_OT_mdf_property_remove(Operator):
         return {"FINISHED"}
 
 
+def resolve_behavior_string_node(obj: Object):
+    """一个 attribute 对象如果是 PtBehavior（结构判据：同时有 `properties` 数组字段和
+    `behaviorString` 字符串字段），返回它的 `behaviorString` 节点，否则 `None`。
+
+    不要求这个值已经在候选目录里——空白新建的 attribute、或者语料扫描没收录的类
+    （见 `resolve_ptbehavior_properties`），一样应该能用"从已知列表选"选一个值。
+    """
+    if obj is None or obj.get("~TYPE") != model.TYPE_ATTRIBUTE:
+        return None
+    node = model.find_field(obj.efx_fields, "properties")
+    if node is None or node.data_type != "ARRAY":
+        return None
+    behavior_node = model.find_field(obj.efx_fields, "behaviorString")
+    if behavior_node is None or behavior_node.data_type != "STRING":
+        return None
+    return behavior_node
+
+
+def resolve_ptbehavior_properties(obj: Object):
+    """一个 attribute 对象如果是"带 PtBehavior 候选目录"的那种，返回 `(properties 节点,
+    behaviorString)`，否则 `(None, None)`。
+
+    判据照抄 `resolve_mdf_properties` 的思路（不按 `$type` 精确匹配），但多一道闸：
+    mdf 那边任何 Mesh 系材质都能配参考文件，PtBehavior 这边只有语料扫描确认过"属性顺序
+    全局一致"的类才收进了静态目录（见 `tools/gen_ptbehavior_catalog.py`）——没收录的类
+    （结构混杂的那几个，如 `EffectDecal2` 的嵌套分组、`EffectMeshClusterMotoin` 的同 key
+    合法重复）继续走通用树透传，不提供增删入口。
+    """
+    behavior_node = resolve_behavior_string_node(obj)
+    if behavior_node is None:
+        return None, None
+    behavior_string = behavior_node.string_value
+    if not ptbehavior_catalog.has_catalog(behavior_string):
+        return None, None
+    node = model.find_field(obj.efx_fields, "properties")
+    return node, behavior_string
+
+
+def _present_ptbehavior_names(properties_node) -> set:
+    """`properties` 里已经有的 `behaviorProperty` 名字——同一个属性覆盖两遍没有意义。"""
+    present = set()
+    for child in properties_node.children:
+        for sub in child.children:
+            if sub.key == "behaviorProperty":
+                present.add(model.node_to_value(sub))
+    return present
+
+
+# EnumProperty 的 items 回调返回的元组必须由 Python 侧持有（同 mdf 那边 `_candidate_items_cache`
+# 的坑）。按 behaviorString 缓存。
+_ptbehavior_candidate_items_cache: dict = {}
+
+
+def _ptbehavior_candidate_enum_items(self, context):
+    obj = getattr(context, "object", None)
+    properties_node, behavior_string = resolve_ptbehavior_properties(obj)
+    if properties_node is None:
+        return [("", "（当前不是带候选目录的 PtBehavior）", "")]
+
+    present = _present_ptbehavior_names(properties_node)
+    items = []
+    for entry in ptbehavior_catalog.candidates(behavior_string):
+        name = entry["name"]
+        if name in present:
+            continue
+        items.append((name, name, f"behaviorString: {behavior_string}"))
+    if not items:
+        items = [("", "（这个类的候选属性已经全部加过了）", "")]
+    _ptbehavior_candidate_items_cache[behavior_string] = items
+    return items
+
+
+class EFX_RE_OT_ptbehavior_property_add(Operator):
+    """从 PtBehavior 候选目录里挑一个属性，克隆语料里真实出现过的实例加进 `properties`。
+
+    模板整个来自离线语料扫描（`tools/gen_ptbehavior_catalog.py`），不手工拼字段——
+    `PtBehaviorVariable.varSize` 没有 `[RszByteSizeField]`/`[RszArraySizeField]` 标注，
+    不会被 vendor 自愈，猜字节布局的风险比克隆真实样本大得多。新增位置按目录里的规范顺序
+    插入，不是简单追加到末尾。
+    """
+
+    bl_idname = "efx_re.ptbehavior_property_add"
+    bl_label = "Add Behavior Property"
+    bl_description = "从候选目录里挑一个属性，克隆语料里真实出现过的实例加进覆盖表"
+    bl_options = {"REGISTER", "UNDO"}
+    bl_property = "candidate"
+
+    candidate: EnumProperty(
+        name="Property",
+        description="要新增的属性",
+        items=_ptbehavior_candidate_enum_items,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        node, _ = resolve_ptbehavior_properties(getattr(context, "object", None))
+        return node is not None
+
+    def invoke(self, context, event):
+        # 一个类可能有几十条候选（语料里见过 100 条），照抄 mdf_property_add 的模糊搜索弹窗。
+        context.window_manager.invoke_search_popup(self)
+        return {"RUNNING_MODAL"}
+
+    def execute(self, context):
+        obj = context.object
+        properties_node, behavior_string = resolve_ptbehavior_properties(obj)
+        if properties_node is None:
+            self.report({"ERROR"}, "当前 attribute 没有 PtBehavior 候选目录")
+            return {"CANCELLED"}
+        if not self.candidate:
+            self.report({"ERROR"}, "没有选中任何属性")
+            return {"CANCELLED"}
+
+        catalog_entries = ptbehavior_catalog.candidates(behavior_string)
+        entry = next((e for e in catalog_entries if e["name"] == self.candidate), None)
+        if entry is None:
+            self.report({"ERROR"}, f"候选目录里没有 '{self.candidate}'")
+            return {"CANCELLED"}
+        if self.candidate in _present_ptbehavior_names(properties_node):
+            self.report({"ERROR"}, f"'{self.candidate}' 已经在覆盖表里了")
+            return {"CANCELLED"}
+
+        # 按候选目录里的规范顺序算插入位置：插到第一个规范序号比新条目大的现有条目之前
+        # （逻辑对齐姊妹项目 EFX-Editor `ptbehavior/edit.py::add_override()` 的插入算法）。
+        order = [e["name"] for e in catalog_entries]
+        new_rank = order.index(self.candidate)
+        insert_pos = len(properties_node.children)
+        for i, child in enumerate(properties_node.children):
+            existing_name = next(
+                (sub.string_value for sub in child.children if sub.key == "behaviorProperty"),
+                None)
+            existing_rank = order.index(existing_name) if existing_name in order else len(order)
+            if existing_rank > new_rank:
+                insert_pos = i
+                break
+
+        child = properties_node.children.add()
+        model.populate_node(child, str(len(properties_node.children) - 1), entry["template"])
+        last_index = len(properties_node.children) - 1
+        if insert_pos != last_index:
+            properties_node.children.move(last_index, insert_pos)
+        _renumber_array_keys(properties_node)
+        properties_node.ui_expand = True
+
+        self.report({"INFO"}, f"已新增行为属性 '{self.candidate}'")
+        return {"FINISHED"}
+
+
+class EFX_RE_OT_ptbehavior_property_remove(Operator):
+    """从 PtBehavior 的 `properties` 覆盖表里删掉一条"""
+
+    bl_idname = "efx_re.ptbehavior_property_remove"
+    bl_label = "Remove Behavior Property"
+    bl_description = "把这一条属性从覆盖表里删掉"
+    bl_options = {"REGISTER", "UNDO"}
+
+    index: IntProperty(name="Index", default=-1, options={"HIDDEN"})
+
+    @classmethod
+    def poll(cls, context):
+        node, _ = resolve_ptbehavior_properties(getattr(context, "object", None))
+        return node is not None and len(node.children) > 0
+
+    def execute(self, context):
+        properties_node, _ = resolve_ptbehavior_properties(context.object)
+        if properties_node is None:
+            self.report({"ERROR"}, "当前 attribute 没有 PtBehavior 候选目录")
+            return {"CANCELLED"}
+        if not (0 <= self.index < len(properties_node.children)):
+            self.report({"ERROR"}, f"下标越界：{self.index}")
+            return {"CANCELLED"}
+
+        properties_node.children.remove(self.index)
+        _renumber_array_keys(properties_node)
+        self.report({"INFO"}, "已删除一条行为属性")
+        return {"FINISHED"}
+
+
+# EnumProperty 的 items 回调返回的元组必须由 Python 侧持有（同前面几处一样的坑）。
+_behavior_string_items_cache: dict = {}
+
+
+def _known_behavior_string_enum_items(self, context):
+    items = []
+    for name, has_catalog_entry in ptbehavior_catalog.known_behavior_strings():
+        label = name if has_catalog_entry else f"{name}（无候选目录）"
+        items.append((name, label, name))
+    if not items:
+        items = [("", "（语料里还没有已知的 behaviorString）", "")]
+    _behavior_string_items_cache["items"] = items
+    return items
+
+
+class EFX_RE_OT_ptbehavior_pick_behavior_string(Operator):
+    """从全语料扫描见过的 behaviorString 列表里模糊搜索一个，写进当前 attribute。
+
+    照抄 `EFX_RE_OT_attribute_add_search` 的 `invoke_search_popup` 用法。这只是辅助输入
+    ——字段本身仍然是普通文本框，可以手填（游戏更新后新出现的类名、语料没覆盖到的冷门类，
+    没道理被这张表锁死），这个算子只是让常见情况不用手打、不会打错字。标了"无候选目录"的
+    条目选中之后一样能设上，只是设完不会出现"从候选目录添加"的增删入口（继续走通用树透传）。
+    """
+
+    bl_idname = "efx_re.ptbehavior_pick_behavior_string"
+    bl_label = "Pick Behavior String"
+    bl_description = "从语料里见过的 behaviorString 列表模糊搜索一个填入（仍可手改）"
+    bl_options = {"REGISTER", "UNDO"}
+    bl_property = "behavior_string"
+
+    behavior_string: EnumProperty(
+        name="Behavior String",
+        description="要写入的 behaviorString",
+        items=_known_behavior_string_enum_items,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return resolve_behavior_string_node(getattr(context, "object", None)) is not None
+
+    def invoke(self, context, event):
+        context.window_manager.invoke_search_popup(self)
+        return {"RUNNING_MODAL"}
+
+    def execute(self, context):
+        node = resolve_behavior_string_node(context.object)
+        if node is None:
+            self.report({"ERROR"}, "当前 attribute 不是 PtBehavior")
+            return {"CANCELLED"}
+        if not self.behavior_string:
+            self.report({"ERROR"}, "没有选中任何值")
+            return {"CANCELLED"}
+        node.string_value = self.behavior_string
+        self.report({"INFO"}, f"behaviorString 已设为 '{self.behavior_string}'")
+        return {"FINISHED"}
+
+
 class EFX_RE_OT_delete(Operator):
     """删除当前选中的 Entry / Action / Attribute（连同它的子对象）"""
 
@@ -704,6 +940,9 @@ _CLASSES = (
     EFX_RE_OT_mdf_reference_clear,
     EFX_RE_OT_mdf_property_add,
     EFX_RE_OT_mdf_property_remove,
+    EFX_RE_OT_ptbehavior_property_add,
+    EFX_RE_OT_ptbehavior_property_remove,
+    EFX_RE_OT_ptbehavior_pick_behavior_string,
     EFX_RE_OT_delete,
 )
 

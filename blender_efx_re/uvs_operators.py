@@ -75,7 +75,7 @@ def _ensure_uvs_version_suffix(filepath: str, data: dict) -> tuple[str, str | No
 
 
 class EFX_UVS_OT_new(Operator):
-    """新建一个空白 EFX_UVS 集合，不经过 EfxBridge/文件系统。
+    """新建一个空白 UVS Object，不经过 EfxBridge/文件系统。
 
     `uvs_io.build_uvs_root()` 本来就是"按 dict 里有什么建什么"（`textures`/`sequences` 都是
     `data.get(key, []) or []`），传一个空 dict 就会退化成"贴图表和 sequence 表都是空的"——不需要
@@ -99,19 +99,20 @@ class EFX_UVS_OT_new(Operator):
 
     def execute(self, context):
         name = self.root_name.strip() or "NewUVS"
-        root_col = uvs_io.build_uvs_root({}, context.scene.collection, name)
+        wrapper = uvs_io.new_uvs_collection(context.scene.collection, name)
+        root_obj = uvs_io.build_uvs_root({}, wrapper, name)
         # 同 EFX_RE_OT_new：没有 Export 该沿用的原始文件名，留空给 ExportHelper 自己兜底。
-        context.scene.efx_uvs_active_root = root_col
-        self.report({"INFO"}, f"已新建空白 UVS '{root_col.name}'")
+        context.scene.efx_uvs_active_root = root_obj
+        self.report({"INFO"}, f"已新建空白 UVS '{root_obj.name}'")
         return {"FINISHED"}
 
 
 class EFX_UVS_OT_import(Operator, ImportHelper):
-    """通过 EfxBridge 读取一个或多个 .uvs 文件，建成 EFX_UVS 集合。"""
+    """通过 EfxBridge 读取一个或多个 .uvs 文件，建成 UVS Object。"""
 
     bl_idname = "efx_uvs.import"
     bl_label = "Import UVS"
-    bl_description = "读取一个或多个 .uvs 文件，在场景里建成 EFX_UVS 集合"
+    bl_description = "读取一个或多个 .uvs 文件，在场景里建成 UVS 对象"
     bl_options = {"REGISTER", "UNDO"}
 
     filename_ext = ".uvs"
@@ -141,7 +142,10 @@ class EFX_UVS_OT_import(Operator, ImportHelper):
             self.report({"ERROR"}, "没有选中任何文件")
             return {"CANCELLED"}
 
-        imported, failed = [], []
+        # 两段式：先把能读出来的 dump 都收集齐（这一步只读文件、不建任何数据），再按"读出来
+        # 几个"决定建一个专属包裹集合还是一个共享包裹集合——单个/批量的判据是"这次导入最终
+        # 成功了几个"，不是"选了几个文件"（比如两个文件只有一个是合法 MHWilds UVS）。
+        loaded, failed = [], []
         for path in paths:
             try:
                 data = bridge.dump_uvs(path)
@@ -159,21 +163,29 @@ class EFX_UVS_OT_import(Operator, ImportHelper):
                 ))
                 continue
 
-            name = bpy.path.basename(path)
-            root_col = uvs_io.build_uvs_root(data, context.scene.collection, name)
-            root_col.efx_uvs_source_filename = name
-            context.scene.efx_uvs_active_root = root_col
-            imported.append((root_col, data))
+            loaded.append((bpy.path.basename(path), data))
 
-        level = {"ERROR"} if not imported else {"WARNING"}
+        level = {"ERROR"} if not loaded else {"WARNING"}
         for basename, first_line in failed:
             self.report(level, f"EfxBridge uvsdump 失败，拒绝导入 '{basename}'：{first_line}")
-        if not imported:
+        if not loaded:
             return {"CANCELLED"}
 
+        # 单个：一个包裹集合按文件名命名，同旧版行为。批量：全部 Object 共享一个包裹集合，
+        # 不是各建各的（见 uvs_io.new_uvs_collection() 的说明）。
+        wrapper_name = loaded[0][0] if len(loaded) == 1 else "UVS Import"
+        wrapper = uvs_io.new_uvs_collection(context.scene.collection, wrapper_name)
+
+        imported = []
+        for name, data in loaded:
+            root_obj = uvs_io.build_uvs_root(data, wrapper, name)
+            root_obj.efx_uvs_source_filename = name
+            context.scene.efx_uvs_active_root = root_obj
+            imported.append((root_obj, data))
+
         if len(imported) == 1:
-            root_col, data = imported[0]
-            self.report({"INFO"}, f"已导入 '{root_col.name}'：{_summarize(data)}")
+            root_obj, data = imported[0]
+            self.report({"INFO"}, f"已导入 '{root_obj.name}'：{_summarize(data)}")
         else:
             self.report({"INFO"}, f"已导入 {len(imported)} 个 UVS 文件（{len(failed)} 个失败）")
         return {"FINISHED"}
@@ -198,11 +210,11 @@ class EFX_UVS_FH_import(bpy.types.FileHandler):
 
 
 class EFX_UVS_OT_export(Operator, ExportHelper):
-    """从当前 EFX_UVS 集合导出，通过 EfxBridge 写回 .uvs。"""
+    """从当前 UVS Object 导出，通过 EfxBridge 写回 .uvs。"""
 
     bl_idname = "efx_uvs.export"
     bl_label = "Export UVS"
-    bl_description = "把当前 EFX_UVS 集合写回 .uvs 文件"
+    bl_description = "把当前 UVS 对象写回 .uvs 文件"
     bl_options = {"REGISTER"}
 
     filename_ext = ".uvs"
@@ -214,18 +226,18 @@ class EFX_UVS_OT_export(Operator, ExportHelper):
         return uvs_io.resolve_uvs_root(context) is not None
 
     def invoke(self, context, event):
-        root_col = uvs_io.resolve_uvs_root(context)
-        if root_col is not None and not self.filepath and root_col.efx_uvs_source_filename:
-            self.filepath = root_col.efx_uvs_source_filename
+        root_obj = uvs_io.resolve_uvs_root(context)
+        if root_obj is not None and not self.filepath and root_obj.efx_uvs_source_filename:
+            self.filepath = root_obj.efx_uvs_source_filename
         return super().invoke(context, event)
 
     def execute(self, context):
-        root_col = uvs_io.resolve_uvs_root(context)
-        if root_col is None:
-            self.report({"ERROR"}, "没有可导出的 UVS——选中它所在的集合，或在面板的「当前 UVS」里指定一个")
+        root_obj = uvs_io.resolve_uvs_root(context)
+        if root_obj is None:
+            self.report({"ERROR"}, "没有可导出的 UVS——选中它（或它所在的集合），或在面板的「当前 UVS」里指定一个")
             return {"CANCELLED"}
 
-        data = uvs_io.export_uvs_root(root_col)
+        data = uvs_io.export_uvs_root(root_obj)
         out_path, notice, fatal = _ensure_uvs_version_suffix(self.filepath, data)
         if fatal:
             self.report({"ERROR"}, notice)
@@ -239,7 +251,7 @@ class EFX_UVS_OT_export(Operator, ExportHelper):
 
         if notice is not None:
             self.report({"WARNING"}, notice)
-        self.report({"INFO"}, f"已从 '{root_col.name}' 导出到 {out_path}")
+        self.report({"INFO"}, f"已从 '{root_obj.name}' 导出到 {out_path}")
         return {"FINISHED"}
 
 
@@ -253,15 +265,15 @@ class EFX_UVS_OT_texture_add(Operator):
         return uvs_io.resolve_uvs_root(context) is not None
 
     def execute(self, context):
-        root_col = uvs_io.resolve_uvs_root(context)
-        item = root_col.efx_uvs_textures.add()
+        root_obj = uvs_io.resolve_uvs_root(context)
+        item = root_obj.efx_uvs_textures.add()
         item.path = ""
-        index = len(root_col.efx_uvs_textures) - 1
+        index = len(root_obj.efx_uvs_textures) - 1
         # 新建贴图默认按"最常见的样子"填：state_holder 等于它自己的下标（91% 的官方样本是这样，
         # 见 PLAN.md），tex_handle1/2/3 已经在 PropertyGroup 层面默认成 "-1" 了（485/486 的
         # 官方样本是这个值），这里不用重复设置。
         item.state_holder = str(index)
-        root_col.efx_uvs_textures_active_index = index
+        root_obj.efx_uvs_textures_active_index = index
         return {"FINISHED"}
 
 
@@ -272,14 +284,14 @@ class EFX_UVS_OT_texture_remove(Operator):
 
     @classmethod
     def poll(cls, context):
-        root_col = uvs_io.resolve_uvs_root(context)
-        return root_col is not None and len(root_col.efx_uvs_textures) > 0
+        root_obj = uvs_io.resolve_uvs_root(context)
+        return root_obj is not None and len(root_obj.efx_uvs_textures) > 0
 
     def execute(self, context):
-        root_col = uvs_io.resolve_uvs_root(context)
-        index = root_col.efx_uvs_textures_active_index
-        root_col.efx_uvs_textures.remove(index)
-        root_col.efx_uvs_textures_active_index = min(index, len(root_col.efx_uvs_textures) - 1)
+        root_obj = uvs_io.resolve_uvs_root(context)
+        index = root_obj.efx_uvs_textures_active_index
+        root_obj.efx_uvs_textures.remove(index)
+        root_obj.efx_uvs_textures_active_index = min(index, len(root_obj.efx_uvs_textures) - 1)
         return {"FINISHED"}
 
 
@@ -293,10 +305,10 @@ class EFX_UVS_OT_sequence_add(Operator):
         return uvs_io.resolve_uvs_root(context) is not None
 
     def execute(self, context):
-        root_col = uvs_io.resolve_uvs_root(context)
-        item = root_col.efx_uvs_sequences.add()
-        item.name = f"Sequence {len(root_col.efx_uvs_sequences) - 1}"
-        root_col.efx_uvs_sequences_active_index = len(root_col.efx_uvs_sequences) - 1
+        root_obj = uvs_io.resolve_uvs_root(context)
+        item = root_obj.efx_uvs_sequences.add()
+        item.name = f"Sequence {len(root_obj.efx_uvs_sequences) - 1}"
+        root_obj.efx_uvs_sequences_active_index = len(root_obj.efx_uvs_sequences) - 1
         return {"FINISHED"}
 
 
@@ -307,14 +319,14 @@ class EFX_UVS_OT_sequence_remove(Operator):
 
     @classmethod
     def poll(cls, context):
-        root_col = uvs_io.resolve_uvs_root(context)
-        return root_col is not None and len(root_col.efx_uvs_sequences) > 0
+        root_obj = uvs_io.resolve_uvs_root(context)
+        return root_obj is not None and len(root_obj.efx_uvs_sequences) > 0
 
     def execute(self, context):
-        root_col = uvs_io.resolve_uvs_root(context)
-        index = root_col.efx_uvs_sequences_active_index
-        root_col.efx_uvs_sequences.remove(index)
-        root_col.efx_uvs_sequences_active_index = min(index, len(root_col.efx_uvs_sequences) - 1)
+        root_obj = uvs_io.resolve_uvs_root(context)
+        index = root_obj.efx_uvs_sequences_active_index
+        root_obj.efx_uvs_sequences.remove(index)
+        root_obj.efx_uvs_sequences_active_index = min(index, len(root_obj.efx_uvs_sequences) - 1)
         return {"FINISHED"}
 
 
@@ -550,23 +562,23 @@ class EFX_UVS_OT_gif_to_sequence(Operator, ImportHelper):
             self.report({"ERROR"}, f"保存 PNG 失败：{ex}")
             return {"CANCELLED"}
 
-        root_col = uvs_io.resolve_uvs_root(context)
+        root_obj = uvs_io.resolve_uvs_root(context)
 
-        tex_item = root_col.efx_uvs_textures.add()
+        tex_item = root_obj.efx_uvs_textures.add()
         tex_item.path = out_path
-        tex_index = len(root_col.efx_uvs_textures) - 1
+        tex_index = len(root_obj.efx_uvs_textures) - 1
         tex_item.state_holder = str(tex_index)
-        root_col.efx_uvs_textures_active_index = tex_index
+        root_obj.efx_uvs_textures_active_index = tex_index
 
-        seq_item = root_col.efx_uvs_sequences.add()
-        seq_index = len(root_col.efx_uvs_sequences) - 1
+        seq_item = root_obj.efx_uvs_sequences.add()
+        seq_index = len(root_obj.efx_uvs_sequences) - 1
         seq_item.name = f"Sequence {seq_index}"
         for left, top, right, bottom in _gif_frame_pattern_rects(n, cols, fw, fh, canvas_w, canvas_h):
             pat_item = seq_item.patterns.add()
             pat_item.left, pat_item.top, pat_item.right, pat_item.bottom = left, top, right, bottom
             pat_item.texture_index = tex_index
         seq_item.patterns_active_index = 0
-        root_col.efx_uvs_sequences_active_index = seq_index
+        root_obj.efx_uvs_sequences_active_index = seq_index
 
         self.report(
             {"INFO"},

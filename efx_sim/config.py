@@ -41,13 +41,6 @@ UNKNOWNS = {
         "（标量，语义未知）。",
         ("interval_frame", "particle_interval"), "interval_frame",
     ),
-    "es3d_range_mode": (
-        "`EmitterShape3D.RangeX/Y/Z` 的 `{s,r}` 怎么变成生成区间。"
-        "'static_random'=s + 抽(0,r)；'min_max'=在 [s, r] 里均匀取。"
-        "两种读法在 s、r 同号且 r 是厚度时数值接近，但语料里 r 会出现负值，"
-        "min_max 对那批样本更自洽。",
-        ("static_random", "min_max"), "static_random",
-    ),
     "rot_order_applied": (
         "旋转顺序串（如 'ZXY'）里是先写的先作用于向量，还是相反。上游同样未实测。",
         ("forward", "reverse"), "forward",
@@ -74,6 +67,31 @@ UNKNOWNS = {
         "逐帧乘数，恒按帧。",
         ("per_second", "per_frame"), "per_second",
     ),
+    "expr_timer_unit": (
+        "Expression 公式里 `TIMER` 变量的时间基：'frames'=自 emitter 开始播放以来经过的帧数"
+        "（默认，已实机确认）；'seconds'=帧数/fps，对拍用。",
+        ("frames", "seconds"), "frames",
+    ),
+    "expr_clamp_mode": (
+        "Expression 公式里 `Clamp(value, hi, lo)` 怎么读："
+        "'remap_smoothstep'=把 value 从 [lo, hi] 重映射到 [0, 1]、两端钳、"
+        "**中段带 smoothstep 缓动**（默认，已实机确认：拿不经过任何待测函数的线性基准 "
+        "`TIMER/100` 对拍，`Clamp` 的残差是 S 形摆动，再和 smoothstep 参考曲线对拍则死平）；"
+        "'remap_saturate_both'=同样两端钳但中段**线性**（旧默认，已被实机推翻，留作对拍）；"
+        "'remap_saturate_low'=只钳下界（更旧的默认，上界不钳也已被推翻）；"
+        "'remap_unclamped'=两端都不钳；'bounds_clamp'=最早的『夹到 [lo, hi] 之间』读法。"
+        "⚠ 这个开关**不影响 `Func21`**：它的重映射是线性的，两个函数的差别就是这层缓动。",
+        ("remap_smoothstep", "remap_saturate_both", "remap_saturate_low",
+         "remap_unclamped", "bounds_clamp"),
+        "remap_smoothstep",
+    ),
+    "expr_unknown_func_policy": (
+        "碰到语义未确认的函数怎么办。'identity'=原样透传第一个参数（默认，比返回 0 更"
+        "不容易把下游的插值带偏）。⚠ **现在没有这样的函数了**——12 个 `Unary*` 和 "
+        "`Func18`~`Func21` 已经全部实机测出语义，这个开关留给 vendor 升级后冒出来的新"
+        "函数（或给枚举补上 3/13/14 之后）。",
+        ("identity",), "identity",
+    ),
 }
 
 #: 已定、不再是待办，但保留开关的项（降级区，别再当待办看）
@@ -89,8 +107,9 @@ class SimConfig(object):
     __slots__ = (
         "seed", "fps",
         "random_dist", "life_model", "keep_hold_frame", "spawn_interval_source",
-        "es3d_range_mode", "rot_order_applied", "velocity_unit",
+        "rot_order_applied", "velocity_unit",
         "uvs_speed_unit", "uvs_playback", "uvs_once_span",
+        "expr_timer_unit", "expr_unknown_func_policy", "expr_clamp_mode",
         "disabled", "order_override", "strict",
         "max_particles", "max_frames",
         "stage_order", "render_stage_order",
@@ -109,12 +128,14 @@ class SimConfig(object):
         self.life_model = "sum"
         self.keep_hold_frame = "ignore"
         self.spawn_interval_source = "interval_frame"
-        self.es3d_range_mode = "static_random"
         self.rot_order_applied = "forward"
         self.velocity_unit = "per_second"
         self.uvs_speed_unit = "per_frame"
         self.uvs_playback = "flags"
         self.uvs_once_span = "to_end"
+        self.expr_timer_unit = "frames"
+        self.expr_unknown_func_policy = "identity"
+        self.expr_clamp_mode = "remap_smoothstep"
 
         # -- 调试 / 扩展点 ---------------------------------------------------
         #: 属性短类型名集合：强制当作"未模拟"（UI 上逐个勾掉做对照用）

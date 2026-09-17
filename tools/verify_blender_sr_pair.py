@@ -27,6 +27,7 @@ tools/verify_blender_sr_pair.py —— `{s,r}` 字段的"主值是哪个子节�
 3. 扫过的每个 `{s,r}` 节点都能被 `sr_children_ordered()` 定出主值，且主值就是该结构体的
    二进制首字段（按子节点 `data_type` 判类型）。
 4. 四类语义谓词互斥：一个节点不会同时被判成 static/random 和 min/max。
+5. `PartsStartNo`（`TypeMesh`/`TypeGpuMesh`）判成 min/max 而不是 static/random，且 Max > Min。
 """
 from __future__ import annotations
 
@@ -56,13 +57,21 @@ def _sample_paths() -> list[Path]:
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     if "--sample" in argv:
         return [Path(argv[argv.index("--sample") + 1])]
+    # 解包根换过一次（`MHWILDS_EXTRACT/EFX/natives/STM/...` -> `.../natives/STM/...`），两条都试。
     roots = [
+        Path(r"E:\Program\Steam\steamapps\common\MonsterHunterWilds\MHWILDS_EXTRACT"
+              r"\natives\STM\Art\VFX"),
         Path(r"E:\Program\Steam\steamapps\common\MonsterHunterWilds\MHWILDS_EXTRACT"
               r"\EFX\natives\STM\Art\VFX"),
     ]
     for root in roots:
         if root.is_dir():
             found = sorted(root.rglob("*.efx.5571972"))[:3]
+            # 额外钉一个带 TypeMeshV2 的文件：`PartsStartNo` 只在 mesh 类 attribute 上出现，
+            # 前 3 个文件里不一定有，少了它下面那条断言就等于没测。
+            mesh_sample = root / "EffectEditor" / "Weapon" / "it13" / "11_it13_400.efx.5571972"
+            if mesh_sample.is_file() and mesh_sample not in found:
+                found.append(mesh_sample)
             if found:
                 return found
     return []
@@ -82,6 +91,7 @@ def main() -> int:
         return 1
 
     seen_pair_min_max = 0
+    seen_parts_start = 0
     seen_rangei = 0
     seen_range = 0
     checked_nodes = 0
@@ -151,6 +161,22 @@ def main() -> int:
                 if short == "Velocity3D" and node.key == "SpeedCoef":
                     _check(primary.key == "s", "Velocity3D.SpeedCoef（Range）主值是 s")
 
+                # 5. `PartsStartNo` 是 min/max，**不是** static/random。全语料 10886 个实例
+                #    里 s<=r 和 s==0 各 0 例（后者在 static/random 语义下本该是多数），
+                #    见 model._SR_MIN_MAX_FIELD_NAMES 上面的说明。判错不会报任何错，
+                #    只会让面板把两列标反、预览把区间读成"静态值+随机量"。
+                if node.key == "PartsStartNo":
+                    seen_parts_start += 1
+                    _check(model.is_sr_min_max_node(node),
+                           f"{short}.PartsStartNo 判成 min/max")
+                    _check(not model.is_static_random_node(node, attr_type),
+                           f"{short}.PartsStartNo 没被判成 static/random")
+                    _check(primary.key == "r",
+                           f"{short}.PartsStartNo（RangeI）的 Min 是 r")
+                    values = (model.node_to_value(primary), model.node_to_value(secondary))
+                    _check(values[1] > values[0],
+                           f"{short}.PartsStartNo 的 Max > Min（实得 {values}）")
+
     print()
     print(f"=== 扫过 {checked_nodes} 个 {{s,r}} 节点"
           f"（RangeI {seen_rangei} / Range {seen_range}），"
@@ -160,6 +186,7 @@ def main() -> int:
     _check(seen_rangei > 0, "样本里出现过 RangeI 字段")
     _check(seen_range > 0, "样本里出现过 Range 字段")
     _check(seen_pair_min_max > 0, "样本里出现过 Life 的 (min,max) 字段")
+    _check(seen_parts_start > 0, "样本里出现过 PartsStartNo（不然那几条断言等于没测）")
 
     if _FAILED:
         print(f"\n===== {_FAILED} FAILED")
@@ -169,4 +196,14 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # ⚠ 必须自己兜住异常再 sys.exit(1)：`blender --background --python x.py` 在脚本抛出
+    # **未捕获异常**时**退出码仍然是 0**（实测），`sys.exit(main())` 那行根本轮不到执行——
+    # 净效果是"门禁崩在第一行"和"门禁全过"对调用方长得一模一样，正是静默全绿。
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except BaseException:
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

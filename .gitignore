@@ -36,3 +36,4 @@ docs/
 # 这条只匹配 tools/ 直属子文件，不会波及 tools/EfxBridge/ 或 tools/vendor-patches/ 下的内容
 tools/*.json
 tools/*.csv
+mhws_efx_editor-*.zip

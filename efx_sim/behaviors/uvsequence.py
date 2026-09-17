@@ -57,7 +57,6 @@ efx_sim/behaviors/uvsequence.py —— `UVSequence`（序列帧）
 import math
 
 from ..registry import Behavior, register
-from ..rng import roll_uniform_int
 from ..stages import RENDER_MOD
 
 TYPE_NAME = "UVSequence"
@@ -77,17 +76,16 @@ DIR_RANDOM = 2
 _UNSIMULATED_BITS = 0b1111111100
 
 
-def _start_frame(lo, hi, rng):
+def _start_frame(f, rng):
     """`PatternNo` 的 `[Min, Max)` -> 这个粒子的起始帧。
 
-    左闭右开：`Max` 是开区间上界，实际能取到的最大值是 `Max - 1`。全语料 `Max >= 1`
-    恒成立，但语料外的文件可能给出 `Max <= Min`，那就当成固定起手。
+    左闭右开那一下**不在这里做**：走 `FieldView.roll_sr_min_max_int()`，上界开闭由
+    `shapes.HALF_OPEN_MAX_FIELDS` 说了算。早先这里是一句光秃秃的 `hi - 1`，等于把
+    "`PatternNo` 是半开的"这条知识埋在一个 behavior 的私有函数里——而 `PartsStartNo`
+    是一模一样的约定，下一个实现它的人从 `sr_min_max()` 拿到的是裸 `(min, max)`，
+    不会知道要减一。
     """
-    lo = int(lo)
-    hi = int(hi) - 1
-    if hi <= lo:
-        return lo
-    return roll_uniform_int(lo, hi, rng)
+    return f.roll_sr_min_max_int("PatternNo", rng)
 
 
 @register(TYPE_NAME)
@@ -115,7 +113,6 @@ class UVSequence(Behavior):
         if f is None:
             return
         seq_index, _companion = f.sr_index("SequenceNo")
-        lo, hi = f.sr_min_max("PatternNo")
         speed_lo, speed_hi = f.sr_min_max("PlaySpeed")
         flags = int(f.i("Flags") or 0)
 
@@ -129,7 +126,7 @@ class UVSequence(Behavior):
 
         p.rolled["uvs_seq"] = int(seq_index)
         # 起始帧在出生时抽定，播放期间不重抽
-        p.rolled["uvs_start"] = _start_frame(lo, hi, rng)
+        p.rolled["uvs_start"] = _start_frame(f, rng)
         p.rolled["uvs_mode"] = flags & 0x3
         p.rolled["uvs_sign"] = sign
         p.rolled["uvs_speed"] = rng.uniform(min(speed_lo, speed_hi),
@@ -155,6 +152,19 @@ class UVSequence(Behavior):
             return item
         res = em.resources
         if res.empty:
+            return item
+        if item.kind not in ("BILLBOARD", "PLANE"):
+            # `item.uv_rect`/`item.tex_key` 只有 `_collect()` 里画单张四边形贴图的那条路
+            # （BILLBOARD/PLANE，走 `_quad_uvs()`）会读。`RIBBON`（`TypeRibbonLength`/
+            # `TypeRibbonFollow`/`TypeGpuRibbonLength`，P0 明确"只画等宽等色的折线"，
+            # `_collect_ribbon()` 恒写 `uv=(0,0)`）和 `MESH`（有自己的逐三角形 UV，见
+            # `_collect_mesh()`）硬套上这里的贴图，会把整条帯/整个网格按"UV 恒为
+            # (0,0)"采样成同一个像素——原来就是这么把 `TypeRibbonFollow` 悄悄画没的：
+            # 采样点正好落在贴图的透明角上，几何/颜色都对，就是看不见。`POINT`（渲染体
+            # 没实现时的退化点）本来就恒定按纯色画（`_collect()` 里 `key = None`），
+            # 贴不贴都没区别，一并跳过。
+            em.note("UVSequence 只对单张四边形贴图的渲染体生效，%s 这种渲染体不套用序列帧"
+                    "贴图（避免用固定 UV (0,0) 把整个几何体采样成同一个像素）" % item.kind)
             return item
 
         frames = res.frames(p.rolled.get("uvs_seq", 0))

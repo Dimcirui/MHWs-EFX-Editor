@@ -147,7 +147,54 @@ _STRINGS: dict[str, dict[str, str]] = {
         "EN": "Max is less than Min — this crashes the game",
         "ZH": "Max 小于 Min ——这个组合会让游戏崩溃",
     },
+    "attribute.half_open_empty_warning": {
+        "EN": "Max is exclusive — Max == Min selects nothing, use Min + 1",
+        "ZH": "Max 取不到——Max == Min 等于一个都不选，要填 Min + 1",
+    },
     "attribute.show_all_fields": {"EN": "Show all fields", "ZH": "显示全部字段"},
+    "attribute.bit_field":    {"EN": "Field",              "ZH": "字段"},
+    "attribute.no_free_bits": {"EN": "No free bits left",  "ZH": "没有空闲的 bit 了"},
+
+    # Expression 公式的结构化编辑（blender_efx_re/expr_edit.py）
+    "expr.structure":         {"EN": "Structure",           "ZH": "结构"},
+    "expr.raw_text":          {"EN": "Formula text",        "ZH": "公式文本"},
+    "expr.reparse":           {"EN": "Reparse from text",   "ZH": "按文本重新解析"},
+    "expr.no_rows":           {"EN": "No structure view for this formula yet.",
+                               "ZH": "这条公式还没有结构视图。"},
+    "expr.second_branch":     {"EN": "Second root value (kept as-is, not editable here)",
+                               "ZH": "第二根值（原样保留，这里不编辑）"},
+    # 槽位设计的文案。措辞演进：「换成/包一层/提一层」-> 「替换/内嵌/删除」->
+    # 现在只剩「槽位类型」这一个入口（选常量/变量/表达式）+ 该类型的具体值。
+    # 「内嵌」不再是独立操作——把槽位类型切成表达式时原内容自动成为第一个参数。
+    # 「删除这一层」保留：它和"切成变量/常量"不是一回事（后者丢掉整棵子树）。
+    "expr.slot.kind":         {"EN": "Slot",                "ZH": "槽位类型"},
+    "expr.slot.value":        {"EN": "Value",               "ZH": "常量值"},
+    "expr.slot.var":          {"EN": "Pick variable",       "ZH": "挑一个变量"},
+    "expr.slot.func":         {"EN": "Function",            "ZH": "函数类型"},
+    "expr.slot.delete_layer": {"EN": "Drop this layer",     "ZH": "删除这一层"},
+    "expr.kind.const":        {"EN": "Constant",            "ZH": "常量"},
+    "expr.kind.var":          {"EN": "Variable",            "ZH": "变量"},
+    "expr.kind.expr":         {"EN": "Expression",          "ZH": "表达式"},
+    "expr.wrap.negate":       {"EN": "Negate",              "ZH": "取负"},
+    "expr.op.desc":           {"EN": "Arithmetic operator", "ZH": "四则运算"},
+    # 三档的措辞一律写**未知状态本身**，不写验证状态（CLAUDE.md #25：不写"尚未实机确认"
+    # 这类出处/过程；出处在 efx_sim/expr.py 的模块 docstring 里）
+    "expr.conf.confirmed":    {"EN": "Known meaning",       "ZH": "语义明确"},
+    "expr.conf.corpus":       {"EN": "Meaning inferred",    "ZH": "语义为推断"},
+    "expr.conf.undecided":    {"EN": "Reading undecided",   "ZH": "读法未定"},
+    "expr.conf.unknown":      {"EN": "Meaning unknown",     "ZH": "语义未知"},
+    "expr.preview":           {"EN": "Value at current frame", "ZH": "当前帧的值"},
+    "expr.preview.failed":    {"EN": "cannot evaluate",     "ZH": "算不出来"},
+    "expr.preview.frames":    {"EN": "Frames",              "ZH": "采样帧数"},
+    "expr.hud.toggle":        {"EN": "Curve in viewport",   "ZH": "视口显示曲线"},
+    "expr.hud.gaps":          {"EN": "%d frames cannot be evaluated (line is broken there)",
+                               "ZH": "%d 帧算不出来（曲线在那里断开）"},
+    "expr.var.file_params":   {"EN": "This file's parameters", "ZH": "本文件的具名参数"},
+    "expr.var.builtins":      {"EN": "Built-in variables",  "ZH": "内置变量"},
+    "expr.note.unknown_func": {
+        "EN": "This formula uses functions whose meaning is unknown.",
+        "ZH": "这条公式用到了语义未知的函数。",
+    },
 
     # Add（新增结构）
     "add.action":             {"EN": "Add Action",          "ZH": "新增 Action"},
@@ -197,6 +244,9 @@ _STRINGS: dict[str, dict[str, str]] = {
     "mdf.mismatch_count":     {"EN": "{0} not in the reference material",
                                "ZH": "{0} 条和参考材质对不上"},
 
+    # PtBehavior 属性候选目录
+    "ptbehavior.add_property": {"EN": "Add from Catalog",  "ZH": "从候选目录添加"},
+
     # 重命名
     "name.label":             {"EN": "Name",                "ZH": "名称"},
     "name.hint":              {"EN": "Written to the EFX string table; nameHash follows automatically.",
@@ -214,6 +264,18 @@ _STRINGS: dict[str, dict[str, str]] = {
     "validate.ok":            {"EN": "No problems found.",  "ZH": "没有发现问题。"},
     "validate.no_root":       {"EN": "No active EFX. Import a file or pick one in Active EFX.",
                                "ZH": "没有当前 EFX——先导入一个文件，或在「当前 EFX」里选一个。"},
+
+    # 插件首选项（Edit > Preferences > Add-ons）
+    "prefs.bypass_bone": {
+        "EN": "Bypass bone binding alignment check",
+        "ZH": "绕过骨骼绑定索引对齐校验",
+    },
+    "prefs.bypass_bone_warn": {
+        "EN": "Bypassing lets files with a mismatched bone binding table be imported and "
+              "exported. Their bindings may already be shifted, and export silently drops slots.",
+        "ZH": "绕过之后，骨骼绑定索引对不上的文件也能导入和导出。这类文件的绑定可能已经错位，"
+              "导出还会静默丢掉绑定槽位。",
+    },
 
     # MHWilds UVS 标签页
     "uvs.new":                 {"EN": "New UVS",             "ZH": "新建 UVS"},

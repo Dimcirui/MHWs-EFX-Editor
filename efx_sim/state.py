@@ -246,11 +246,11 @@ class RenderItem(object):
     """一个待绘制单元。RENDER_BODY 阶段产出，RENDER_MOD 阶段就地修改。"""
 
     __slots__ = ("kind", "pos", "size", "rot", "color", "uv_rect", "uv_corners",
-                 "blend", "tex_key", "extra", "axis_u", "axis_v")
+                 "blend", "tex_key", "extra", "axis_u", "axis_v", "points")
 
     def __init__(self, kind="BILLBOARD", pos=None, size=None, rot=0.0):
-        #: 'BILLBOARD'（面朝相机的片）| 'PLANE'（固定朝向的片）| 'MESH'
-        #: | 'POINT'（无渲染体时的退化显示）
+        #: 'BILLBOARD'（面朝相机的片）| 'PLANE'（固定朝向的片）| 'RIBBON'（条带，见 `points`）
+        #: | 'MESH' | 'POINT'（无渲染体时的退化显示）
         #: | 'NONE'（**显式**不渲染，例如 TypeNoDraw——与"没有渲染体"不是一回事）
         self.kind = kind
         self.pos = pos or Vec3()
@@ -269,6 +269,12 @@ class RenderItem(object):
         #: 作为面片的横/纵轴（TypePolygon 这类固定朝向的渲染体）。
         self.axis_u = None
         self.axis_v = None
+
+        #: `kind == 'RIBBON'` 专用：`[(Vec3, half_width, alpha), ...]`，**局部坐标、
+        #: base→tip 顺序**（`TypeRibbonLength` 是定长直条带，不需要 `trail.py` 那套轨迹
+        #: 裁剪/重采样——两端都是解析式算出来的，不必移植上游整个 trail 模块）。
+        #: `None` = 不是条带渲染体。
+        self.points = None
 
         self.extra = {}
 

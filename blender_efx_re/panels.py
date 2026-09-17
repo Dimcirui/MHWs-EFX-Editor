@@ -32,12 +32,12 @@ import json
 import os
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, PointerProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, IntProperty, PointerProperty, StringProperty
 from bpy.types import Menu, Panel, UIList
 
 from . import (
-    attribute_types, bitfield, bridge, copy_paste, field_visibility, i18n, io_tree, model, semantics,
-    structure_ops,
+    attribute_types, bitfield, bridge, copy_paste, expr_edit, expr_preview, field_visibility,
+    i18n, io_tree, model, semantics, structure_ops,
 )
 from .i18n import T
 
@@ -149,11 +149,13 @@ def _wants_degrees(entry) -> bool:
     """知识表 unit == "angle_radians" + Scene.efx_re_angle_degrees 开关同时命中，才把弧度制
     角度字段的 FLOAT 子节点改画 degrees_value（按度显示/输入，底层仍存弧度）。三处调用点
     （XYZ 三分量、via.Range 的 s/r 静态-随机对、通用单值兜底）共用同一个判据，见 draw_node()
-    里各分支的调用处；不判断 node.data_type，调用方各自只在 FLOAT 子节点上传 True 的结果。"""
-    return (
-        entry is not None and entry.get("unit") == "angle_radians"
-        and getattr(bpy.context.scene, "efx_re_angle_degrees", False)
-    )
+    里各分支的调用处；不判断 node.data_type，调用方各自只在 FLOAT 子节点上传 True 的结果。
+
+    实际判据搬进了 `semantics.wants_degrees()`——`expr_edit.py` 的 Expression 公式常量
+    槽位要复用同一条，放在这里会跟它产生循环 import（`panels.py` 已经 import
+    `expr_edit`）。这里留一个薄壳只是不想改这个文件里已有的一堆 `_wants_degrees(...)`
+    调用点。"""
+    return semantics.wants_degrees(entry)
 
 
 def _draw_scalar_prop(layout, node, text: str = "", prop_name: str | None = None) -> None:
@@ -302,7 +304,8 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
             # 直接内联画下拉（对齐姊妹项目 EFX-Editor 的做法：真正的多值位域才弹窗，
             # 见 bitfield.py 顶部说明）。真正的多段位域（`UVSequence.Flags` 那种）
             # mask 不会占满整个字段，仍然走下面的弹窗。
-            _draw_single_enum_row(layout, node, label_text, entry, segs[0])
+            _draw_single_enum_row(layout, node, label_text, entry, segs[0],
+                                   attr_owner=attr_owner, attr_type=attr_type)
             return
         # 多段位域：画一个显示解码摘要的按钮，点开弹窗逐段选（见 bitfield.py）。
         # 不再画裸数字——`UVSequence.Flags` 的众数是 41，谁看得出那是"循环+水平随机翻+
@@ -402,8 +405,19 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
         row = layout.row(align=True)
         split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
         _draw_label(split, label_text)
-        _draw_sr_pair(split.row(align=True), node, "Min", "Max", entry)
+        half_open = model.is_half_open_max_node(node)
+        _draw_sr_pair(split.row(align=True), node,
+                      "Min", "Max (excl.)" if half_open else "Max", entry)
         _draw_field_help_icon(row, entry)
+        # 左闭右开的字段填成 Min == Max 是**空区间**（游戏里等于"一个都不选"），而闭区间
+        # 的 Min == Max 是完全正常的"固定一个值"——所以只对半开那几个提示，别的不打扰。
+        if half_open:
+            ordered = model.sr_children_ordered(node)
+            if ordered is not None and model.node_scalar(ordered[0]) == model.node_scalar(ordered[1]):
+                warn = layout.row()
+                warn.alert = True
+                warn.label(text=T("attribute.half_open_empty_warning"),
+                           icon="ERROR", translate=False)
         return
 
     if dtype == "OBJECT" and model.is_static_random_node(node, attr_type):
@@ -421,6 +435,10 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
         properties_node, material_path = structure_ops.resolve_mdf_properties(attr_owner)
         if properties_node is not None and properties_node == node:
             _draw_mdf_properties(layout, node, label_text, entry, attr_owner, material_path)
+            return
+        behavior_node, behavior_string = structure_ops.resolve_ptbehavior_properties(attr_owner)
+        if behavior_node is not None and behavior_node == node:
+            _draw_ptbehavior_properties(layout, node, label_text, entry, behavior_string)
             return
 
     if dtype == "OBJECT" or dtype == "ARRAY":
@@ -463,6 +481,12 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
     scalar_prop = "degrees_value" if node.data_type == "FLOAT" and _wants_degrees(entry) else None
     _draw_scalar_prop(value_row, node, prop_name=scalar_prop)
     _draw_hash_name(value_row, node)
+    # PtBehavior 的 behaviorString 是游戏原生类名，手滑打错字不会有任何报错，只会让这个
+    # attribute 在游戏里静默不生效——加一个"从语料里见过的类名模糊搜索"按钮辅助输入，
+    # 文本框本身仍然保留、可以手改（游戏更新后出现的新类名没道理被这张表锁死）。
+    if (node.key == "behaviorString" and node.data_type == "STRING" and attr_owner is not None
+            and structure_ops.resolve_behavior_string_node(attr_owner) == node):
+        value_row.operator("efx_re.ptbehavior_pick_behavior_string", text="", icon="VIEWZOOM")
     _draw_field_help_icon(row, entry)
 
 
@@ -643,6 +667,63 @@ def _draw_mdf_properties(layout, node, label_text, entry, attr_owner, material_p
     )
 
 
+def _ptbehavior_property_name(child) -> str:
+    """一条 PtBehaviorVariable 的显示名：`behaviorProperty` 字段原文——这个字段本身就是明文
+    属性名（不像 MdfProperty 那样只存哈希需要反查表），直接读。"""
+    for sub in child.children:
+        if sub.key == "behaviorProperty":
+            value = model.node_to_value(sub)
+            if isinstance(value, str) and value:
+                return value
+    return child.key
+
+
+def _draw_ptbehavior_property(box, child, index: int) -> None:
+    """一条 PtBehavior 属性一行：展开箭头 + 属性名 + 删除。
+
+    不像 `_draw_mdf_property` 那样在主行画紧凑值控件——PtBehavior 已知的 dataType 就有
+    8 种（Color/Int/Enum/Float/Float2/Float3/WstringName/PrefabPath），外加语料里还有一批
+    vendor 认不出的未知 dataType，形状比 MdfProperty 的 Float/Range/Texture 三种分散得多，
+    v1 先统一收进展开区用通用递归画法，不单独为每种 dataType 定制紧凑行。
+    """
+    row = box.row(align=True)
+    icon = "TRIA_DOWN" if child.ui_expand else "TRIA_RIGHT"
+    row.prop(child, "ui_expand", icon=icon, icon_only=True, emboss=False)
+    _draw_label(row, _ptbehavior_property_name(child))
+    row.operator("efx_re.ptbehavior_property_remove", text="", icon="X", emboss=False).index = index
+
+    if not child.ui_expand:
+        return
+    sub_box = box.box()
+    for sub in child.children:
+        draw_node(sub_box.row(), sub, attr_type="PtBehaviorVariable")
+
+
+def _draw_ptbehavior_properties(layout, node, label_text, entry, behavior_string) -> None:
+    """PtBehavior 的 `properties` 覆盖表专用画法：条目按属性名显示、每条带删除按钮、底下
+    一个"从候选目录添加"。
+
+    候选目录是离线语料扫描固化的静态表（见 `tools/gen_ptbehavior_catalog.py`），不像
+    MdfProperty 那样需要用户先指一个参考文件——`resolve_ptbehavior_properties()` 已经确认
+    过 `behavior_string` 在目录里，这里只管画。
+    """
+    header = layout.row(align=True)
+    icon = "TRIA_DOWN" if node.ui_expand else "TRIA_RIGHT"
+    header.prop(node, "ui_expand", icon=icon, icon_only=True, emboss=False)
+    _draw_label(header, f"{label_text}  ({len(node.children)} {T('common.items_suffix')})")
+    _draw_field_help_icon(header, entry)
+    if not node.ui_expand:
+        return
+
+    box = layout.box()
+    for index, child in enumerate(node.children):
+        _draw_ptbehavior_property(box, child, index)
+    box.operator(
+        "efx_re.ptbehavior_property_add", text=T("ptbehavior.add_property"), icon="ADD",
+        translate=False,
+    )
+
+
 def _draw_bitfield_row(layout, node, label_text, entry, segs, attr_owner) -> None:
     """位域字段：标签 + 一个显示解码摘要的按钮。点开是 bitfield 弹窗。"""
     row = layout.row(align=True)
@@ -665,14 +746,60 @@ def _draw_bitfield_row(layout, node, label_text, entry, segs, attr_owner) -> Non
     _draw_field_help_icon(row, entry)
 
 
-def _draw_single_enum_row(layout, node, label_text, entry, seg) -> None:
-    """单段位域（本质就是一个枚举）：标签 + 内联下拉，不弹窗——见 draw_node() 里的说明。"""
+def _draw_single_enum_row(layout, node, label_text, entry, seg, attr_owner=None, attr_type=None) -> None:
+    """单段位域（本质就是一个枚举）：标签 + 内联下拉，不弹窗——见 draw_node() 里的说明。
+
+    `attr_owner`/`attr_type` 只用来判断这个字段是不是某个 `IExpressionAttribute` 的
+    `ExpressionAssignType` 字段——是的话在同一行右边补一个绑定/解绑公式的按钮，见
+    `_draw_expression_bit_toggle()`。这两个字段这里没有专门形状（就是普通枚举下拉），
+    所以复用这条通用路径，不单独写一个分支。"""
     row = layout.row(align=True)
     split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
     _draw_label(split, label_text)
     model.set_inline_enum_items(node, seg.get("items", []))
     split.prop(node, "enum_proxy", text="")
     _draw_field_help_icon(row, entry)
+    _draw_expression_bit_toggle(row, attr_owner, attr_type, node.key)
+
+
+def _draw_expression_bit_toggle(row, attr_owner, attr_type, field_key) -> None:
+    """在字段那一行右边加控件：这个字段有没有被一条公式驱动，直接在字段自己这一行管理，
+    不需要再单独去 Expression 面板的列表里按 bit_index 找——bit 和字段是反射验证过的 1:1
+    （`model.expression_bit_index_for_field()`，见 docs/EXPRESSION_SEMANTICS.md §7.1）。
+
+    没绑公式：一个 [+]，点了就新建并顶到 Expression 面板上方的公式编辑区。
+    已经绑了公式：**两个**按钮——单选点（`RADIOBUT_*`）负责"把这条设成当前显示在编辑区里
+    的那条"（同一个 attribute 上好几个字段都绑了公式时，编辑区一次只能显示一条，总得有
+    办法切换看哪条，见 `EFX_RE_OT_expression_curve_activate`），已经是当前显示的那条会
+    高亮且点了不会误删；单独的 [x] 才是真正的删除，走二次确认。两者分开是为了不让"切换去
+    看另一条"和"删掉这条"共用同一个按钮——那样切换着看几条公式，一不小心点重了就会把
+    正在看的那条删掉。
+
+    查不到对应 bit（`attr_owner` 不是 Expression attribute，或这个字段没有反射表条目——
+    多数是 `TextureUnitExpression` 那种数组形态，或声明位数多于字段数的几个例外类型）
+    时什么都不画：这些情况下公式仍然只能通过 Expression 面板保留的旧列表管理，见
+    `EFX_RE_UL_expression_curves.filter_items()` 对"能不能映射到字段"的过滤。"""
+    if attr_owner is None or attr_type is None:
+        return
+    if not getattr(attr_owner, "efx_is_expression_attribute", False):
+        return
+    bit_index = model.expression_bit_index_for_field(attr_type, field_key)
+    if bit_index is None:
+        return
+    sub = row.row(align=True)
+    curve_index = model.find_expression_curve_index(attr_owner, bit_index)
+    if curve_index is None:
+        op = sub.operator("efx_re.expression_curve_add", text="", icon="ADD")
+        op.bit_index = bit_index
+        return
+    is_active = attr_owner.efx_expression_curves_active_index == curve_index
+    op_sel = sub.operator(
+        "efx_re.expression_curve_activate", text="",
+        icon="RADIOBUT_ON" if is_active else "RADIOBUT_OFF", depress=is_active,
+    )
+    op_sel.bit_index = bit_index
+    op_rm = sub.operator("efx_re.expression_curve_remove_bit", text="", icon="X")
+    op_rm.bit_index = bit_index
 
 
 def _hash_name(node) -> str | None:
@@ -941,17 +1068,30 @@ class EFX_RE_UL_clip_curves(UIList):
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         row = layout.row(align=True)
-        row.label(text=f"bit {item.bit_index}", translate=False)
-        row.label(text=item.bit_name or "-", translate=False)
+        row.label(text=model.bit_display_label(item.bit_index, item.bit_name), translate=False)
         sub = row.row()
         sub.alignment = "RIGHT"
         sub.label(text=f"{len(item.keyframes)} kf", translate=False)
+
+
+def _iter_bit_choices(bit_count, used_bits, attr_type, resolve_name):
+    """给 Clip/Expression 的"选 bit"下拉共用：跳过已被占用的位，其余的按
+    `model.bit_display_label()` 拼成 (bit_index, 显示文字)。有名字表就显示名字，没有
+    （多数 Clip 类型）就是裸 `bit{N}`——如实反映 vendor 到底知不知道这一位是什么，不瞎猜。"""
+    for i in range(bit_count):
+        if i in used_bits:
+            continue
+        yield i, model.bit_display_label(i, resolve_name(attr_type, i))
 
 
 class EFX_RE_OT_clip_curve_add(bpy.types.Operator):
     bl_idname = "efx_re.clip_curve_add"
     bl_label = "Add Clip Curve"
     bl_options = {"REGISTER", "UNDO"}
+
+    #: -1 = 自动挑第一个空位（兼容裸调用 `bpy.ops.efx_re.clip_curve_add()`，没有走
+    #: EFX_RE_MT_clip_bit_add_picker 的调用方式）；菜单点某一项时会显式带上 bit_index。
+    bit_index: IntProperty(name="Bit Index", default=-1)
 
     @classmethod
     def poll(cls, context):
@@ -961,9 +1101,12 @@ class EFX_RE_OT_clip_curve_add(bpy.types.Operator):
     def execute(self, context):
         obj = getattr(context, "object", None)
         used = {c.bit_index for c in obj.efx_clip_curves}
-        free = next((i for i in range(obj.efx_clip_bit_count) if i not in used), 0)
+        bit_index = self.bit_index
+        if bit_index < 0 or bit_index in used:
+            bit_index = next((i for i in range(obj.efx_clip_bit_count) if i not in used), 0)
         curve = obj.efx_clip_curves.add()
-        curve.bit_index = free
+        curve.bit_index = bit_index
+        curve.bit_name = model.resolve_clip_bit_name(obj.efx_attr_type, bit_index)
         obj.efx_clip_curves_active_index = len(obj.efx_clip_curves) - 1
         return {"FINISHED"}
 
@@ -988,6 +1131,77 @@ class EFX_RE_OT_clip_curve_remove(bpy.types.Operator):
             obj.efx_clip_curves_active_index, len(obj.efx_clip_curves) - 1
         )
         return {"FINISHED"}
+
+
+class EFX_RE_OT_clip_curve_set_bit(bpy.types.Operator):
+    """给已存在的一条 Clip 曲线换目标 bit——原来是裸 `box.prop(curve, "bit_index")` 数字框，
+    换成菜单点选（见 EFX_RE_MT_clip_bit_picker），这里只是把选中的下标写回去、顺带重算
+    `bit_name`（同一份 model.resolve_clip_bit_name()，不能只改 bit_index 不改名字，否则列表
+    行显示的名字和实际指向的 bit 对不上）。"""
+    bl_idname = "efx_re.clip_curve_set_bit"
+    bl_label = "Set Clip Bit"
+    bl_options = {"REGISTER", "UNDO"}
+
+    bit_index: IntProperty(name="Bit Index", min=0)
+
+    @classmethod
+    def poll(cls, context):
+        obj = getattr(context, "object", None)
+        return obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE and _active_clip_curve(obj) is not None
+
+    def execute(self, context):
+        obj = getattr(context, "object", None)
+        curve = _active_clip_curve(obj)
+        curve.bit_index = self.bit_index
+        curve.bit_name = model.resolve_clip_bit_name(obj.efx_attr_type, self.bit_index)
+        return {"FINISHED"}
+
+
+class EFX_RE_MT_clip_bit_add_picker(Menu):
+    """新增 Clip 曲线时选"驱动哪个 bit"，替代原来"自动挑第一个空位"的隐式行为——见
+    live-blender-testing 记忆里"动态 EnumProperty 传不进算子"的坑，这里照抄
+    EFX_RE_MT_attribute_type_picker 的形状：每一项直接是一个 operator 调用，参数是普通
+    IntProperty（不是 EnumProperty），手点和 Python 调用都一样能用。"""
+    bl_idname = "EFX_RE_MT_clip_bit_add_picker"
+    bl_label = "Bit"
+
+    def draw(self, context):
+        layout = self.layout
+        obj = getattr(context, "object", None)
+        if obj is None:
+            return
+        used = {c.bit_index for c in obj.efx_clip_curves}
+        choices = list(_iter_bit_choices(obj.efx_clip_bit_count, used, obj.efx_attr_type, model.resolve_clip_bit_name))
+        if not choices:
+            layout.label(text=T("attribute.no_free_bits"), translate=False)
+            return
+        for index, label in choices:
+            op = layout.operator("efx_re.clip_curve_add", text=label, translate=False)
+            op.bit_index = index
+
+
+class EFX_RE_MT_clip_bit_picker(Menu):
+    """给已存在的一条 Clip 曲线改配到哪个 bit——同一份 `_iter_bit_choices()`，排除的"已占用"
+    集合要把当前这条曲线自己排除掉（按下标排除，不按对象比较），否则它自己会把自己正占着的
+    那个 bit 也挡住选不了。"""
+    bl_idname = "EFX_RE_MT_clip_bit_picker"
+    bl_label = "Bit"
+
+    def draw(self, context):
+        layout = self.layout
+        obj = getattr(context, "object", None)
+        curve = _active_clip_curve(obj) if obj is not None else None
+        if curve is None:
+            return
+        active_index = obj.efx_clip_curves_active_index
+        used = {c.bit_index for i, c in enumerate(obj.efx_clip_curves) if i != active_index}
+        choices = list(_iter_bit_choices(obj.efx_clip_bit_count, used, obj.efx_attr_type, model.resolve_clip_bit_name))
+        if not choices:
+            layout.label(text=T("attribute.no_free_bits"), translate=False)
+            return
+        for index, label in choices:
+            op = layout.operator("efx_re.clip_curve_set_bit", text=label, translate=False)
+            op.bit_index = index
 
 
 class EFX_RE_UL_clip_keyframes(UIList):
@@ -1045,20 +1259,37 @@ class EFX_RE_OT_clip_keyframe_remove(bpy.types.Operator):
 
 
 class EFX_RE_UL_expression_curves(UIList):
+    """这份列表现在只用来管那些**没有**对应字段的 bit——有对应字段的一律走字段行内嵌的
+    [+]/[-]（见 `_draw_expression_bit_toggle()`），两条路同时管一条曲线只会让人分不清
+    "到底该去哪改"。`filter_items()` 把有对应字段的曲线从这份列表里滤掉，曲线本身完全没动，
+    只是不在这里重复显示——真正的增删改仍然走同一份 `obj.efx_expression_curves`。"""
     bl_idname = "EFX_RE_UL_expression_curves"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         row = layout.row(align=True)
-        row.label(text=f"bit {item.bit_index}", translate=False)
-        row.label(text=item.bit_name or item.formula or "-", translate=False)
+        row.label(text=model.bit_display_label(item.bit_index, item.bit_name), translate=False)
+        row.label(text=item.formula or "-", translate=False)
         if item.formula_error:
             row.label(text="", icon="ERROR")
+
+    def filter_items(self, context, data, propname):
+        items = getattr(data, propname)
+        attr_type = getattr(data, "efx_attr_type", "")
+        flags = [
+            0 if model.resolve_expression_bit_name(attr_type, item.bit_index) else self.bitflag_filter_item
+            for item in items
+        ]
+        return flags, []
 
 
 class EFX_RE_OT_expression_curve_add(bpy.types.Operator):
     bl_idname = "efx_re.expression_curve_add"
     bl_label = "Add Expression"
     bl_options = {"REGISTER", "UNDO"}
+
+    #: 同 EFX_RE_OT_clip_curve_add.bit_index：-1 = 自动挑第一个空位，走
+    #: EFX_RE_MT_expression_bit_add_picker 时会带上明确的下标。
+    bit_index: IntProperty(name="Bit Index", default=-1)
 
     @classmethod
     def poll(cls, context):
@@ -1071,10 +1302,14 @@ class EFX_RE_OT_expression_curve_add(bpy.types.Operator):
     def execute(self, context):
         obj = getattr(context, "object", None)
         used = {c.bit_index for c in obj.efx_expression_curves}
-        free = next((i for i in range(obj.efx_expression_bit_count) if i not in used), 0)
+        bit_index = self.bit_index
+        if bit_index < 0 or bit_index in used:
+            bit_index = next((i for i in range(obj.efx_expression_bit_count) if i not in used), 0)
         curve = obj.efx_expression_curves.add()
-        curve.bit_index = free
+        curve.bit_index = bit_index
+        curve.bit_name = model.resolve_expression_bit_name(obj.efx_attr_type, bit_index)
         curve.formula = "0"
+        expr_edit.rebuild_rows(curve)   # 同导入路径：结构化视图显式建一次，不靠 update 回调
         obj.efx_expression_curves_active_index = len(obj.efx_expression_curves) - 1
         return {"FINISHED"}
 
@@ -1099,6 +1334,148 @@ class EFX_RE_OT_expression_curve_remove(bpy.types.Operator):
             obj.efx_expression_curves_active_index, len(obj.efx_expression_curves) - 1
         )
         return {"FINISHED"}
+
+
+class EFX_RE_OT_expression_curve_set_bit(bpy.types.Operator):
+    """同 EFX_RE_OT_clip_curve_set_bit：给已存在的一条公式换目标 bit，顺带重算 `bit_name`——
+    `sim_preview.collect_expressions()` 靠这个字段精确匹配 sibling attribute 的字段名，
+    只改 bit_index 不改名字会让预览算到错的字段上。"""
+    bl_idname = "efx_re.expression_curve_set_bit"
+    bl_label = "Set Expression Bit"
+    bl_options = {"REGISTER", "UNDO"}
+
+    bit_index: IntProperty(name="Bit Index", min=0)
+
+    @classmethod
+    def poll(cls, context):
+        obj = getattr(context, "object", None)
+        return (
+            obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE
+            and _active_expression_curve(obj) is not None
+        )
+
+    def execute(self, context):
+        obj = getattr(context, "object", None)
+        curve = _active_expression_curve(obj)
+        curve.bit_index = self.bit_index
+        curve.bit_name = model.resolve_expression_bit_name(obj.efx_attr_type, self.bit_index)
+        return {"FINISHED"}
+
+
+class EFX_RE_OT_expression_curve_activate(bpy.types.Operator):
+    """字段行内嵌的单选点（见 `_draw_expression_bit_toggle()`）：把这个字段绑定的曲线设成
+    Expression 面板上方公式编辑区当前显示的那条。一个 attribute 上可能好几个字段都绑了
+    公式（截图那个 Transform3DExpression 例子：translationY、rotationX 都绑着），但编辑区
+    只有一份、一次只能显示一条——这个算子就是"切换看哪条"的入口，本身不新增/不删除任何
+    曲线，纯粹是把 `efx_expression_curves_active_index` 指过去。"""
+    bl_idname = "efx_re.expression_curve_activate"
+    bl_label = "Show Expression"
+    bl_description = "在上方公式编辑区显示这个字段绑定的公式"
+    bl_options = {"REGISTER", "UNDO"}
+
+    bit_index: IntProperty(name="Bit Index", min=0)
+
+    @classmethod
+    def poll(cls, context):
+        obj = getattr(context, "object", None)
+        return obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE
+
+    def execute(self, context):
+        obj = getattr(context, "object", None)
+        index = model.find_expression_curve_index(obj, self.bit_index)
+        if index is None:
+            return {"CANCELLED"}
+        obj.efx_expression_curves_active_index = index
+        return {"FINISHED"}
+
+
+class EFX_RE_OT_expression_curve_remove_bit(bpy.types.Operator):
+    """字段行内嵌的 [-]（见 `_draw_expression_bit_toggle()`）：按 `bit_index` 直接删掉对应的
+    公式曲线，不依赖 Expression 面板列表里的"活动项"——从字段上直接触发的删除比"先选中再点
+    Remove"更容易手滑，所以这里弹一次二次确认（`invoke_confirm`），Expression 面板列表里
+    原有的 Remove 按钮不受影响，仍然是无确认的即时删除（那条路已经有"先选中"这个缓冲动作）。"""
+    bl_idname = "efx_re.expression_curve_remove_bit"
+    bl_label = "Remove Expression"
+    bl_description = "删除这个字段绑定的公式"
+    bl_options = {"REGISTER", "UNDO"}
+
+    bit_index: IntProperty(name="Bit Index", min=0)
+
+    @classmethod
+    def poll(cls, context):
+        obj = getattr(context, "object", None)
+        return obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
+
+    def execute(self, context):
+        obj = getattr(context, "object", None)
+        index = model.find_expression_curve_index(obj, self.bit_index)
+        if index is None:
+            return {"CANCELLED"}
+        obj.efx_expression_curves.remove(index)
+        obj.efx_expression_curves_active_index = min(
+            obj.efx_expression_curves_active_index, len(obj.efx_expression_curves) - 1
+        )
+        return {"FINISHED"}
+
+
+def _expression_mapped_bits(attr_type: str, bit_count: int) -> set:
+    """能一一对应到具体字段的 bit 下标集合——这些一律走字段行内嵌的 [+]/[-]
+    （`_draw_expression_bit_toggle()`），不出现在 Expression 面板保留的旧列表/下拉里，
+    两条路管理同一条曲线会让人分不清"到底该去哪改"。"""
+    return {i for i in range(bit_count) if model.resolve_expression_bit_name(attr_type, i)}
+
+
+class EFX_RE_MT_expression_bit_add_picker(Menu):
+    """同 EFX_RE_MT_clip_bit_add_picker：新增公式时选"驱动哪个 bit"——只列**没有**对应字段
+    的 bit（有对应字段的走字段行内嵌的 [+]，见 `_draw_expression_bit_toggle()`）。"""
+    bl_idname = "EFX_RE_MT_expression_bit_add_picker"
+    bl_label = "Bit"
+
+    def draw(self, context):
+        layout = self.layout
+        obj = getattr(context, "object", None)
+        if obj is None:
+            return
+        used = {c.bit_index for c in obj.efx_expression_curves}
+        used |= _expression_mapped_bits(obj.efx_attr_type, obj.efx_expression_bit_count)
+        choices = list(_iter_bit_choices(
+            obj.efx_expression_bit_count, used, obj.efx_attr_type, model.resolve_expression_bit_name
+        ))
+        if not choices:
+            layout.label(text=T("attribute.no_free_bits"), translate=False)
+            return
+        for index, label in choices:
+            op = layout.operator("efx_re.expression_curve_add", text=label, translate=False)
+            op.bit_index = index
+
+
+class EFX_RE_MT_expression_bit_picker(Menu):
+    """同 EFX_RE_MT_clip_bit_picker：给已存在的一条公式改配到哪个 bit——同样排除掉有对应
+    字段的 bit（原因同 EFX_RE_MT_expression_bit_add_picker）。"""
+    bl_idname = "EFX_RE_MT_expression_bit_picker"
+    bl_label = "Bit"
+
+    def draw(self, context):
+        layout = self.layout
+        obj = getattr(context, "object", None)
+        curve = _active_expression_curve(obj) if obj is not None else None
+        if curve is None:
+            return
+        active_index = obj.efx_expression_curves_active_index
+        used = {c.bit_index for i, c in enumerate(obj.efx_expression_curves) if i != active_index}
+        used |= _expression_mapped_bits(obj.efx_attr_type, obj.efx_expression_bit_count)
+        choices = list(_iter_bit_choices(
+            obj.efx_expression_bit_count, used, obj.efx_attr_type, model.resolve_expression_bit_name
+        ))
+        if not choices:
+            layout.label(text=T("attribute.no_free_bits"), translate=False)
+            return
+        for index, label in choices:
+            op = layout.operator("efx_re.expression_curve_set_bit", text=label, translate=False)
+            op.bit_index = index
 
 
 def _active_expression_curve(obj):
@@ -1157,6 +1534,18 @@ def _draw_uilist_row(layout, list_cls, obj, coll_name, index_name, add_op, remov
     row.template_list(list_cls, "", obj, coll_name, obj, index_name, rows=rows)
     col = row.column(align=True)
     col.operator(add_op, icon="ADD", text="")
+    col.operator(remove_op, icon="REMOVE", text="")
+
+
+def _draw_bit_curve_list_row(layout, list_cls, obj, coll_name, index_name, add_menu, remove_op, rows=3):
+    """同 `_draw_uilist_row()`，只是 Add 按钮换成一个按字段名选 bit 的 Menu（见
+    EFX_RE_MT_clip_bit_add_picker / EFX_RE_MT_expression_bit_add_picker）——Clip/Expression
+    曲线新增时必须先选清楚驱动哪个字段，不能像其余列表那样"新建一条空白项目"就完事，所以不能
+    直接复用 `_draw_uilist_row()`。"""
+    row = layout.row()
+    row.template_list(list_cls, "", obj, coll_name, obj, index_name, rows=rows)
+    col = row.column(align=True)
+    col.menu(add_menu, icon="ADD", text="")
     col.operator(remove_op, icon="REMOVE", text="")
 
 
@@ -1282,16 +1671,21 @@ def _draw_clip_content(layout, context, obj) -> None:
         text=f"{T('attribute.bit_count')}: {obj.efx_clip_bit_count}", translate=False,
     )
     layout.prop(obj, "efx_clip_loop_type", text=T("attribute.loop_type"))
-    _draw_uilist_row(
+    _draw_bit_curve_list_row(
         layout, "EFX_RE_UL_clip_curves", obj, "efx_clip_curves", "efx_clip_curves_active_index",
-        "efx_re.clip_curve_add", "efx_re.clip_curve_remove",
+        "EFX_RE_MT_clip_bit_add_picker", "efx_re.clip_curve_remove",
     )
 
     curve = _active_clip_curve(obj)
     if curve is None:
         return
     box = layout.box()
-    box.prop(curve, "bit_index")
+    row = box.row(align=True)
+    row.label(text=T("attribute.bit_field"), translate=False)
+    row.menu(
+        "EFX_RE_MT_clip_bit_picker",
+        text=model.bit_display_label(curve.bit_index, curve.bit_name), translate=False,
+    )
     box.label(text=T("attribute.keyframes"), translate=False)
     _draw_uilist_row(
         box, "EFX_RE_UL_clip_keyframes", curve, "keyframes", "keyframes_active_index",
@@ -1316,26 +1710,70 @@ def _draw_clip_content(layout, context, obj) -> None:
 
 
 def _draw_expression_content(layout, context, obj) -> None:
-    """EFX_ATTRIBUTE 的 Expression 公式（IExpressionAttribute 才有）。"""
+    """EFX_ATTRIBUTE 的 Expression 公式（IExpressionAttribute 才有）。
+
+    能一一对应到具体字段的 bit 完全不走这份列表——那些曲线直接在 Fields 里对应字段那一行
+    用 [+]/[-] 管（`_draw_expression_bit_toggle()`），这里只剩没法对应到字段的 bit（多数
+    Clip 类型、`TextureUnitExpression` 这类数组形态、以及少数声明位数多于字段数的例外，
+    见 docs/EXPRESSION_SEMANTICS.md §7.1）。这类 bit 一个都没有时（大多数类型都是这样——
+    54/58 完全 1:1）整份旧列表连带 Add 按钮一起不画，免得留一个永远说"没有空闲 bit"的
+    空壳。"""
     layout.label(
         text=f"{T('attribute.bit_count')}: {obj.efx_expression_bit_count}", translate=False,
     )
-    _draw_uilist_row(
-        layout, "EFX_RE_UL_expression_curves", obj, "efx_expression_curves",
-        "efx_expression_curves_active_index",
-        "efx_re.expression_curve_add", "efx_re.expression_curve_remove",
+    orphan_bits = set(range(obj.efx_expression_bit_count)) - _expression_mapped_bits(
+        obj.efx_attr_type, obj.efx_expression_bit_count
     )
+    if orphan_bits:
+        _draw_bit_curve_list_row(
+            layout, "EFX_RE_UL_expression_curves", obj, "efx_expression_curves",
+            "efx_expression_curves_active_index",
+            "EFX_RE_MT_expression_bit_add_picker", "efx_re.expression_curve_remove",
+        )
 
     curve = _active_expression_curve(obj)
     if curve is None:
         return
     box = layout.box()
-    box.prop(curve, "bit_index")
+    row = box.row(align=True)
+    row.label(text=T("attribute.bit_field"), translate=False)
+    if model.resolve_expression_bit_name(obj.efx_attr_type, curve.bit_index):
+        # 这条曲线挂在能对应到字段的 bit 上——它归哪个字段管由字段行内嵌的 [+]/[-] 决定
+        # （见 _draw_expression_bit_toggle()），这里只显示名字，不提供"换成另一个 bit"
+        # 的下拉：那会让同一条曲线同时有两个入口能改它绑在哪个字段上。
+        row.label(text=model.bit_display_label(curve.bit_index, curve.bit_name), translate=False)
+    else:
+        row.menu(
+            "EFX_RE_MT_expression_bit_picker",
+            text=model.bit_display_label(curve.bit_index, curve.bit_name), translate=False,
+        )
+    box.label(text=T("expr.raw_text"), translate=False)
     row = box.row(align=True)
     row.prop(curve, "formula", text="")
     row.operator("efx_re.expression_formula_check", icon="CHECKMARK", text="")
-    if curve.formula_error:
-        box.label(text=curve.formula_error, icon="ERROR", translate=False)
+
+    # 结构化视图。文本框仍然在（手打是逃生口，也是唯一能写 `ext:<hash>` 这类占位的途径），
+    # 两边共用同一个 `formula` 字符串：改哪边另一边立刻跟着变，见 expr_edit 模块说明。
+    box.separator()
+    box.label(text=T("expr.structure"), translate=False)
+    expr_edit.draw_nodes(box, context, curve)
+    if _expression_uses_unknown_functions(curve):
+        box.label(text=T("expr.note.unknown_func"), icon="ERROR", translate=False)
+
+    # 数值可视化（L2）：活动公式的当前帧读数 + 视口 HUD 曲线图开关。
+    # **只看活动那一条**，和上面结构编辑器一致——一个 attribute 挂的几条公式全画一张图
+    # 又杂乱、又和"公式一条条编辑"的操作逻辑冲突。要对比就切上面列表的选中项。
+    expr_preview.draw_preview(layout, context, obj)
+
+
+def _expression_uses_unknown_functions(curve) -> bool:
+    """这条公式里有没有语义未确认的函数（`Unary*`/`Func*`）。有就在面板上说一句——
+    用户拿这条公式调参时应该知道"这一步到底算什么"本项目还不掌握（铁律 #7）。"""
+    return any(
+        node.kind == "CALL"
+        and expr_edit.call_confidence(node.name) == expr_edit.CONFIDENCE_UNKNOWN
+        for node in curve.nodes
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1390,8 +1828,12 @@ def _resolve_axis_groups(attr_type: str | None, node_by_key: dict):
 
 
 def _draw_axis_group(layout, attr_type: str, label_zh: str, label_en: str, axes, node_by_key: dict) -> None:
-    """绘制一个虚拟轴向分组：标题行 + 逐轴行。每根轴按字段实际形状画（目前全部是
-    via.Range，Static/Random 并排；留了标量分支给以后可能出现的非 Range 轴字段）。"""
+    """绘制一个虚拟轴向分组：标题行 + 逐轴行。每根轴按字段实际形状/语义画——目前出现过
+    Static/Random（via.Range 惯例语义）和 Min/Max（`EmitterShape3D.RangeX/Y/Z`，2026-09-13
+    改判为 min/max 语义，见 `model._PAIR_MIN_MAX_FIELDS` 的语料证据）。分支顺序照抄 draw_node()
+    里对应的通用判断——这里曾经只认 Static/Random，字段被重新分类成 min/max 语义后这里没跟着
+    改，导致 `is_static_random_node` 返回 False 又没有别的分支兜底，直接落到
+    `_draw_scalar_prop` 对着一个 OBJECT 节点打印字面 "null"（面板显示 null 的成因）。"""
     title = label_en if i18n.get_lang() == "EN" else label_zh
     layout.row(align=True).label(text=title, icon="ORIENTATION_GLOBAL", translate=False)
     for axis_label, base in axes:
@@ -1401,8 +1843,14 @@ def _draw_axis_group(layout, attr_type: str, label_zh: str, label_en: str, axes,
         split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
         _draw_label(split, axis_label)
         cols = split.row(align=True)
-        if not (model.is_static_random_node(node, attr_type)
-                and _draw_sr_pair(cols, node, "Static", "Random", entry)):
+        if model.is_static_random_node(node, attr_type):
+            _draw_sr_pair(cols, node, "Static", "Random", entry)
+        elif model.is_sr_min_max_node(node) or model.is_pair_min_max_node(node, attr_type):
+            half_open = model.is_half_open_max_node(node)
+            _draw_sr_pair(cols, node, "Min", "Max (excl.)" if half_open else "Max", entry)
+        elif model.is_sr_index_node(node):
+            _draw_sr_pair(cols, node, "Index", "UnknIndex")
+        else:
             _draw_scalar_prop(cols, node, text="")
         _draw_field_help_icon(row, entry)
 
@@ -1837,10 +2285,18 @@ _CLASSES = (
     EFX_RE_OT_expression_parameter_remove,
     EFX_RE_OT_clip_curve_add,
     EFX_RE_OT_clip_curve_remove,
+    EFX_RE_OT_clip_curve_set_bit,
+    EFX_RE_MT_clip_bit_add_picker,
+    EFX_RE_MT_clip_bit_picker,
     EFX_RE_OT_clip_keyframe_add,
     EFX_RE_OT_clip_keyframe_remove,
     EFX_RE_OT_expression_curve_add,
     EFX_RE_OT_expression_curve_remove,
+    EFX_RE_OT_expression_curve_set_bit,
+    EFX_RE_OT_expression_curve_activate,
+    EFX_RE_OT_expression_curve_remove_bit,
+    EFX_RE_MT_expression_bit_add_picker,
+    EFX_RE_MT_expression_bit_picker,
     EFX_RE_OT_expression_formula_check,
     EFX_RE_PT_main,
     *_GENERATED_PANELS,

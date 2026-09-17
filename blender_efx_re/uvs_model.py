@@ -6,9 +6,12 @@ blender_efx_re/uvs_model.py —— .uvs（UV 序列图集）对象模型
 
 - **不是"每个实体一个 Blender Object"**——UVS 是纯数据表，没有空间语义（不像 EFX 的
   Transform3D 要在视口里摆位），而且数量级差太多：实测样本 9 张贴图 × 9 序列 × 每序列 64
-  pattern，每个建一个 Empty 会把 Outliner 直接撑爆。改用一个 `~TYPE = EFX_UVS` 的
-  **Collection**（沿用 EFX_ROOT 的决定——同一个项目两处 `~TYPE` 根都是集合，行为一致），上面挂
-  嵌套 CollectionProperty：`efx_uvs_textures[]` / `efx_uvs_sequences[] -> patterns[]`。
+  pattern，每个建一个 Empty 会把 Outliner 直接撑爆。整份文件只用**一个** `~TYPE = EFX_RE_UVS`
+  的 Empty Object 表示，上面挂嵌套 CollectionProperty：`efx_uvs_textures[]` /
+  `efx_uvs_sequences[] -> patterns[]`。这个 Object 外面还有一层纯视觉的包裹 Collection
+  （只挂颜色标签，不带 `~TYPE`）：单个导入时一个 Object 配一个专属集合（同旧版行为）；批量导入
+  时（手动多选文件，或 EFX 侧"一并导入引用的 .uvs"一次性拉进多个不同的 .uvs）一批 Object
+  共享同一个集合，不是各建各的——见 `uvs_io.new_uvs_collection()`。
 - **不需要 EFX 那套递归 EFXValueNode 通用树**——UVS 的字段形状完全固定且已被 vendor
   `UvsFile.cs`（183 行）逐字段注释清楚，不是 ~150 个 attribute 子类各有不同形状那种情况，
   直接手写具名 PropertyGroup 字段就够，不需要为"vendor 升级新增字段类型"预留通用性。
@@ -29,7 +32,7 @@ blender_efx_re/uvs_model.py —— .uvs（UV 序列图集）对象模型
   每个 pattern 自己决定裁不裁。字段名 `useUVCutout` 是我们自己猜的、不确定是否准确对应它
   在引擎里的真实用途（它在 Header 里、管的可能是比"裁不裁剪"更高层的东西），改成弱化措辞
   `cutout_related`，不在名字里断言具体功能。
-  据此把模型改成两级布尔：`Collection.efx_uvs_cutout_related`（文件级，对应 vendor
+  据此把模型改成两级布尔：`Object.efx_uvs_cutout_related`（文件级，对应 vendor
   `Header.attributes`）+ `EFXUvsPatternItem.use_cutout`（pattern 级，`cutout_related` 关闭时
   不生效，导出时强制按 -1 处理）。`cutout_related=False` 时不管 `use_cutout`/`cutout_points`
   编辑成什么样，导出都按空数组处理（vendor 自然写 `-1`）；`cutout_related=True` 时
@@ -67,14 +70,16 @@ from __future__ import annotations
 
 import bpy
 from bpy.props import BoolProperty, CollectionProperty, FloatProperty, IntProperty, StringProperty
-from bpy.types import Collection, PropertyGroup
+from bpy.types import Object, PropertyGroup
 
 # 加 `EFX_RE_` 前缀的理由见 model.py 里 TYPE_ROOT 等常量的说明——姊妹项目 EFX-Editor
 # （MHWI）的 standalone.py 用的也是裸的 "EFX_UVS"，同装两个插件时会撞。
+# 标在代表整份 .uvs 的 Empty **Object** 上（2026 年之前是标在 Collection 上——见
+# uvs_io.new_uvs_collection() 的说明，包裹集合现在纯粹是视觉分组，不带这个标记）。
 TYPE_UVS_ROOT = "EFX_RE_UVS"
 
 # 这个插件只支持 MHWilds，目前语料里也只见过这一个版本号——不做成可编辑字段，导入时非 8
-# 直接拒绝（见 uvs_operators.EFX_UVS_OT_import），面板上就是个固定文字，不需要 Collection
+# 直接拒绝（见 uvs_operators.EFX_UVS_OT_import），面板上就是个固定文字，不需要 Object
 # 属性存它。
 MHWILDS_UVS_FILE_VERSION = 8
 
@@ -98,7 +103,7 @@ class EFXUvsPatternItem(PropertyGroup):
     bottom: FloatProperty(name="Bottom")
     texture_index: IntProperty(
         name="Texture Index", min=0,
-        description="指向所属 EFX_UVS 集合 efx_uvs_textures 表里的下标",
+        description="指向所属 UVS 对象 efx_uvs_textures 表里的下标",
     )
     flags: StringProperty(
         name="Flags", default="0",
@@ -195,33 +200,33 @@ def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
 
-    # EFX_UVS 专属，全部挂在 Collection 上（EFX_UVS 就是那个集合本身，同 EFX_ROOT 的决定，
-    # 没有根 Empty）。文件版本号不做成属性——这个插件只支持 MHWilds 的固定版本号 8
-    # （`MHWILDS_UVS_FILE_VERSION`），面板上直接显示常量文字就够。
-    Collection.efx_uvs_source_filename = StringProperty(
+    # EFX_UVS 专属，全部挂在代表整份 .uvs 的 Empty Object 上（本模块头部说明的"整份文件一个
+    # Object"决定；包裹它的可视化 Collection 不带这些属性）。文件版本号不做成属性——这个插件
+    # 只支持 MHWilds 的固定版本号 8（`MHWILDS_UVS_FILE_VERSION`），面板上直接显示常量文字就够。
+    Object.efx_uvs_source_filename = StringProperty(
         name="Source Filename",
         description="导入时的原始文件名（含版本号后缀），导出时作为默认文件名",
     )
     # 对应 vendor 的 Header.attributes。名字刻意弱化成 "cutout related"：只确认了它是文件级
     # 总开关，没确认引擎里的真实用途是不是字面意义的"启用裁剪"。
-    Collection.efx_uvs_cutout_related = BoolProperty(
+    Object.efx_uvs_cutout_related = BoolProperty(
         name="UV Cutout Related",
         description="文件级总开关：关闭时整个文件都不裁剪；打开时才由每个 pattern 自己的 "
                     "use_cutout 决定裁不裁",
     )
-    Collection.efx_uvs_textures = CollectionProperty(type=EFXUvsTextureItem)
-    Collection.efx_uvs_textures_active_index = IntProperty()
-    Collection.efx_uvs_sequences = CollectionProperty(type=EFXUvsSequenceItem)
-    Collection.efx_uvs_sequences_active_index = IntProperty()
+    Object.efx_uvs_textures = CollectionProperty(type=EFXUvsTextureItem)
+    Object.efx_uvs_textures_active_index = IntProperty()
+    Object.efx_uvs_sequences = CollectionProperty(type=EFXUvsSequenceItem)
+    Object.efx_uvs_sequences_active_index = IntProperty()
 
 
 def unregister():
-    del Collection.efx_uvs_sequences_active_index
-    del Collection.efx_uvs_sequences
-    del Collection.efx_uvs_textures_active_index
-    del Collection.efx_uvs_textures
-    del Collection.efx_uvs_cutout_related
-    del Collection.efx_uvs_source_filename
+    del Object.efx_uvs_sequences_active_index
+    del Object.efx_uvs_sequences
+    del Object.efx_uvs_textures_active_index
+    del Object.efx_uvs_textures
+    del Object.efx_uvs_cutout_related
+    del Object.efx_uvs_source_filename
 
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)

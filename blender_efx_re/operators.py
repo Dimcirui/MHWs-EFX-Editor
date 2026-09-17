@@ -33,7 +33,7 @@ from bpy.props import BoolProperty, StringProperty
 from bpy.types import Operator
 from bpy_extras.io_utils import ExportHelper, ImportHelper
 
-from . import bridge, i18n, io_tree, model, transform3d_view
+from . import asset_link, asset_paths, bridge, i18n, io_tree, model, preferences, transform3d_view
 
 _DIGITS_RE = re.compile(r"[0-9]+")
 
@@ -159,19 +159,85 @@ class EFX_RE_OT_import(Operator, ImportHelper):
         type=bpy.types.OperatorFileListElement, options={"HIDDEN", "SKIP_SAVE"},
     )
 
-    def invoke(self, context, event):
-        """拖入时直接执行，不要弹文件浏览器。
+    # 两个默认关的联动开关（对齐姊妹项目 EFX-Editor 导入算子上的 import_meshes /
+    # import_uvs）。默认关的理由：两者都要跑外部进程（pak 现捞）或第三方插件，几秒到几十秒
+    # 不等，而且大多数编辑场景根本不需要看网格。实现全在 asset_link.py，见那边模块说明。
+    import_meshes: BoolProperty(
+        name="Import referenced meshes",
+        description="顺着 MeshPath 把网格导进来挂到对应的 Entry 下面，材质用 MaterialPath "
+                    "指的 .mdf2（贴图跟着材质一起），并把那份 .mdf2 设成参考材质。"
+                    "网格解码由 RE Mesh Editor 负责，没装就只做参考材质那一半",
+        default=False,
+        options={"SKIP_SAVE"},
+    )
+    import_uvs: BoolProperty(
+        name="Import referenced .uvs",
+        description="顺着每个 UVSequence 的 UVSPath 把 .uvs 建成可编辑的 UVS 对象，"
+                    "并按它的 SequenceNo 把那条序列用的序列帧大图（.tex）解出来绑成预览图",
+        default=False,
+        options={"SKIP_SAVE"},
+    )
+    # 只在勾了上面任意一个时才画。资源路径解析优先用解包目录（从资产库面板的 EFX 根目录
+    # 往上自动推导），推导不出来才靠这个从 pak 现捞。填了就记到用户配置里，下次不用再填。
+    game_dir: StringProperty(
+        name="Game Folder",
+        description="MonsterHunterWilds 安装目录。解包目录里找不到的资源从这里的 pak 现捞，"
+                    "捞过一次就缓存下来",
+        subtype="DIR_PATH",
+        default="",
+        options={"SKIP_SAVE"},
+    )
 
-        Blender 拖文件进来时用 `INVOKE_DEFAULT` 调这个算子，而 `ImportHelper.invoke()` 干的事
-        是 `fileselect_add(self)`——**打开文件浏览器**，压根不执行导入。表现出来就是"拖进去
-        没反应，算子还返回 FINISHED"（实测踩过：FileHandler 注册正确、poll_drop 通过、扩展名
-        也匹配，就是什么都没发生）。
+    def draw(self, context):
+        layout = self.layout
+        paths = self._paths()
+        if self.directory:
+            # 拖入这条路走的是属性对话框，不是文件浏览器——没有文件列表可看，
+            # 所以自己列一下"这次要导入什么"，别让用户点确认时不知道点的是啥。
+            if len(paths) == 1:
+                layout.label(text=bpy.path.basename(paths[0]), icon="FILE")
+            else:
+                layout.label(text=f"{len(paths)} × .efx", icon="FILE")
+        layout.prop(self, "import_meshes", text=i18n.T("link.import_meshes"))
+        if self.import_meshes and not asset_link.mesh_importer_available():
+            layout.label(text=i18n.T("link.need_mesh_editor"), icon="INFO")
+        layout.prop(self, "import_uvs", text=i18n.T("link.import_uvs"))
+
+        if not (self.import_meshes or self.import_uvs):
+            return
+        box = layout.box()
+        # 用当前选中的路径算：解析优先从**这个 efx 自己的位置**向上找 natives/，
+        # 所以浏览器里换个目录看到的根也会跟着变（见 asset_paths.search_roots()）。
+        roots = asset_paths.search_roots(near=self.filepath or self.directory)
+        if roots:
+            box.label(text=f"{i18n.T('link.asset_roots')}: {len(roots)}", icon="FILE_FOLDER")
+            box.label(text=str(roots[0]))
+        else:
+            box.label(text=i18n.T("link.no_roots"), icon="INFO")
+        box.prop(self, "game_dir", text=i18n.T("link.game_dir"))
+
+    def invoke(self, context, event):
+        """拖入时弹属性对话框确认，**不要**弹文件浏览器、也不要直接闷头导入。
+
+        ⚠ 不能沿用 `ImportHelper.invoke()`：Blender 拖文件进来时用 `INVOKE_DEFAULT` 调这个
+        算子，而 `ImportHelper.invoke()` 干的事是 `fileselect_add(self)`——**打开文件浏览器**，
+        压根不执行导入。表现出来就是"拖进去没反应，算子还返回 FINISHED"（实测踩过：
+        FileHandler 注册正确、poll_drop 通过、扩展名也匹配，就是什么都没发生）。
+
+        改成属性对话框（`invoke_props_dialog`）而不是直接 `execute()`：文件浏览器那条路上
+        `import_meshes` / `import_uvs` 这两个联动开关是画在侧栏里的，用户点"导入"之前能看到、
+        能勾；拖入这条路要是直接执行，那两个开关就永远只能是默认值，用户根本没有机会选——
+        表现成"拖进来的和菜单导进来的行为不一样"，而原因完全不可见。对齐姊妹项目
+        EFX-Editor 导入算子的同一处处理。
 
         判据用 `self.directory`：只有拖入/多选这条路会把它填上，用户从菜单点"导入"时它是空的，
         那时才该弹浏览器。
         """
+        # 游戏目录记在用户配置里（不是 .blend 里），每次开面板都填回去，省得反复输。
+        self.game_dir = asset_paths.get_game_dir()
         if self.directory:
-            return self.execute(context)
+            # 宽一点：勾上联动开关之后那个框里要显示解析根的完整路径，默认宽度放不下。
+            return context.window_manager.invoke_props_dialog(self, width=440)
         return super().invoke(context, event)
 
     def _paths(self) -> list[str]:
@@ -201,15 +267,31 @@ class EFX_RE_OT_import(Operator, ImportHelper):
 
             name = bpy.path.basename(path)
             # 建树之前先验骨骼绑定索引表对不对得上——对不上就整文件拒绝，别把错位的绑定
-            # 塞进场景（见 io_tree.check_bone_relation_alignment() 的说明）。
+            # 塞进场景（见 io_tree.check_bone_relation_alignment() 的说明）。只有在插件首选项
+            # 里显式勾了"绕过"时才放行，并把这个事实记到根上、导出时再警告一次。
+            alignment_bypassed = False
             try:
                 io_tree.check_bone_relation_alignment(data)
             except io_tree.BoneRelationAlignmentError as ex:
-                failed.append((bpy.path.basename(path), str(ex).strip().split("\n")[0]))
-                continue
+                if not preferences.bypass_bone_alignment():
+                    failed.append((name, str(ex).strip().split("\n")[0]))
+                    continue
+                alignment_bypassed = True
+                # 放行警告里不重复异常那句"已拒绝导入整个文件"的措辞，直接用逐作用域的
+                # 具体问题（和 check_* 共用 bone_relation_alignment_problems()）。
+                problems = io_tree.bone_relation_alignment_problems(data)
+                self.report(
+                    {"WARNING"},
+                    f"'{name}' 骨骼绑定索引对不上，已按首选项放行导入，绑定可能已错位："
+                    + "；".join(problems),
+                )
             root_col = io_tree.build_root_from_efxfile(data, context.scene.collection, name)
+            root_col.efx_bone_alignment_bypassed = alignment_bypassed
             # 记住带版本号后缀的原始文件名，给 Export 当默认文件名用（见模块头部说明）。
             root_col.efx_source_filename = name
+            # 记住它所在的目录：它引用的 .mesh/.uvs/.tex 绝大多数就在它自己那棵
+            # natives/STM 树里，资源解析优先从这里向上回溯（asset_paths.roots_from()）。
+            root_col.efx_source_dir = os.path.dirname(os.path.abspath(path))
             transform3d_view.sync_all_transform3d(root_col)
             # 刚导入的这棵树就是用户接下来要动的那棵——直接设成"当前 EFX"，省得还要手动去选
             # （对齐姊妹项目 EFX-Editor 导入后自动指向新根的行为）。见 io_tree.resolve_root()。
@@ -232,7 +314,45 @@ class EFX_RE_OT_import(Operator, ImportHelper):
             self.report({"INFO"}, f"已导入 '{root_col.name}'：{_summarize(data)}")
         else:
             self.report({"INFO"}, f"已导入 {len(imported)} 个 EFX 文件（{len(failed)} 个失败）")
+
+        # 两个联动开关放在 EFX 本身全部导完之后跑：它们依赖已经建好的属性树（读的是树上的
+        # 路径字段，不是 dump 出来的 JSON），而且失败不该回退 EFX 导入本身——报 WARNING，
+        # 不改返回值。
+        self._link_referenced_assets(context, [root for root, _ in imported])
         return {"FINISHED"}
+
+    def _link_referenced_assets(self, context, root_cols) -> None:
+        """两个勾选项的执行入口。实现全在 asset_link.py，这里只管"跑不跑、怎么报"。"""
+        if not (self.import_meshes or self.import_uvs):
+            return
+        # 用户在导入面板上填的游戏目录记进用户配置（下次开还在）。留空表示"不改"——
+        # 不能拿空串去覆盖掉之前配好的目录。
+        if self.game_dir.strip():
+            asset_paths.set_game_dir(self.game_dir)
+
+        problems, parts = [], []
+        if self.import_meshes:
+            counts = [0, 0, 0, 0, 0]
+            mesh_problems = []
+            for root_col in root_cols:
+                *got, got_problems = asset_link.link_meshes(root_col)
+                counts = [a + b for a, b in zip(counts, got)]
+                mesh_problems.extend(got_problems)
+            problems.extend(mesh_problems)
+            n_mesh, n_material, n_override, n_emissive, n_trimmed = counts
+            parts.append(f"{n_mesh} 个网格、{n_material} 份参考材质、{n_override} 张覆盖贴图、"
+                         f"{n_emissive} 个材质接上自发光、按 PartsStartNo 删掉 {n_trimmed} 段")
+        if self.import_uvs:
+            n_uvs, n_tex, uvs_problems = 0, 0, []
+            for root_col in root_cols:
+                a, b, c = asset_link.link_uvs(root_col, scene=context.scene)
+                n_uvs += a
+                n_tex += b
+                uvs_problems.extend(c)
+            problems.extend(uvs_problems)
+            parts.append(f"{n_uvs} 个 .uvs、{n_tex} 张序列帧大图")
+
+        asset_link.report_problems(self, problems, "已一并载入：" + "，".join(parts))
 
 
 class EFX_RE_FH_import(bpy.types.FileHandler):
@@ -312,6 +432,16 @@ class EFX_RE_OT_export(Operator, ExportHelper):
         if root_col is None:
             self.report({"ERROR"}, "没有可导出的 EFX 树——选中树里的任意对象，或在面板的「当前 EFX」里指定一个")
             return {"CANCELLED"}
+
+        # 这棵树是当初勾了首选项"绕过骨骼绑定对齐校验"才导进来的：导出不会拦（用户已经确认要
+        # 放行），但必须再说一声——它的绑定可能已经错位，写出时还会按当前消费者数量重建
+        # BoneRelations、丢掉文件原本声明的槽位。
+        if getattr(root_col, "efx_bone_alignment_bypassed", False):
+            self.report(
+                {"WARNING"},
+                f"'{root_col.name}' 导入时骨骼绑定索引对不上（已按首选项放行），"
+                f"导出的绑定可能已错位、并丢掉若干绑定槽位",
+            )
 
         try:
             io_tree.check_bone_references(root_col)

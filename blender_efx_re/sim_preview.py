@@ -38,9 +38,9 @@ import gpu
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
 from bpy.types import Operator, Panel
 from gpu_extras.batch import batch_for_shader
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
-from . import asset_paths, bridge, coords, i18n, model, tex_image
+from . import asset_paths, bridge, coords, i18n, io_tree, model, semantics, tex_image
 
 _CATEGORY = "Wilds EFX"
 
@@ -69,6 +69,9 @@ _P = {
     # 每个被选中的 entry 一条 track：{"sim", "name", "matrix", "items", "outline"}
     # 一条 track 自带宿主矩阵和渲染产物——多个 entry 各自摆在自己的位置上，共享的只有
     # 时钟（同一个累加器 -> 天然同步，不会各跑各的帧）。
+    #
+    # `PtLife` 召唤出来的 track 额外带 `spawn_depth`（>0）/`origin_offset`（召唤那一刻
+    # 的世界位置，`Matrix.Translation`）——见 `_spawn_action_tracks()`。
     "tracks": [],
     "playing": False,
     "acc": 0.0,          # 帧累加器（浮点，只走整数帧）
@@ -78,6 +81,7 @@ _P = {
     "timer": None,
     "dirty": False,      # 属性被编辑过 -> 下个 tick 重建
     "error": "",
+    "spawned_count": 0,  # 本次播放里 PtLife 已召唤出的 track 总数，见 _MAX_SPAWNED_TRACKS_PER_SESSION
 }
 
 _HANDLERS = []
@@ -128,6 +132,55 @@ def selected_entries(context):
     return out
 
 
+#: `efx_re_sim_group` 动态选项的缓存列表——Blender 要求动态 enum 的 items 在下次重算前保持
+#: 存活，每次都返回一个新建的列表有崩溃的已知先例，所以原地更新同一个列表对象。
+_GROUP_ITEMS_CACHE = []
+
+
+def _group_names(root_col):
+    """`root_col`（EFX_ROOT 集合）下全部 Entry 用过的 `efx_groups` 标签名，去重保序。"""
+    seen = set()
+    names = []
+    for entry in io_tree.root_entries(root_col):
+        for tag in entry.efx_groups:
+            if tag.name and tag.name not in seen:
+                seen.add(tag.name)
+                names.append(tag.name)
+    return names
+
+
+def _group_enum_items(self, context):
+    """`efx_re_sim_group` 的动态选项：固定第一项"全部"，其余是当前 Active EFX 用过的分组名。"""
+    root = io_tree.resolve_root(context)
+    names = _group_names(root) if root is not None else []
+    items = [("ALL", "All Entries", "不按分组过滤，当前 EFX 下的全部 Entry")]
+    items.extend((n, n, "") for n in names)
+    _GROUP_ITEMS_CACHE[:] = items
+    return _GROUP_ITEMS_CACHE
+
+
+def active_entries(context):
+    """按当前范围模式（`efx_re_sim_scope`）解析出要预览的 entry 列表。
+
+    - `SELECTION`（默认）：视口里选中的对象各自所属的 entry，即 `selected_entries()` 原有行为。
+    - `GROUP`：不看视口选择，取当前 Active EFX（`io_tree.resolve_root()`，与选中该 EFX_ROOT
+      集合、或场景顶部的 Active EFX 选择器共用同一套解析）下的全部 Entry，按 `efx_re_sim_group`
+      过滤到某一个 `efx_groups` 标签；选 `ALL Entries` 就是整个 EFX。`io_tree.root_entries()`
+      本来就只收 Entry 对象，Action 从不在返回值里——不会被这个开关意外触发。
+    """
+    scene = context.scene
+    if getattr(scene, "efx_re_sim_scope", "SELECTION") == "GROUP":
+        root = io_tree.resolve_root(context)
+        if root is None:
+            return []
+        entries = io_tree.root_entries(root)
+        group = getattr(scene, "efx_re_sim_group", "ALL")
+        if group == "ALL":
+            return entries
+        return [e for e in entries if group in {t.name for t in e.efx_groups}]
+    return selected_entries(context)
+
+
 def build_blocks(entry_obj):
     """一个 entry -> `[(短类型名, fields_dict), ...]`，按 `efx_index` 排序（= 文件里的顺序）。
 
@@ -146,6 +199,71 @@ def build_blocks(entry_obj):
     return out
 
 
+#: vendor `ExpressionAssignType`（`EfxCommon.cs:8`）没查到值时的默认——`Assign`（直接替换）
+#: 是这五个里对下游影响最好预测的一个，不会因为找不到这个字段就让曲线的效果叠加/相乘出离谱
+#: 的数值。正常情况下这个分支不会走到：vendor 的"...Expression"类里 `bit_name` 对应的字段
+#: 一定声明为 `ExpressionAssignType`，见 EfxBasics.cs/EfxTypeBillboard.cs 等的
+#: `public ExpressionAssignType <bitName>;`。
+_EXPR_ASSIGN_DEFAULT = 4
+
+
+def collect_expressions(entry_obj):
+    """一个 entry -> `[(base_type_name, bit_name, formula, assign_type), ...]`，喂给
+    `efx_sim.Simulator(expressions=...)`。
+
+    **只读**：只读 `efx_is_expression_attribute`/`efx_expression_curves`/`efx_fields`，
+    不写任何东西——同 `build_blocks()`。
+
+    "IExpressionAttribute 是独立的 attribute 类型"这件事，来自 vendor 源码本身（比如
+    `EFXAttributeSpawnExpression` 和 `EFXAttributeSpawn` 是两个不同的 `EfxAttributeType`，
+    见 `EfxBasics.cs`），不是猜测——`base_type_name` 靠"去掉短类型名结尾的 'Expression'"
+    还原出它驱动哪个 sibling attribute，这条命名规则在全部 `IExpressionAttribute` 类型上
+    检查过、没有反例（`ATTRIBUTE_TYPES.md`）。`bit_name` 对应的字段是一个
+    `ExpressionAssignType` 枚举值（同一个 "...Expression" 对象自己的 `efx_fields` 里，
+    键名就是 `bit_name` 本身，如 `"spawnNum"`），决定公式结果和 sibling 字段的现有值怎么
+    合成（Add/Subtract/Multiply/Divide/Assign）——不是公式结果本身。
+    """
+    attrs = [o for o in entry_obj.children if o.get("~TYPE") == model.TYPE_ATTRIBUTE]
+    by_short_name = {model.short_attr_name(o.efx_attr_type): o for o in attrs}
+
+    out = []
+    for obj in attrs:
+        if not obj.efx_is_expression_attribute:
+            continue
+        short_name = model.short_attr_name(obj.efx_attr_type)
+        if not short_name.endswith("Expression"):
+            continue
+        base_name = short_name[: -len("Expression")]
+        if base_name not in by_short_name:
+            continue  # 找不到 sibling attribute——efx_sim 自己会 note 并跳过，这里不重复判断
+
+        try:
+            own_fields = model.children_to_dict(obj.efx_fields)
+        except Exception:
+            own_fields = {}
+
+        sibling_obj = by_short_name[base_name]
+        for curve in obj.efx_expression_curves:
+            if not curve.bit_name:
+                continue  # vendor 自己都没猜出这一位驱动哪个字段，见 model.py 的
+                          # EFXExpressionCurveItem 说明——无法定位目标，不瞎猜
+            assign_type = own_fields.get(curve.bit_name)
+            if isinstance(assign_type, bool) or not isinstance(assign_type, (int, float)):
+                assign_type = _EXPR_ASSIGN_DEFAULT
+
+            # 这条曲线的目标字段是不是确认过的弧度制角度字段——**不看**"角度显示"开关
+            # （那是纯 UI 偏好），这里要的是引擎/文件格式层面的事实：全语料实测公式驱动
+            # 角度字段时字面量按度写，`efx_sim.Simulator` 要据此把公式结果转成弧度再合成，
+            # 见 `efx_sim/simulator.py::_ExprCurve.is_angle_degrees` 的说明。
+            field_name = _sim().resolve_expr_field_name(base_name, curve.bit_name)
+            entry = semantics.get_field_entry(sibling_obj.efx_attr_type, field_name)
+            is_angle_degrees = semantics.is_angle_radians_field(entry)
+
+            out.append((base_name, curve.bit_name, curve.formula, int(assign_type),
+                       is_angle_degrees))
+    return out
+
+
 def config_from_scene(scene):
     """场景属性 -> SimConfig。待标定项全在这儿落地成开关。"""
     return _sim().SimConfig(
@@ -154,7 +272,6 @@ def config_from_scene(scene):
         random_dist=getattr(scene, "efx_re_sim_random_dist", "onesided"),
         life_model=getattr(scene, "efx_re_sim_life_model", "sum"),
         keep_hold_frame=getattr(scene, "efx_re_sim_keep_hold", "ignore"),
-        es3d_range_mode=getattr(scene, "efx_re_sim_es3d_range", "static_random"),
         velocity_unit=getattr(scene, "efx_re_sim_velocity_unit", "per_second"),
         rot_order_applied=getattr(scene, "efx_re_sim_rot_applied", "forward"),
         uvs_speed_unit=getattr(scene, "efx_re_sim_uvs_speed_unit", "per_frame"),
@@ -209,9 +326,22 @@ def _resources_for(entry_obj):
 
 
 def _gpu_texture(tex_key):
-    """贴图内部路径 -> `gpu.types.GPUTexture`；拿不到返回 None（调用方退回纯色）。"""
+    """贴图标识 -> `gpu.types.GPUTexture`；拿不到返回 None（调用方退回纯色）。
+
+    两种 key 都认：
+    - **游戏内部路径**（`.uvs` 的贴图表给的），走 `asset_paths.resolve()` + 解码；
+    - **`bpy.data.images` 里的名字**（网格材质上已经加载好的那张，见
+      `_resolve_mesh_tris()`）——场景里已经有了，直接用，不再过一遍路径解析。
+    先查图像数据块：内部路径不可能同时是一个已存在的图像名，不会认错。
+    """
     if not tex_key:
         return None
+    existing = bpy.data.images.get(tex_key)
+    if existing is not None:
+        try:
+            return gpu.texture.from_image(existing)
+        except Exception:   # noqa: BLE001
+            return None
     name = _TEX_CACHE.get(tex_key, False)
     if name is False:
         name = None
@@ -234,12 +364,109 @@ def _gpu_texture(tex_key):
         return None
 
 
+def _mesh_objects_under(obj, accum):
+    """递归收集 `obj` 底下**没有 `~TYPE` 标记**的网格对象——那些是 `asset_link.py`
+    （"一并导入引用的网格"）用 RE Mesh Editor 导进来、挂在 Entry 下面的，不是 EFX 自己的
+    树节点。返回 `[(mesh_data, 相对 entry 的局部矩阵), ...]`。
+
+    `accum` 是从 entry 累积下来的局部矩阵——RE Mesh Editor 可能建出多层子对象（LOD 组之类），
+    每一层各自的 `matrix_local` 只相对**它自己的父**，要一路乘下来才是"相对 entry"的变换。
+    """
+    out = []
+    for child in obj.children:
+        if child.get("~TYPE") is not None:
+            continue   # EFX 自己的对象（Entry/Attribute），不是导入的网格
+        child_matrix = accum @ child.matrix_local
+        if child.type == "MESH" and child.data is not None:
+            out.append((child.data, child_matrix))
+        out.extend(_mesh_objects_under(child, child_matrix))
+    return out
+
+
+def _resolve_mesh_tris(entry_obj):
+    """entry 下面绑定的网格对象（们）的三角形，转换到"相对 entry"的坐标系，缓存供逐粒子
+    复用（只在 track 重建时算一次——网格顶点数可能上千，逐帧重算划不来）。
+
+    找不到就返回空列表，`TypeMeshV2` 未绑定网格 / 没装 RE Mesh Editor 是正常情况，胶水层
+    据此画占位框，不是这里的错误。
+    """
+    tris = []
+    for mesh, local in _mesh_objects_under(entry_obj, Matrix.Identity(4)):
+        try:
+            mesh.calc_loop_triangles()
+        except Exception:   # noqa: BLE001 —— 拿不到三角化数据就跳过这一份，不拖垮整条预览
+            continue
+        verts = [local @ v.co for v in mesh.vertices]
+        uv_layer = mesh.uv_layers.active
+        uvs = uv_layer.data if uv_layer is not None else None
+        looks = [_material_preview_look(m) for m in mesh.materials] or [(None, (1.0, 1.0, 1.0))]
+        for lt in mesh.loop_triangles:
+            a, b, c = lt.vertices
+            if uvs is not None:
+                l0, l1, l2 = lt.loops
+                uv = (tuple(uvs[l0].uv), tuple(uvs[l1].uv), tuple(uvs[l2].uv))
+            else:
+                uv = ((0.0, 0.0),) * 3
+            look = looks[lt.material_index] if lt.material_index < len(looks) else looks[0]
+            tris.append((verts[a], verts[b], verts[c], uv[0], uv[1], uv[2]) + look)
+    return tris
+
+
+def _material_preview_look(material):
+    """一个材质在预览里长什么样：`(贴图名, 染色 RGB)`。
+
+    **染色必须从材质上取，不能只靠模拟层的 `Color`/`EmissiveColor`**：实测这个 mod 的全部
+    24 个 `TypeMeshV2`，两个字段都是纯白 `(1,1,1)`——EFX 侧压根没有颜色信息，真正的颜色在
+    材质的 `EmissiveParam` 里（`asset_link._wire_emission()` 把它放进了 `EFX Emissive Tint`
+    节点）。不取它，预览就只能是"白 × 白"，怎么调都是一块白。
+
+    取值顺序：自发光染色（`EFX Emissive Tint`）-> `ColorParam` -> 白。
+
+    贴图取的是 **`AlphaMap`（遮罩）优先**，不是 `BaseMap`：`_mesh_shader()` 只拿它当遮罩用
+    （形状），颜色走顶点色。VFX 网格的镂空全在遮罩里，拿 `BaseMap` 会画出一堆实心方片。
+    没有遮罩槽的材质才退回 `BaseMap`/`EmissiveMap`——那种材质本来就是实心的。
+
+    优先 `BaseMap`、其次 `EmissiveMap`——节点的 `label` 就是 mdf2 里的贴图槽名
+    （`asset_link.py` 换覆盖贴图时认的也是它）。**预览不求还原材质**：它只有一个
+    "贴图 × 顶点色"的 shader，没有节点图求值，所以取主贴图是能拿到的最接近的东西。
+
+    不取图的后果不是"少个细节"，是**整片纯白**：`_draw_inner()` 拿不到贴图就退回
+    FLAT_COLOR，而 `TypeMeshV2` 的 `Color` 绝大多数是白色（真正的颜色在材质里），
+    于是每个网格都糊成一块白。
+    """
+    white = (1.0, 1.0, 1.0)
+    if material is None or material.node_tree is None:
+        return None, white
+
+    tint = white
+    for label, socket in (("EFX Emissive Tint", "Color2"), ("ColorParam", "Color")):
+        node = next((n for n in material.node_tree.nodes if n.label == label), None)
+        if node is not None and socket in node.inputs:
+            value = node.inputs[socket].default_value
+            tint = (value[0], value[1], value[2])
+            break
+
+    nodes = [n for n in material.node_tree.nodes if n.type == "TEX_IMAGE" and n.image]
+    for want in ("AlphaMap", "BaseMap", "EmissiveMap"):
+        for node in nodes:
+            if node.label == want:
+                return node.image.name, tint
+    return (nodes[0].image.name if nodes else None), tint
+
+
 def _make_track(entry_obj, scene):
     blocks = build_blocks(entry_obj)
+    # 具名参数表从 EFX_ROOT 上取，和面板读数走同一个采集函数（expr_preview），否则同一条
+    # 公式在面板和预览里会给出两个数
+    from . import expr_preview
     sim = _sim().Simulator(blocks, config_from_scene(scene),
-                           resources=_resources_for(entry_obj))
+                           resources=_resources_for(entry_obj),
+                           expressions=collect_expressions(entry_obj),
+                           expr_parameters=expr_preview.collect_expr_parameters(
+                               io_tree.find_root(entry_obj)))
     return {"sim": sim, "name": entry_obj.name, "obj": entry_obj,
-            "items": [], "outline": []}
+            "items": [], "outline": [], "mesh_tris": _resolve_mesh_tris(entry_obj),
+            "spawn_depth": 0, "origin_offset": None}
 
 
 def rebuild_tracks(context, keep_frame=True):
@@ -248,13 +475,14 @@ def rebuild_tracks(context, keep_frame=True):
     old_frame = _P["tracks"][0]["sim"].em.frame if _P["tracks"] else -1
 
     fresh = []
-    for entry in selected_entries(context):
+    for entry in active_entries(context):
         try:
             fresh.append(_make_track(entry, scene))
         except Exception as exc:   # noqa: BLE001 —— 失败的 entry 单独跳过并报出来
             _P["error"] = "%s: %s" % (entry.name, exc)
     _P["tracks"] = fresh
     _P["duration"] = _resolve_duration(scene)
+    _P["spawned_count"] = 0   # 重建整批丢弹掉所有召唤出的 track，计数跟着清零
 
     if keep_frame and old_frame > 0:
         # 快进回原来那一帧：不快进的话，拖一下开关画面就跳回第 0 帧，调参时没法比较前后。
@@ -262,6 +490,9 @@ def rebuild_tracks(context, keep_frame=True):
         target = min(old_frame, _REBUILD_CATCHUP_MAX)
         for tr in fresh:
             tr["sim"].run_to(target)
+            # 快进期间死亡触发的 PtLife 召唤请求原样丢弃，不补播——这条捷径本来就是
+            # "跳过这些帧的画面"，没道理反而把跳过期间召唤的效果从第 0 帧原样重放一遍。
+            del tr["sim"].em.spawn_requests[:]
     _rebuild_items()
     return len(fresh)
 
@@ -289,6 +520,88 @@ def _resolve_duration(scene):
 
 
 # ---------------------------------------------------------------------------
+# PtLife 召唤 Action -> 动态 track
+# ---------------------------------------------------------------------------
+
+#: 递归上限：`Actions[i].PlayEmitter` 内嵌完整子树，真实文件里存在循环/深嵌套引用
+#: （见 `efx_sim.state.SpawnRequest` 类文档），不设上限会卡死预览。
+_MAX_ACTION_SPAWN_DEPTH = 4
+#: 一次播放里最多展开这么多个召唤出的 track（不管深度），双重上限一起兜底。
+_MAX_SPAWNED_TRACKS_PER_SESSION = 32
+
+
+def _action_nested_entries(source_entry_obj, action_index):
+    """`Actions[action_index]` 的 `PlayEmitter` 内嵌的全部 Entry；没有就是空列表。
+
+    `action_index` 是相对 `source_entry_obj` 自己所在那棵 EFX_ROOT 的 `Actions` 顺序——
+    嵌套 `efxrData` 子树自己也有一张独立的 `Actions` 列表，`io_tree.find_root()` 按"离这个
+    对象最近的 EFX_ROOT"解析，嵌套场景下天然对齐，不需要额外传"当前在哪一层"。
+    """
+    root = io_tree.find_root(source_entry_obj)
+    if root is None:
+        return []
+    actions = io_tree.root_actions(root)
+    if not (0 <= action_index < len(actions)):
+        return []
+    action_obj = actions[action_index]
+    out = []
+    for attr in action_obj.children:
+        if attr.get("~TYPE") != model.TYPE_ATTRIBUTE:
+            continue
+        if model.short_attr_name(attr.efx_attr_type) != "PlayEmitter":
+            continue
+        nested_root = attr.efx_nested_root
+        if nested_root is not None and nested_root.get("~TYPE") == model.TYPE_ROOT:
+            out.extend(io_tree.root_entries(nested_root))
+    return out
+
+
+def _spawn_action_tracks(tr, scene):
+    """把 `tr` 这一步新产出的 `SpawnRequest`（`PtLife` 死亡时召唤）翻译成新的 track，
+    直接接进 `_P["tracks"]`，让它们和其余 track 共用同一个时钟继续往下播。
+
+    只处理 `kind == "action"`（`PtLife` 唯一产出的种类，见 `efx_sim/behaviors/ptlife.py`）。
+    召唤点是**召唤那一刻的世界位置的静态快照**——不跟着任何东西继续走，语料/实机都没有
+    证据说明被召唤的效果应该跟随死掉的粒子，就近似成最简单的"钉在那个点"。
+    """
+    em = tr["sim"].em
+    reqs = list(em.spawn_requests)
+    del em.spawn_requests[:]      # 已经消化，不管展开成不成功都不留给下一帧重复处理
+    if not reqs:
+        return
+    entry_obj = tr.get("obj")
+    if entry_obj is None:
+        return
+    depth = tr.get("spawn_depth", 0)
+    if depth >= _MAX_ACTION_SPAWN_DEPTH:
+        em.note("PtLife 召唤链超过 %d 层，本预览不再继续展开（防止循环/深嵌套卡死）"
+                % _MAX_ACTION_SPAWN_DEPTH)
+        return
+
+    base_matrix = _entry_matrix(entry_obj)
+    for req in reqs:
+        if req.kind != "action":
+            continue
+        nested_entries = _action_nested_entries(entry_obj, req.target)
+        if not nested_entries:
+            continue
+        origin = Matrix.Translation(_to_world(base_matrix, req.pos))
+        for nested_entry in nested_entries:
+            if _P["spawned_count"] >= _MAX_SPAWNED_TRACKS_PER_SESSION:
+                em.note("本次预览召唤的 Action 已达上限（%d 个 track），其余不再展开"
+                        % _MAX_SPAWNED_TRACKS_PER_SESSION)
+                return
+            try:
+                new_tr = _make_track(nested_entry, scene)
+            except Exception:
+                continue
+            new_tr["spawn_depth"] = depth + 1
+            new_tr["origin_offset"] = origin
+            _P["tracks"].append(new_tr)
+            _P["spawned_count"] += 1
+
+
+# ---------------------------------------------------------------------------
 # 坐标换算
 # ---------------------------------------------------------------------------
 
@@ -299,6 +612,14 @@ def _entry_matrix(entry_obj):
     `transform3d_view.py` 烘进了这个矩阵，多层嵌套 entry 的叠加也由 Blender 自己算好了
     ——乘上去就全部继承，模拟层因此完全不必知道 `Transform3D`、骨骼绑定这些事
     （见 docs/SIM_PORT_PLAN.md §5.1）。
+
+    **这里只用静态烘焙矩阵，不叠 `Transform3D` 的逐帧旋转/缩放增量**——那条路已经试过、
+    被真实场景推翻：`RIBBON`（`TypeRibbonFollow`）这类渲染体的几何是跨越多帧的历史轨迹
+    （`p.trail`），如果在渲染时把"当前这一帧"的旋转/缩放矩阵统一叠给全部历史点，整条尾迹
+    会跟着当前朝向刚体转动，而不是被粒子自己逐帧的运动"甩"出一条弧线——本末倒置。正确的
+    地方是 `efx_sim/behaviors/parentoptions.py`：把旋转/缩放**增量**逐帧烘进 `p.pos`
+    本身（和位置漂移一直以来的做法对称），这样 `p.trail` 里的历史点天然就是"那一刻真实
+    在哪"，这里只需要套一次性的静态矩阵。见 parentoptions.py 模块说明。
     """
     try:
         return entry_obj.matrix_world.copy()
@@ -376,6 +697,56 @@ def _tex_shader():
     return _TEX_SHADER
 
 
+_MESH_SHADER = None
+
+
+def _mesh_shader():
+    """网格专用 shader：**颜色来自顶点色，透明度来自贴图的遮罩**。
+
+    和 billboard 那个 `texture * v_col` 不同，不能直接复用——VFX 网格的形状**全靠遮罩**：
+    那些环、弧、光条在几何上就是一整张方片，镂空是贴图给的。照 billboard 那样只乘上去，
+    贴图自己的 alpha 恒为 1，方片就整块实心画出来，一堆方片叠在一起就是一坨不透明的块
+    （实测截图：预览里整个特效糊成一团淡紫，而视口里是有镂空的剑+环）。
+
+    `mask = max(r, g, b) * a` 同时吃两种存法，不用管遮罩到底在哪个通道：VFX 的遮罩贴图
+    总有一边是常数 1（`01_ring_alpha000` 是 alpha 恒 1、形状在 R；`base9.tex` 反过来是
+    RGB 恒白、形状在 alpha），乘起来正好取到有信息的那个。
+
+    颜色只取顶点色、不取贴图 RGB：遮罩贴图的 RGB 是**遮罩本身**（那张环是纯红的），
+    拿它当颜色会画出一个红环。真正的颜色在顶点色里（材质染色，见
+    `_material_preview_look()`）。
+    """
+    global _MESH_SHADER
+    if _MESH_SHADER is not None:
+        return _MESH_SHADER
+    iface = gpu.types.GPUStageInterfaceInfo("efx_re_sim_mesh_iface")
+    iface.smooth("VEC2", "v_uv")
+    iface.smooth("VEC4", "v_col")
+
+    info = gpu.types.GPUShaderCreateInfo()
+    info.push_constant("MAT4", "ModelViewProjectionMatrix")
+    info.sampler(0, "FLOAT_2D", "image")
+    info.vertex_in(0, "VEC3", "pos")
+    info.vertex_in(1, "VEC2", "texCoord")
+    info.vertex_in(2, "VEC4", "color")
+    info.vertex_out(iface)
+    info.fragment_out(0, "VEC4", "FragColor")
+    info.vertex_source(
+        "void main() {"
+        "  v_uv = texCoord;"
+        "  v_col = color;"
+        "  gl_Position = ModelViewProjectionMatrix * vec4(pos, 1.0);"
+        "}")
+    info.fragment_source(
+        "void main() {"
+        "  vec4 t = texture(image, v_uv);"
+        "  float mask = max(max(t.r, t.g), t.b) * t.a;"
+        "  FragColor = vec4(v_col.rgb, mask * v_col.a);"
+        "}")
+    _MESH_SHADER = gpu.shader.create_from_info(info)
+    return _MESH_SHADER
+
+
 def _quad_uvs(rect):
     """`.uvs` 的 (left, top, right, bottom) -> 四角 UV，序同 `_quad_tris`（BL,BR,TR,TL）。
 
@@ -392,6 +763,24 @@ def _camera_axes(rv3d):
     vm = rv3d.view_matrix
     return (Vector((vm[0][0], vm[0][1], vm[0][2])),
             Vector((vm[1][0], vm[1][1], vm[1][2])))
+
+
+def _camera_forward(rv3d):
+    """视图矩阵第三行——只用来给 RIBBON 求"段方向 × 它"的横向，符号无所谓（叉乘定横向时
+    整体反向只会让两侧顶点互换，三角形本身不变）。"""
+    vm = rv3d.view_matrix
+    return Vector((vm[2][0], vm[2][1], vm[2][2]))
+
+
+def _to_world_dir(matrix, v):
+    """方向向量（不带位移）：entry 矩阵只取旋转/缩放的 3x3 部分，再归一化丢掉缩放。
+
+    `PLANE`（`TypePolygon`）的 `axis_u`/`axis_v` 走这条，不能像 `_to_world` 那样把位置也
+    加上去；也不能直接照搬 `it.size` 那条"位置过矩阵、尺寸不过"的先例——朝向必须跟着 entry
+    转，只是转完要丢掉矩阵里的缩放分量，否则非等比缩放会把正交的 u/v 拉斜。
+    """
+    d = matrix.to_3x3() @ coords.game_pos_to_blender(v.x, v.y, v.z)
+    return d.normalized() if d.length > 1e-9 else Vector((1.0, 0.0, 0.0))
 
 
 def _spin(right, up, radians_):
@@ -412,6 +801,109 @@ def _quad_tris(center, right, up, hw, hh):
     return (a, b, c, a, c, d)
 
 
+def _collect_ribbon(it, matrix, fwd, buckets):
+    """`RIBBON`（`TypeRibbonLength`）：把 `it.points`（局部坐标，base→tip）摊成三角带。
+
+    每一段的横向 = 段方向 × 相机视线，条带的宽面永远转向相机——Trail Renderer 的标准做法，
+    仿姊妹项目 EFX-Editor `blender_efx/sim_preview.py::_emit_ribbon()`（本仓没有它的 numpy
+    整批版本，粒子数还没到需要那条快路的规模）。没有贴图，恒落进 `tex_key=None` 那一桶，
+    和纯色 billboard 三角形共用同一条绘制路径。
+    """
+    pts = it.points
+    n = len(pts)
+    world = [_to_world(matrix, q) for q, _hw, _a in pts]
+    col = tuple(it.color)
+    bucket = buckets.setdefault(it.tex_key, {"pos": [], "col": [], "uv": []})
+
+    sides = [None] * n
+    for i in range(n):
+        a = world[i - 1] if i else world[0]
+        b = world[i + 1] if i < n - 1 else world[n - 1]
+        s = (b - a).cross(fwd)
+        if s.length_squared > 1e-12:
+            sides[i] = s.normalized()
+
+    for i in range(n - 1):
+        s0, s1 = sides[i], sides[i + 1]
+        if s0 is None or s1 is None:
+            continue
+        _q0, hw0, a0 = pts[i]
+        _q1, hw1, a1 = pts[i + 1]
+        l0, r0 = world[i] - s0 * hw0, world[i] + s0 * hw0
+        l1, r1 = world[i + 1] - s1 * hw1, world[i + 1] + s1 * hw1
+        c0 = (col[0], col[1], col[2], col[3] * a0)
+        c1 = (col[0], col[1], col[2], col[3] * a1)
+        bucket["pos"].extend((tuple(l0), tuple(r0), tuple(r1),
+                              tuple(l0), tuple(r1), tuple(l1)))
+        bucket["col"].extend((c0, c0, c1, c0, c1, c1))
+        bucket["uv"].extend(((0.0, 0.0),) * 6)
+
+
+def _collect_mesh(it, matrix, mesh_tris, buckets):
+    """`MESH`（`TypeMeshV2`）：把 track 缓存的三角形（相对 entry 局部坐标）实例化到这个
+    粒子的位置/旋转/缩放上，再过 entry 矩阵落到世界坐标。
+
+    `coords.local_matrix_to_blender()` 已经把 game 坐标系的 pos/rot/scale 转成一个
+    Blender 矩阵（Transform3D 用的就是它）——这里直接复用，不重新发明一遍轴变换。
+    `EmissiveColor`（已乘 `EmissiveRate`）按加法叠在底色上，近似"自发光让网格更亮"，
+    不是真正的加法混合通道（预览没有第二条渲染 pass），足够看出"这里该发光"。
+    """
+    pos = it.pos
+    rx, ry, rz = it.extra.get("rot", (0.0, 0.0, 0.0))
+    rot_order = it.extra.get("rot_order", 0)
+    size = it.size
+    inst = coords.local_matrix_to_blender(
+        (pos.x, pos.y, pos.z), (rx, ry, rz), (size.x, size.y, size.z), rot_order)
+    world = matrix @ inst
+
+    er, eg, eb = it.extra.get("emissive", (0.0, 0.0, 0.0))
+    col = it.color
+    final = (min(1.0, col[0] + er), min(1.0, col[1] + eg), min(1.0, col[2] + eb), col[3])
+
+    # 按**每个三角形自己的**贴图分桶：一份网格里不同段可以是不同材质，而且这里的 key 是
+    # `bpy.data.images` 的名字（`_resolve_mesh_tris()` 从材质节点上取的），不是 `.uvs` 那种
+    # 游戏内部路径——`_gpu_texture()` 两种都认。
+    for a, b, c, uv_a, uv_b, uv_c, tex_key, tint in mesh_tris:
+        # `("MESH", key)` 这个 key 形状既做分桶又做路由：绘制时按它挑 `_mesh_shader()`，
+        # billboard 那条路（key 是裸字符串）完全不受影响。
+        bucket = buckets.setdefault(("MESH", tex_key or it.tex_key),
+                                    {"pos": [], "col": [], "uv": []})
+        # 材质的染色**乘**进来：EFX 侧的 Color/EmissiveColor 常常是纯白，颜色全在材质里
+        # （见 `_material_preview_look()`）。加法叠完再乘，两边的信息都留住。
+        shaded = (final[0] * tint[0], final[1] * tint[1], final[2] * tint[2], final[3])
+        bucket["pos"].extend((tuple(world @ a), tuple(world @ b), tuple(world @ c)))
+        bucket["col"].extend((shaded, shaded, shaded))
+        bucket["uv"].extend((uv_a, uv_b, uv_c))
+
+
+#: 占位框（没绑定网格 / 没装 RE Mesh Editor 时）的 12 条棱，用 ±0.5 的单位立方体归一化坐标
+#: 表示，画的时候按 `it.size` 缩放——同 `EmitterShape3D` 线框走 `_OUTLINE_COLOR` 那条素材。
+_BOX_EDGES = [(a, b) for a in range(8) for b in range(a + 1, 8)
+             if sum(1 for t in range(3)
+                    if ((a >> t) & 1) != ((b >> t) & 1)) == 1]
+_BOX_CORNERS = [(-0.5 if not (i & 1) else 0.5,
+                -0.5 if not (i & 2) else 0.5,
+                -0.5 if not (i & 4) else 0.5) for i in range(8)]
+
+
+def _collect_mesh_placeholder(it, matrix, lines, line_cols):
+    """没有绑定网格（未装 RE Mesh Editor / `asset_link.py` 没跑过 / 网格引用解析失败）时的
+    占位框，同 EFX-Editor MESH 的约定："未绑定时预览只画一个占位框"，不是不画。
+
+    不叠旋转——占位框只是"这里有个东西、大概这么大"的提示，不用假装知道朝向。
+    """
+    center = _to_world(matrix, it.pos)
+    s = it.size
+    scale = Vector((max(1e-4, abs(s.x)), max(1e-4, abs(s.y)), max(1e-4, abs(s.z))))
+    corners = [center + Vector((cx * scale.x, cy * scale.y, cz * scale.z))
+              for cx, cy, cz in _BOX_CORNERS]
+    for a, b in _BOX_EDGES:
+        lines.append(tuple(corners[a]))
+        lines.append(tuple(corners[b]))
+        line_cols.append(_OUTLINE_COLOR)
+        line_cols.append(_OUTLINE_COLOR)
+
+
 def _rebuild_items():
     """重跑各 track 的渲染 pass（与 step 解耦，转视角时可以只重跑这里）。"""
     for tr in _P["tracks"]:
@@ -425,7 +917,12 @@ def _rebuild_items():
             tr["outline"] = sim.emitter_outline()
         except Exception:
             tr["outline"] = []
-        tr["matrix"] = _entry_matrix(tr["obj"]) if tr["obj"] else None
+        base = _entry_matrix(tr["obj"]) if tr["obj"] else None
+        offset = tr.get("origin_offset")
+        # `origin_offset`：`PtLife` 召唤出的 track——被召唤的 Entry 是嵌套 efxrData 子树里
+        # 悬空的对象，`matrix_world` 只有它自己的静态烘焙、不知道自己是在哪个世界位置被
+        # 召唤的，召唤点这层平移必须在外面叠一次（见 _spawn_action_tracks()）。
+        tr["matrix"] = (offset @ base) if (base is not None and offset is not None) else base
 
 
 def _collect(tr, rv3d, buckets, lines, line_cols):
@@ -439,16 +936,35 @@ def _collect(tr, rv3d, buckets, lines, line_cols):
     if matrix is None:
         return
     right, up = _camera_axes(rv3d)
+    fwd = _camera_forward(rv3d)
 
+    mesh_tris = tr.get("mesh_tris")
     for it in tr["items"]:
+        if it.kind == "RIBBON":
+            if it.points:
+                _collect_ribbon(it, matrix, fwd, buckets)
+            continue
+
+        if it.kind == "MESH":
+            if mesh_tris:
+                _collect_mesh(it, matrix, mesh_tris, buckets)
+            else:
+                _collect_mesh_placeholder(it, matrix, lines, line_cols)
+            continue
+
         center = _to_world(matrix, it.pos)
         col = tuple(it.color)
         if it.kind == "POINT":
             hw = hh = max(1e-4, it.size.x)
+            r, u = _spin(right, up, getattr(it, "rot", 0.0))
         else:
             hw = max(1e-4, it.size.x * 0.5)
             hh = max(1e-4, it.size.y * 0.5)
-        r, u = _spin(right, up, getattr(it, "rot", 0.0))
+            if it.axis_u is not None and it.axis_v is not None:
+                # 固定朝向（`TypePolygon`）：用属性给的横/纵轴，不朝相机现算
+                r, u = _to_world_dir(matrix, it.axis_u), _to_world_dir(matrix, it.axis_v)
+            else:
+                r, u = _spin(right, up, getattr(it, "rot", 0.0))
         # ⚠ 只有**位置**过 entry 矩阵，粒子自身的尺寸不跟着 entry 的 scale 缩放。
         # 语料里 Transform3D.LocalScale 94.3% 是 1.0，区分不出来；真遇到非 1 的再定。
         tris = _quad_tris(center, r, u, hw, hh)
@@ -511,14 +1027,16 @@ def _draw_inner():
     for key, b in buckets.items():
         if not b["pos"]:
             continue
-        tex = _gpu_texture(key) if (key and use_tex) else None
+        is_mesh = isinstance(key, tuple)
+        tex_key = key[1] if is_mesh else key
+        tex = _gpu_texture(tex_key) if (tex_key and use_tex) else None
         if tex is None:
             # 拿不到贴图就画纯色，**不跳过**——粒子还在那儿，只是没贴图；
             # 直接不画会让人以为模拟出错了。
             batch_for_shader(flat, "TRIS",
                              {"pos": b["pos"], "color": b["col"]}).draw(flat)
             continue
-        shader = _tex_shader()
+        shader = _mesh_shader() if is_mesh else _tex_shader()
         shader.bind()
         shader.uniform_sampler("image", tex)
         batch_for_shader(shader, "TRIS",
@@ -560,6 +1078,10 @@ def _redraw_viewports():
 
 
 def _reset_all():
+    # `PtLife` 召唤出的 track 是这一轮播放专属的——直接丢掉，下一轮播到同一个死亡点时
+    # 会重新召唤，不需要（也不该）保留身份跨轮复用。
+    _P["tracks"] = [tr for tr in _P["tracks"] if not tr.get("spawn_depth")]
+    _P["spawned_count"] = 0
     for tr in _P["tracks"]:
         try:
             tr["sim"].reset()
@@ -594,8 +1116,11 @@ def tick(context):
 
     steps = 0
     while _P["acc"] >= 1.0 and steps < 240:    # 单 tick 步数上限，防卡死
-        for tr in _P["tracks"]:
+        # 用快照迭代：新召唤出的 track 从下一次 step 才开始跑，不在诞生的这一步就被
+        # 提前推进——这一帧的粒子数/死亡判定不该受"这一帧还召唤了别的东西"影响。
+        for tr in list(_P["tracks"]):
             tr["sim"].step()
+            _spawn_action_tracks(tr, scene)
         _P["acc"] -= 1.0
         steps += 1
         frame = _P["tracks"][0]["sim"].em.frame
@@ -640,14 +1165,14 @@ class EFX_RE_OT_sim_play(Operator):
 
     bl_idname = "efx_re.sim_play"
     bl_label = "Play"
-    bl_description = "播放选中 Entry 的粒子预览。预览是近似，不是游戏画面"
+    bl_description = "播放当前范围内 Entry 的粒子预览。预览是近似，不是游戏画面"
     bl_options = {"REGISTER"}
 
     _timer = None
 
     @classmethod
     def poll(cls, context):
-        return bool(selected_entries(context))
+        return bool(active_entries(context))
 
     def invoke(self, context, event):
         if is_active():
@@ -767,8 +1292,10 @@ class EFX_RE_OT_sim_step(Operator):
         return is_active()
 
     def execute(self, context):
-        for tr in _P["tracks"]:
+        scene = context.scene
+        for tr in list(_P["tracks"]):
             tr["sim"].step()
+            _spawn_action_tracks(tr, scene)
         _rebuild_items()
         _redraw_viewports()
         return {"FINISHED"}
@@ -808,6 +1335,16 @@ class EFX_RE_PT_sim(Panel):
         layout = self.layout
         layout.label(text=i18n.T("sim.approximation_warning"), icon="INFO", translate=False)
 
+        # 生成区域线框：不依赖播放，所以画在播放按钮之外、始终可见（见 es3d_overlay.py）
+        from . import es3d_overlay
+        es3d_overlay.draw_button(layout, context)
+
+        scene = context.scene
+        scope_row = layout.row(align=True)
+        scope_row.prop(scene, "efx_re_sim_scope", text="")
+        if scene.efx_re_sim_scope == "GROUP":
+            scope_row.prop(scene, "efx_re_sim_group", text="")
+
         row = layout.row(align=True)
         if not is_active():
             row.operator(EFX_RE_OT_sim_play.bl_idname, text=i18n.T("sim.play"), icon="PLAY")
@@ -822,8 +1359,9 @@ class EFX_RE_PT_sim(Panel):
             row.operator(EFX_RE_OT_sim_stop.bl_idname, text="", icon="X")
 
         if not is_active():
-            n = len(selected_entries(context))
-            layout.label(text=i18n.T("sim.selected_entries") % n, translate=False)
+            n = len(active_entries(context))
+            key = "sim.group_entries" if scene.efx_re_sim_scope == "GROUP" else "sim.selected_entries"
+            layout.label(text=i18n.T(key) % n, translate=False)
             return
 
         particles, unsupported, notes = aggregate_status()
@@ -890,7 +1428,6 @@ class EFX_RE_PT_sim_unknowns(Panel):
         col.prop(scene, "efx_re_sim_random_dist")
         col.prop(scene, "efx_re_sim_life_model")
         col.prop(scene, "efx_re_sim_keep_hold")
-        col.prop(scene, "efx_re_sim_es3d_range")
         col.prop(scene, "efx_re_sim_rot_applied")
         col.prop(scene, "efx_re_sim_uvs_speed_unit")
         col.prop(scene, "efx_re_sim_uvs_playback")
@@ -910,6 +1447,7 @@ _STRINGS = {
     "sim.pause": {"ZH": "暂停", "EN": "Pause"},
     "sim.resume": {"ZH": "继续", "EN": "Resume"},
     "sim.selected_entries": {"ZH": "已选中 %d 个 Entry", "EN": "%d entries selected"},
+    "sim.group_entries": {"ZH": "该分组命中 %d 个 Entry", "EN": "%d entries matched"},
     "sim.frame": {"ZH": "帧 %d / %d", "EN": "Frame %d / %d"},
     "sim.particles": {"ZH": "粒子 %d 个", "EN": "%d particles"},
     "sim.unsupported": {"ZH": "未模拟属性 %d 个", "EN": "%d attributes not simulated"},
@@ -922,10 +1460,22 @@ _STRINGS = {
 
 def _on_knob_changed(self, context):
     mark_dirty()
+    # 标定开关（rot_applied 等）同样决定线框的形状，独立叠加层也要一起重建
+    from . import es3d_overlay
+    es3d_overlay.invalidate()
 
 
 def register():
     i18n.add_strings(_STRINGS)
+
+    bpy.types.Scene.efx_re_sim_scope = EnumProperty(
+        name="Scope",
+        items=[("SELECTION", "Selection", ""), ("GROUP", "Group", "")],
+        default="SELECTION", update=_on_knob_changed,
+        description="预览目标 Entry 的来源：视口里选中的对象，还是按当前 Active EFX 的分组批量指定")
+    bpy.types.Scene.efx_re_sim_group = EnumProperty(
+        name="Group", items=_group_enum_items, update=_on_knob_changed,
+        description="Scope 为 Group 时按 efx_groups 标签筛选 Entry，选 All Entries 就是整个 EFX")
 
     bpy.types.Scene.efx_re_sim_speed = FloatProperty(
         name="Speed", default=1.0, min=0.05, max=8.0,
@@ -990,11 +1540,6 @@ def register():
         items=[("ignore", "Ignore", ""), ("add", "Add to lifetime", "")],
         default="ignore", update=_on_knob_changed,
         description="作用未知的 Keep Hold 帧数参不参与寿命")
-    bpy.types.Scene.efx_re_sim_es3d_range = EnumProperty(
-        name="Shape Range",
-        items=[("static_random", "s + [0, r]", ""), ("min_max", "[s, r]", "")],
-        default="static_random", update=_on_knob_changed,
-        description="生成形状的逐轴区间怎么读")
     bpy.types.Scene.efx_re_sim_rot_applied = EnumProperty(
         name="Rotation Order",
         items=[("forward", "First listed first", ""), ("reverse", "First listed last", "")],
@@ -1017,7 +1562,8 @@ def unregister():
         except Exception:
             pass
 
-    for name in ("efx_re_sim_speed", "efx_re_sim_duration", "efx_re_sim_mode",
+    for name in ("efx_re_sim_scope", "efx_re_sim_group",
+                 "efx_re_sim_speed", "efx_re_sim_duration", "efx_re_sim_mode",
                  "efx_re_sim_seed", "efx_re_sim_fps", "efx_re_sim_max_particles",
                  "efx_re_sim_show_outline", "efx_re_sim_use_textures",
                  "efx_re_sim_uvs_speed_unit", "efx_re_sim_uvs_playback",
@@ -1025,6 +1571,6 @@ def unregister():
                  "efx_re_sim_velocity_unit",
                  "efx_re_sim_random_dist", "efx_re_sim_life_model",
                  "efx_re_sim_keep_hold", "efx_re_sim_es3d_range",
-                 "efx_re_sim_rot_applied"):
+                 "efx_re_sim_rot_applied"):   # es3d_range 已废弃，留着好清掉旧场景里的残留
         if hasattr(bpy.types.Scene, name):
             delattr(bpy.types.Scene, name)

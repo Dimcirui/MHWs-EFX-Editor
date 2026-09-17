@@ -43,6 +43,7 @@ _MINED_JSON = Path(__file__).resolve().parent / "mhws_field_labels_mined.json"
 _HASHES_JSON = Path(__file__).resolve().parent / "mhws_name_hashes.json"
 _FACTORY_JSON = Path(__file__).resolve().parent / "mhws_field_labels.json"
 _ATTR_DEFAULTS_JSON = Path(__file__).resolve().parent / "mhws_attribute_defaults.json"
+_BIT_NAMES_JSON = Path(__file__).resolve().parent / "mhws_bit_names.json"
 
 
 def _user_json_path() -> Path:
@@ -136,13 +137,43 @@ def get_attribute_defaults(type_name: str) -> Optional[dict]:
     return copy.deepcopy(entry) if entry is not None else None
 
 
+_bit_names_cache: Optional[dict] = None
+
+
+def _bit_names_table() -> dict:
+    global _bit_names_cache
+    if _bit_names_cache is None:
+        data = _load_table(_BIT_NAMES_JSON)
+        _bit_names_cache = {
+            "expressionAttributes": data.get("expressionAttributes") or {},
+            "clipAttributes": data.get("clipAttributes") or {},
+        }
+    return _bit_names_cache
+
+
+def get_expression_bit_names(attr_type: str) -> Optional[list]:
+    """查一个 `IExpressionAttribute` 的 `$type`（完整 C# 类名）对应的 bit_index -> 字段名表
+    （0-based，`None` 表示这一位 vendor 自己也没起名字）。由 `EfxBridge bitnames` 反射生成
+    （见该命令说明），不是手工维护——vendor 升级后重跑该命令覆盖 `mhws_bit_names.json` 即可。
+    查不到这个类型整条（没实现 `IExpressionAttribute`，或表还没重新生成过）返回 `None`。"""
+    return _bit_names_table()["expressionAttributes"].get(attr_type)
+
+
+def get_clip_bit_names(attr_type: str) -> Optional[list]:
+    """同 `get_expression_bit_names()`，查 `IClipAttribute`。Clip 的曲线数据没有 per-bit
+    具名字段，绝大多数类型这里整条全是 `None`——如实反映 vendor 源码里确实没给这些 bit
+    起过名字，不是我们没查到（见 `EfxBridge bitnames` 命令说明）。"""
+    return _bit_names_table()["clipAttributes"].get(attr_type)
+
+
 def reload_tables() -> None:
     """清空缓存，下次查询时重新读盘。插件 register() 时调用一次，供未来"Reload semantics"
     operator 复用。"""
-    global _cache, _hash_cache, _attr_defaults_cache
+    global _cache, _hash_cache, _attr_defaults_cache, _bit_names_cache
     _cache = None
     _hash_cache = None
     _attr_defaults_cache = None
+    _bit_names_cache = None
 
 
 def get_field_entry(attr_type: str, field_key: str) -> Optional[dict]:
@@ -161,3 +192,32 @@ def get_type_entry(attr_type: str) -> Optional[dict]:
     使用者不够友好。英文侧没有对应字段时由调用方回退到类型短名本身（那本来就是英文）。
     """
     return _merged_table()["types"].get(attr_type)
+
+
+def is_angle_radians_field(entry: Optional[dict]) -> bool:
+    """知识表 `unit == "angle_radians"`——**不看**"角度显示"开关，这是文件格式/引擎行为
+    本身的事实（这个字段的浮点存储是弧度），跟"编辑器要不要按度显示"是两件事。
+
+    `sim_preview.collect_expressions()` 用这条（不是 `wants_degrees()`）来判断一条
+    Expression 曲线的目标字段是不是角度、从而要不要把公式结果从度转成弧度——全语料实测
+    `Transform3DExpression` 真正绑定过公式的 560 条 rotationX/Y/Z 曲线里，227 个"和公式
+    根节点同单位"的字面量常量 0 个落在弧度制常见值（π 的有理数倍）附近，172/202 超过
+    2π，众数是 360/10/5/30——**公式里的字面量按度写，是引擎/文件格式层面的事实，不是
+    用户界面的显示偏好**，不能被 `Scene.efx_re_angle_degrees` 这个纯 UI 开关左右
+    （开关关着的时候，公式结果一样要转换，只是编辑器不把常量槽位显示成度而已）。"""
+    return entry is not None and entry.get("unit") == "angle_radians"
+
+
+def wants_degrees(entry: Optional[dict]) -> bool:
+    """`is_angle_radians_field()` + `Scene.efx_re_angle_degrees` 开关同时命中，才把这个
+    弧度制角度字段改按度显示/输入（底层仍存弧度）——纯 UI 层的显示/编辑便利。
+
+    原本只有 `panels.py` 一处用（静态字段），`expr_edit.py` 的 Expression 公式常量槽位
+    要复用同一条判据（同一个字段，只是这次驱动它的是一段公式而不是一个静态值，"这个字段
+    是不是角度"这件事不应该因为驱动方式变了就有两套读法）——放在这个模块避免
+    `expr_edit.py` <-> `panels.py` 之间产生循环 import（`panels.py` 已经 import
+    `expr_edit`）。"""
+    return (
+        is_angle_radians_field(entry)
+        and getattr(bpy.context.scene, "efx_re_angle_degrees", False)
+    )

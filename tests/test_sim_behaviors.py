@@ -24,7 +24,7 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from efx_sim import SimConfig, Simulator, is_render_body_name  # noqa: E402
+from efx_sim import SimConfig, Simulator, Vec3, is_render_body_name  # noqa: E402
 
 
 def _rangei(primary, secondary):
@@ -67,6 +67,107 @@ def billboard_block(size=1.0, rgba=0xFFFFFFFF):
                                 "SizeScalar": _range(1.0), "Rotation": _range(0.0),
                                 "Color": {"rgba": rgba}, "ColorRange": {"rgba": rgba},
                                 "Offset": _range(0.0), "Flags": 0})
+
+
+def polygon_block(width=1.0, height=1.0, up_axis=1, rgba=0xFFFFFFFF):
+    return ("TypePolygon", {"Width": _range(width), "Height": _range(height),
+                            "SizeScalar": _range(1.0),
+                            "RotationOrder": 2, "RotationX": _range(0.0),
+                            "RotationY": _range(0.0), "RotationZ": _range(0.0),
+                            "OrientDirectionUpVector": up_axis,
+                            "Color": {"rgba": rgba}, "ColorRange": {"rgba": rgba},
+                            "Offset": _range(0.0), "Flags": 0, "Flags2": 0})
+
+
+def ribbonlength_block(length=1.0, width=1.0, division=4, direction=(0.0, 1.0, 0.0),
+                       rgba=0xFFFFFFFF):
+    return ("TypeRibbonLength", {"Length": _range(length), "Width": _range(width),
+                                 "SizeScalar": _range(1.0), "ShapeDivision": division,
+                                 "DirectionX": _range(direction[0]),
+                                 "DirectionY": _range(direction[1]),
+                                 "DirectionZ": _range(direction[2]),
+                                 "Color": {"rgba": rgba}, "ColorRange": {"rgba": rgba},
+                                 "Flags": 0, "BlendFlags": 0, "LengthFlags": 0})
+
+
+def ribbonfollow_block(width=1.0, rgba=0xFFFFFFFF):
+    return ("TypeRibbonFollow", {"Width": _range(width), "SizeScalar": _range(1.0),
+                                 "Color": {"rgba": rgba}, "ColorRange": {"rgba": rgba},
+                                 "Flags": 0, "BlendFlags": 0})
+
+
+def polygontrail_block(length=1.0, axis=2, rgba=0xFFFFFFFF):
+    return ("TypePolygonTrail", {"Length": _range(length), "Axis": axis,
+                                 "Color": {"rgba": rgba}, "ColorRange": {"rgba": rgba},
+                                 "ColorRate": 1.0, "Intensity": 0.0,
+                                 "EdgeBlendRate": 0.0, "AlphaRate": 0.0,
+                                 "Flags": 0, "re4_unkn": 0, "sb_unkn0": 1.0,
+                                 "StretchDistance": 0.0, "NumTrailDivision": 0,
+                                 "NumVerticalDivision": 0, "NumSplineDivision": 0,
+                                 "IntervalFrame": 1})
+
+
+def gpupolygon_block(width=1.0, height=1.0, up_axis=1, rgba=0xFFFFFFFF):
+    return ("TypeGpuPolygon", {"Width": _range(width), "Height": _range(height),
+                               "SizeScalar": _range(1.0),
+                               "RotationX": _range(0.0), "RotationY": _range(0.0),
+                               "RotationZ": _range(0.0), "OrientDirectionUpVector": up_axis,
+                               "Color": {"rgba": rgba}, "ColorRange": {"rgba": rgba},
+                               "Flags": 0, "BlendFlags": 0, "ParticleNum": 0})
+
+
+def gpuribbonlength_block(length=1.0, width=1.0, division=4, direction=(0.0, 1.0, 0.0),
+                          rgba=0xFFFFFFFF):
+    return ("TypeGpuRibbonLength", {"Length": _range(length), "Width": _range(width),
+                                    "SizeScalar": _range(1.0), "ShapeDivision": division,
+                                    "DirectionX": _range(direction[0]),
+                                    "DirectionY": _range(direction[1]),
+                                    "DirectionZ": _range(direction[2]),
+                                    "Color": {"rgba": rgba}, "ColorRange": {"rgba": rgba},
+                                    "Flags": 0, "BlendFlags": 0, "ParticleNum": 128})
+
+
+def meshv2_block(scale=(1.0, 1.0, 1.0), rotation=(0.0, 0.0, 0.0), rotation_order=2,
+                 max_parts=1, rgba=0xFFFFFFFF, emissive_rgba=0x00000000):
+    return ("TypeMeshV2", {"RotationOrder": rotation_order,
+                           "RotationX": _range(rotation[0]), "RotationY": _range(rotation[1]),
+                           "RotationZ": _range(rotation[2]),
+                           "ScaleX": _range(scale[0]), "ScaleY": _range(scale[1]),
+                           "ScaleZ": _range(scale[2]), "ScaleMultiplier": _range(1.0),
+                           "Color": {"rgba": rgba}, "ColorRange": {"rgba": rgba},
+                           "ColorRate": 1.0,
+                           "EmissiveColor": {"rgba": emissive_rgba},
+                           "EmissiveRate": 1.0,
+                           "MaxPartsNum": max_parts, "PartsStartNo": _rangei(0, 0),
+                           "PlaySpeed": _range(1.0), "PlaySpeedCoef": _range(1.0),
+                           "PlayType": 0, "PlayOrder": 0, "FrontAxis": 1,
+                           "Flags": 0, "Flags2": 0})
+
+
+def scaleanim_block(scalar_add=0.0, scalar_coef=1.0, axis_add=(0.0, 0.0, 0.0),
+                    axis_coef=(1.0, 1.0, 1.0), size_delay=0):
+    return ("ScaleAnim", {"SizeScalarAdd": _range(scalar_add), "SizeScalarCoef": _range(scalar_coef),
+                          "SizeXAdd": _range(axis_add[0]), "SizeXAddCoef": _range(axis_coef[0]),
+                          "SizeYAdd": _range(axis_add[1]), "SizeYAddCoef": _range(axis_coef[1]),
+                          "SizeZAdd": _range(axis_add[2]), "SizeZAddCoef": _range(axis_coef[2]),
+                          "SizeDelayFrame": _rangei(size_delay, 0)})
+
+
+def scaleanim_delay_block(frame_delay=0, unkn2=0):
+    return ("ScaleAnimDelayFrame", {"frameDelay": frame_delay, "unkn2": unkn2})
+
+
+def rotateanim_block(add=(0.0, 0.0, 0.0), coef=(1.0, 1.0, 1.0), delay=0, flags=0):
+    return ("RotateAnim", {"Flags": flags,
+                           "RotationAddX": _range(add[0]), "RotationAddY": _range(add[1]),
+                           "RotationAddZ": _range(add[2]),
+                           "RotationCoefX": _range(coef[0]), "RotationCoefY": _range(coef[1]),
+                           "RotationCoefZ": _range(coef[2]),
+                           "RotationDelayFrame": _rangei(delay, 0)})
+
+
+def rotateanim_delay_block(frame_delay=0, unkn2=0):
+    return ("RotateAnimDelayFrame", {"frameDelay": frame_delay, "unkn2": unkn2})
 
 
 # ---------------------------------------------------------------------------
@@ -309,15 +410,31 @@ class TestEmitterShape3D(unittest.TestCase):
         self.assertTrue(any(p.y < -0.3 for p in pts))
 
     def test_cylinder_height_follows_rangey_sign(self):
-        """`RangeY` 是**有符号**的位置偏移，不是半径——语料里真的会是负的。"""
-        pts = self._positions(shape_block(2, rx=(0.0, 1.0), ry=(-0.2, 0.0), rz=(0.0, 1.0),
+        """`RangeY` 是**有符号**的位置偏移，不是半径——语料里真的会是负的。
+
+        夹具直接写 `(min, max)`：`(-0.2, -0.2)` = 高度钉死在 -0.2。
+        """
+        pts = self._positions(shape_block(2, rx=(0.0, 1.0), ry=(-0.2, -0.2), rz=(0.0, 1.0),
                                           sh=(0.0, 2 * math.pi)))
         for p in pts:
             self.assertAlmostEqual(p.y, -0.2, places=6)
 
+    def test_cylinder_symmetric_rangey_spans_both_sides(self):
+        """`(-0.5, 0.5)` 是**以原点为中心对称**的圆柱，不是只在下方的半截。
+
+        这条钉住 `RangeX/Y/Z` 的 `(min, max)` 语义：早先按 `[s, s+r]` 读时，同一份数据会变成
+        `[-0.5, 0]`——高度只剩一半、整段偏到原点下方。全语料里这种对称对出现 1584 次
+        （`(-0.1,0.1)` `(-0.5,0.5)` `(-1,1)`），读错了这批全错。
+        """
+        pts = self._positions(shape_block(2, rx=(0.0, 1.0), ry=(-0.5, 0.5), rz=(0.0, 1.0),
+                                          sh=(0.0, 2 * math.pi)))
+        self.assertTrue(any(p.y > 0.1 for p in pts), "没有粒子落在原点上方")
+        self.assertTrue(any(p.y < -0.1 for p in pts), "没有粒子落在原点下方")
+        self.assertTrue(all(-0.5001 <= p.y <= 0.5001 for p in pts), "粒子跑出了 [-0.5, 0.5]")
+
     def test_horizontal_sweep_limits_azimuth(self):
         """半圈扫描时不应该出现在另外半圈里。"""
-        pts = self._positions(shape_block(2, rx=(1.0, 0.0), ry=(0.0, 0.0), rz=(1.0, 0.0),
+        pts = self._positions(shape_block(2, rx=(1.0, 1.0), ry=(0.0, 0.0), rz=(1.0, 1.0),
                                           sh=(0.0, math.pi)))
         self.assertTrue(all(p.z > -1e-6 for p in pts), "半圈扫描漏到了 z<0")
 
@@ -326,6 +443,86 @@ class TestEmitterShape3D(unittest.TestCase):
             sim = Simulator([spawn_block(), life_block(), shape_block(shape)],
                             SimConfig(seed=1))
             self.assertTrue(sim.emitter_outline(), "形状 %d 没有线框" % shape)
+
+    def _outline(self, block, segments=28):
+        sim = Simulator([spawn_block(), life_block(), block], SimConfig(seed=1))
+        return sim.emitter_outline(segments)
+
+    def test_sphere_outline_has_inner_shell_when_lo_is_nonzero(self):
+        """径向幅度取 `[lo, hi]`，lo != 0 时粒子只出现在一层壳里 —— 内层必须画出来。"""
+        segs = self._outline(shape_block(1, rx=(0.5, 1.0), ry=(0.5, 1.0), rz=(0.5, 1.0),
+                                         sh=(0.0, 2 * math.pi), sv=(-math.pi / 2, math.pi)))
+        radii = [math.sqrt(pt.x ** 2 + pt.y ** 2 + pt.z ** 2) for seg in segs for pt in seg]
+        self.assertLess(min(radii), 0.6, "没有内层：最小半径应该落在 lo=0.5 附近")
+        self.assertGreater(max(radii), 0.9, "没有外层：最大半径应该落在 hi=1.0 附近")
+
+    def test_sphere_outline_connects_the_two_shells(self):
+        """内外两层不连起来的话，"壳"在画面上根本不存在——径向棱不是装饰。"""
+        segs = self._outline(shape_block(1, rx=(0.5, 1.0), ry=(0.5, 1.0), rz=(0.5, 1.0),
+                                         sh=(0.0, 2 * math.pi), sv=(-math.pi / 2, math.pi)))
+
+        def rad(pt):
+            return math.sqrt(pt.x ** 2 + pt.y ** 2 + pt.z ** 2)
+
+        self.assertTrue(any(abs(rad(a) - 0.5) < 0.05 and abs(rad(b) - 1.0) < 0.05
+                            for a, b in segs), "没有一条棱从内层连到外层")
+
+    def test_box_outline_has_no_inner_shell(self):
+        """Box 是**实心**的（逐轴 U(lo,hi) 独立取），画内层会画出一个假空腔。"""
+        # 夹具就是 `(min, max)`：区间 [0.5, 1.5]，八个角点非 0.5 即 1.5
+        segs = self._outline(shape_block(0, rx=(0.5, 1.5), ry=(0.5, 1.5), rz=(0.5, 1.5)))
+        for seg in segs:
+            for pt in seg:
+                for v in (pt.x, pt.y, pt.z):
+                    self.assertTrue(abs(v - 0.5) < 1e-6 or abs(v - 1.5) < 1e-6,
+                                    "Box 线框出现了不在角点上的坐标 %r" % v)
+        self.assertEqual(len(segs), 12, "Box 应该正好 12 条棱")
+
+    def test_partial_sweep_is_capped_at_both_ends(self):
+        """只扫一段时，线框必须在起点和终点封口，且不越界到没有粒子的方位角上。"""
+        segs = self._outline(shape_block(2, rx=(0.0, 1.0), ry=(0.0, 1.0), rz=(0.0, 1.0),
+                                         sh=(0.0, math.pi / 2)))
+        for seg in segs:
+            for pt in seg:
+                if abs(pt.x) < 1e-9 and abs(pt.z) < 1e-9:
+                    continue
+                az = math.atan2(pt.z, pt.x)
+                self.assertGreaterEqual(az, -1e-6, "线框扫到了 az<0 的地方")
+                self.assertLessEqual(az, math.pi / 2 + 1e-6, "线框扫过了终点")
+        # 终点那条竖棱必须存在（封口）
+        self.assertTrue(any(abs(a.x) < 1e-6 and abs(a.z - 1.0) < 1e-6 and
+                            abs(b.x) < 1e-6 and abs(b.z - 1.0) < 1e-6
+                            for a, b in segs), "扫描终点没有封口竖棱")
+
+    def test_outline_follows_local_rotation(self):
+        """线框必须和粒子出生位置转一样的角度。
+
+        不转的话，`LocalRotation` 非零时框和粒子对不上——而"框和粒子对不对得上"正是这圈线
+        的全部用途，光看"线框非空"完全测不到。
+        """
+        block = shape_block(0, rx=(0.0, 1.0), ry=(0.0, 0.0), rz=(0.0, 0.0))
+        block[1]["LocalRotation"] = {"X": 0.0, "Y": math.pi / 2, "Z": 0.0}
+        sim = Simulator([spawn_block(), life_block(), block], SimConfig(seed=1))
+        segs = sim.emitter_outline()
+        # 绕 Y 转 90 度：+X 方向的那条棱应该整体躺到 Z 轴上去
+        self.assertTrue(segs)
+        self.assertTrue(all(abs(pt.x) < 1e-6 for seg in segs for pt in seg),
+                        "线框还留在 X 轴上，说明 LocalRotation 没作用到线框")
+        self.assertTrue(any(abs(pt.z) > 0.5 for seg in segs for pt in seg),
+                        "线框没有转到 Z 轴上")
+
+    def test_outline_matches_particle_positions_under_rotation(self):
+        """同一套字段下，粒子必须落在线框的包围盒里（两条路共用同一个旋转）。"""
+        block = shape_block(0, rx=(0.0, 1.0), ry=(0.0, 0.0), rz=(0.0, 0.0))
+        block[1]["LocalRotation"] = {"X": 0.0, "Y": math.pi / 2, "Z": 0.0}
+        sim = Simulator([spawn_block(), life_block(), block], SimConfig(seed=1))
+        pts = [pt for seg in sim.emitter_outline() for pt in seg]
+        lo = [min(pt[i] for pt in pts) for i in range(3)]
+        hi = [max(pt[i] for pt in pts) for i in range(3)]
+        for p in self._positions(block, n=20):
+            for i in range(3):
+                self.assertGreaterEqual(p[i], lo[i] - 1e-6)
+                self.assertLessEqual(p[i], hi[i] + 1e-6)
 
     def test_unknown_shape_is_noted(self):
         sim = Simulator([spawn_block(), life_block(), shape_block(7)], SimConfig(seed=1))
@@ -373,12 +570,20 @@ class TestVelocity3D(unittest.TestCase):
         # 10 帧后速度应该是 0.9^10 ≈ 0.349（按秒缩放的话会是 ~0.998）
         self.assertAlmostEqual(a.em.particles[0].vel.y, 0.9 ** 10, places=5)
 
-    def test_gravity_sign_is_added_not_subtracted(self):
-        """`GravityRate` 语料里本身就是负数，代码里是**加**，别再取一次负号。"""
+    def test_positive_gravity_pulls_down_not_up(self):
+        """`GravityRate` 全语料非零值正数是负数的 3.6 倍（30078 vs 8341，`fieldstats`
+        实测）——"Gravity"这个名字加上"绝大多数样本是正数"，只可能是正值向下，不是向上飘。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=1000),
+                         vel_block(speed=0.0, gravity=0.3)], SimConfig(seed=1))
+        sim.run(30)
+        self.assertLess(sim.em.particles[0].pos.y, 0.0)
+
+    def test_negative_gravity_floats_up(self):
+        """少数负值样本对应"漂浮"类特效（烟雾/羽毛），符号应该和正值相反。"""
         sim = Simulator([spawn_block(loops=1), life_block(keep=1000),
                          vel_block(speed=0.0, gravity=-0.3)], SimConfig(seed=1))
         sim.run(30)
-        self.assertLess(sim.em.particles[0].pos.y, 0.0)
+        self.assertGreater(sim.em.particles[0].pos.y, 0.0)
 
     def test_non_direction_types_get_no_velocity_and_a_note(self):
         """其余四档必须进 note 并按无初速处理，**不许按 Direction 近似**。"""
@@ -399,6 +604,617 @@ class TestVelocity3D(unittest.TestCase):
         self.assertEqual(sim.em.particles[0].pos.y, 0.0)
         sim.step()
         self.assertGreater(sim.em.particles[0].pos.y, 0.0)
+
+
+def parentoptions_block(use_local=1, rate=1.0, const_frame=0, const_release_frame=0,
+                        const_release_rate=0.0):
+    return ("ParentOptions", {
+        "RelationPos": {"x": 2, "y": 2, "z": 2},
+        "RelationRot": {"x": 2, "y": 2, "z": 2},
+        "RelationScl": {"x": 0, "y": 0, "z": 0},
+        "ParticleUseLocal_re7": 0,
+        "ParticleUseLocal": use_local,
+        "ConstInheritRate": _range(rate, 0.0),
+        "ConstFrame": _rangei(const_frame, 0),
+        "ConstReleaseFrame": _rangei(const_release_frame, 0),
+        "ConstInheritReleaseRate": const_release_rate,
+        "PragUkn1": 0, "PragUkn2": 0, "BoneName": "",
+    })
+
+
+class TestParentOptions(unittest.TestCase):
+    """真实故障：一个只有 `Transform3D`+`Transform3DExpression`（把 `LocalPosition.Y`
+    逐帧从 -1 动到 0）、没有 `Velocity3D` 的 entry，`em.origin` 逐帧正确变化，但粒子只在
+    出生那一刻拷贝了一次 `em.origin`，之后再没人碰它——这里不需要真的接 Expression，
+    直接驱动 `em.host_origin` 模拟"发射器自己在动"就能复现同一件事：`em.velocity`
+    是驱动源不管来自 Transform3D 的 drift 还是宿主报的 host_origin，对这个 behavior
+    是同一回事。"""
+
+    def _run(self, block=None, frames=3):
+        blocks = [spawn_block(num=1, interval=0, loops=1), life_block(keep=100)]
+        if block is not None:
+            blocks.append(block)
+        sim = Simulator(blocks, SimConfig(seed=1))
+        sim.reset()
+        for i in range(frames):
+            sim.em.host_origin = Vec3(0.0, -float(i + 1), 0.0)
+            sim.step()
+        return sim
+
+    def test_particle_use_local_tracks_emitter_motion(self):
+        """`ParticleUseLocal=1` 时粒子必须跟上发射器的逐帧位移：这条断言注回"P0 之前"
+        （没有这个 behavior）会 FAIL——粒子会停在出生那一刻的 -1.0，不会跟到 -3.0。"""
+        sim = self._run(parentoptions_block(use_local=1))
+        self.assertAlmostEqual(sim.em.particles[0].pos.y, sim.em.origin.y)
+        self.assertAlmostEqual(sim.em.particles[0].pos.y, -3.0)
+
+    def test_use_local_zero_leaves_particle_at_spawn_position(self):
+        """开关关掉（或者干脆没有 `ConstInheritRate`≠1 的场景）不该跟——粒子停在出生
+        时的发射器位置，不随后续帧变化。"""
+        sim = self._run(parentoptions_block(use_local=0))
+        self.assertAlmostEqual(sim.em.particles[0].pos.y, -1.0)
+
+    def test_missing_attribute_defaults_to_not_tracking(self):
+        """entry 压根没有 `ParentOptions` 属性时，粒子的既有行为（出生后脱手）不能变。"""
+        sim = self._run(block=None)
+        self.assertAlmostEqual(sim.em.particles[0].pos.y, -1.0)
+
+    def test_partial_inherit_rate_scales_the_tracking(self):
+        """`ConstInheritRate=0.5` 应该只跟一半的位移，不是全跟或全不跟。
+
+        出生那一帧的位置本来就等于当时的 origin（`_consume_spawn()` 直接拷贝，不受
+        `rate` 影响——那不是"跟踪"来的，是粒子本来就在那儿出生）；`rate` 只缩放出生
+        *之后* 每帧的增量：3 帧里出生占 1 帧（-1.0），之后 2 帧每帧位移 -1 只跟一半
+        （各 -0.5），合计 -1.0 - 0.5 - 0.5 = -2.0。"""
+        sim = self._run(parentoptions_block(use_local=1, rate=0.5))
+        self.assertAlmostEqual(sim.em.particles[0].pos.y, -2.0)
+
+    def test_nonzero_const_frame_is_noted_not_silently_simulated(self):
+        """`ConstFrame`/`ConstReleaseFrame`/`ConstInheritReleaseRate` 的释放曲线没做，
+        非零时必须如实 note，不能假装模拟了。"""
+        sim = self._run(parentoptions_block(use_local=1, const_frame=5))
+        self.assertTrue(any("ConstFrame" in n for n in sim.em.notes))
+
+    def test_parentoptions_no_longer_unsupported(self):
+        sim = Simulator([parentoptions_block()], SimConfig(seed=1))
+        self.assertNotIn("ParentOptions", sim.em.unsupported)
+
+
+# ---------------------------------------------------------------------------
+# TypePolygon
+# ---------------------------------------------------------------------------
+
+def _is_axis(v, axis):
+    """`v` 是不是（在容差内）沿 `axis`（'x'/'y'/'z'/'-z' 等）的单位向量。"""
+    want = {"x": (1.0, 0.0, 0.0), "y": (0.0, 1.0, 0.0), "z": (0.0, 0.0, 1.0),
+           "-z": (0.0, 0.0, -1.0)}[axis]
+    return all(abs(a - b) < 0.05 for a, b in zip(v.as_tuple(), want))
+
+
+class TestPolygon(unittest.TestCase):
+
+    def test_produces_a_plane_with_orthonormal_fixed_axes(self):
+        """`axis_u`/`axis_v` 必须是单位正交对，否则面片会被拉斜或缩放走样。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         polygon_block(width=2.0, height=3.0)], SimConfig(seed=1))
+        sim.step()
+        it = sim.build_render()[0]
+        self.assertEqual(it.kind, "PLANE")
+        self.assertIsNotNone(it.axis_u)
+        self.assertIsNotNone(it.axis_v)
+        self.assertAlmostEqual(it.axis_u.length(), 1.0, places=6)
+        self.assertAlmostEqual(it.axis_v.length(), 1.0, places=6)
+        self.assertAlmostEqual(it.axis_u.dot(it.axis_v), 0.0, places=6)
+        self.assertAlmostEqual(it.size.x, 2.0, places=6)
+        self.assertAlmostEqual(it.size.y, 3.0, places=6)
+
+    def test_does_not_face_camera_like_billboard_does(self):
+        """和 `TypeBillboard3D` 的本质区别：不朝相机——`rot` 恒 0，朝向全烘进 axis_u/v。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10), polygon_block()],
+                        SimConfig(seed=1))
+        sim.step()
+        it = sim.build_render()[0]
+        self.assertEqual(it.rot, 0.0)
+
+    def test_zero_rotation_faces_the_fixed_rest_normal_regardless_of_up_vector(self):
+        """`OrientDirectionUpVector` 不再决定法线——无旋转时法线恒为固定静止轴（game -Z），
+        换哪个 up 都一样。2026-09-13 按实机样本纠正过的模型，见 polygon.py 模块说明。"""
+        for axis in (0, 1, 2):
+            sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                             polygon_block(up_axis=axis)], SimConfig(seed=1))
+            sim.step()
+            it = sim.build_render()[0]
+            n = it.axis_u.cross(it.axis_v).normalized()
+            self.assertTrue(_is_axis(n, "-z"),
+                            "OrientDirectionUpVector=%d 时法线不是固定静止轴：%r" % (axis, n))
+
+    def test_rotation_x_90_matches_the_real_game_sample(self):
+        """回归钉住实机样本：`[029] partical_4 (GpuPolygon)` 实测 RotationX=90°、Y=Z=0、
+        OrientDirectionUpVector=1 时，游戏内法线是 game +Y——这条数据本身就是纠正模型的
+        依据，绝不能再退回去。"""
+        block = ("TypePolygon", dict(polygon_block(up_axis=1)[1],
+                                     RotationX=_range(1.5707963267948966)))
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10), block], SimConfig(seed=1))
+        sim.step()
+        it = sim.build_render()[0]
+        n = it.axis_u.cross(it.axis_v).normalized()
+        self.assertTrue(_is_axis(n, "y"), "法线应该是 game +Y，实际 %r" % (n,))
+
+    def test_up_vector_changes_in_plane_basis_not_facing(self):
+        """`OrientDirectionUpVector` 只影响 axis_u/axis_v 怎么摆，不影响法线朝向。"""
+        normals = []
+        bases = []
+        for axis in (0, 1, 2):
+            sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                             polygon_block(up_axis=axis)], SimConfig(seed=1))
+            sim.step()
+            it = sim.build_render()[0]
+            normals.append(it.axis_u.cross(it.axis_v).normalized().as_tuple())
+            bases.append((it.axis_u.as_tuple(), it.axis_v.as_tuple()))
+        self.assertEqual(len(set(tuple(round(c, 4) for c in n) for n in normals)), 1,
+                         "法线不该跟着 up 向量变")
+        self.assertGreater(len(set(bases)), 1, "up 向量不同时横/纵轴应该不一样")
+
+
+# ---------------------------------------------------------------------------
+# TypeRibbonLength
+# ---------------------------------------------------------------------------
+
+class TestRibbonLength(unittest.TestCase):
+
+    def test_produces_a_straight_ribbon_of_the_right_length_and_count(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         ribbonlength_block(length=4.0, width=0.5, division=5,
+                                            direction=(1.0, 0.0, 0.0))],
+                        SimConfig(seed=1))
+        sim.step()
+        it = sim.build_render()[0]
+        self.assertEqual(it.kind, "RIBBON")
+        self.assertEqual(len(it.points), 5)
+        base = it.points[0][0]
+        tip = it.points[-1][0]
+        self.assertAlmostEqual((tip - base).length(), 4.0, places=5)
+        for q, hw, alpha in it.points:
+            self.assertAlmostEqual(hw, 0.25, places=6)   # 0.5 宽的一半
+            self.assertEqual(alpha, 1.0)
+
+    def test_base_point_is_the_particle_position(self):
+        """P0 假设生成点是尾端（`points[0]`）——`BasingPoint` 语义未定前的默认读法。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         ribbonlength_block()], SimConfig(seed=1))
+        sim.step()
+        p = sim.em.particles[0]
+        it = sim.build_render()[0]
+        self.assertEqual(it.points[0][0].as_tuple(), p.pos.as_tuple())
+
+    def test_direction_is_normalized_and_followed(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         ribbonlength_block(length=2.0, direction=(3.0, 0.0, 0.0))],
+                        SimConfig(seed=1))
+        sim.step()
+        it = sim.build_render()[0]
+        base, tip = it.points[0][0], it.points[-1][0]
+        d = tip - base
+        self.assertAlmostEqual(d.y, 0.0, places=6)
+        self.assertAlmostEqual(d.z, 0.0, places=6)
+        self.assertAlmostEqual(d.x, 2.0, places=5)
+
+    def test_gradient_fields_are_noted_not_silently_dropped(self):
+        block = ("TypeRibbonLength", dict(ribbonlength_block()[1],
+                                          HeadColor={"rgba": 0xFFFFFFFF},
+                                          HeadScale=2.0))
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10), block],
+                        SimConfig(seed=1))
+        sim.step()
+        self.assertTrue(any("HeadColor" in n for n in sim.em.notes))
+        self.assertTrue(any("HeadScale" in n for n in sim.em.notes))
+
+
+# ---------------------------------------------------------------------------
+# TypePolygonTrail
+# ---------------------------------------------------------------------------
+
+class TestPolygonTrail(unittest.TestCase):
+    """真实故障：这个渲染体之前完全没有 behavior，退化成一个恒定不动的点（见
+    `simulator._has_renderer_body`/`build_render` 的兜底分支）——只要 entry 的
+    `Transform3D`/`ParentOptions` 没跟着一起被误诊，这条测试锁的是"这个类型本身现在
+    产出真正的 RIBBON 几何"这件事。字段证据极薄（全语料仅 35 个实例），所以断言只覆盖
+    结构上确认过的部分（Axis 枚举、Length 数值、颜色），不断言任何猜测字段的效果。"""
+
+    def test_produces_a_ribbon_along_the_given_axis(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         polygontrail_block(length=4.0, axis=0)], SimConfig(seed=1))
+        sim.step()
+        it = sim.build_render()[0]
+        self.assertEqual(it.kind, "RIBBON")
+        base, tip = it.points[0][0], it.points[-1][0]
+        d = tip - base
+        self.assertAlmostEqual(d.length(), 4.0, places=5)
+        self.assertAlmostEqual(d.y, 0.0, places=6)
+        self.assertAlmostEqual(d.z, 0.0, places=6)
+        self.assertAlmostEqual(d.x, 4.0, places=5)
+
+    def test_base_point_is_the_particle_position(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         polygontrail_block()], SimConfig(seed=1))
+        sim.step()
+        p = sim.em.particles[0]
+        it = sim.build_render()[0]
+        self.assertEqual(it.points[0][0].as_tuple(), p.pos.as_tuple())
+
+    def test_negative_axis_reverses_direction(self):
+        """`Axis=5`（-Z）应该往 -Z 走，不是 +Z——枚举方向不能弄反。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         polygontrail_block(length=2.0, axis=5)], SimConfig(seed=1))
+        sim.step()
+        it = sim.build_render()[0]
+        base, tip = it.points[0][0], it.points[-1][0]
+        self.assertAlmostEqual((tip - base).z, -2.0, places=5)
+
+    def test_guessed_fields_are_noted_not_silently_dropped(self):
+        """`StretchDistance`/细分数字段没有可用依据，非零时必须 note，不能假装模拟了。"""
+        block = ("TypePolygonTrail", dict(polygontrail_block()[1],
+                                          StretchDistance=3.0, NumTrailDivision=5))
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10), block],
+                        SimConfig(seed=1))
+        sim.step()
+        self.assertTrue(any("StretchDistance" in n for n in sim.em.notes))
+        self.assertTrue(any("NumTrailDivision" in n for n in sim.em.notes))
+
+    def test_no_longer_unsupported(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         polygontrail_block()], SimConfig(seed=1))
+        self.assertNotIn("TypePolygonTrail", sim.em.unsupported)
+
+
+# ---------------------------------------------------------------------------
+# TypeRibbonFollow
+# ---------------------------------------------------------------------------
+
+class TestRibbonFollow(unittest.TestCase):
+
+    def test_points_follow_the_particles_motion_history(self):
+        """核心区别于 `TypeRibbonLength`：几何是粒子逐帧位置的折线，不是解析式算出来的
+        直线——挪动方向/速度必须原样体现在 `points` 里，而不是恒定的固定方向。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=100),
+                         vel_block(speed=1.0, direction=(0.0, 1.0, 0.0)),
+                         ribbonfollow_block(width=0.5)], SimConfig(seed=1))
+        sim.run(5)
+        p = sim.em.particles[0]
+        it = sim.build_render()[0]
+        self.assertEqual(it.kind, "RIBBON")
+        self.assertEqual(len(it.points), len(p.trail))
+        self.assertGreaterEqual(len(it.points), 2)
+        # base（旧）->tip（新）：tip 必须是粒子当前位置，base 必须是它更早的位置。
+        self.assertEqual(it.points[-1][0].as_tuple(), p.pos.as_tuple())
+        self.assertLess(it.points[0][0].y, it.points[-1][0].y)
+        for _pos, hw, alpha in it.points:
+            self.assertAlmostEqual(hw, 0.25, places=6)   # 0.5 宽的一半
+            self.assertEqual(alpha, 1.0)
+
+    def test_first_frame_degenerates_to_a_two_point_stub_not_a_crash(self):
+        """出生当帧只有 1 个轨迹点，不够组成一条带（至少要 base/tip 两端）——必须退化成
+        零长度的两点 stub，而不是抛异常或者留一个 None 让上层猜。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         ribbonfollow_block()], SimConfig(seed=1))
+        sim.step()
+        p = sim.em.particles[0]
+        self.assertEqual(len(p.trail), 1)
+        it = sim.build_render()[0]
+        self.assertEqual(it.kind, "RIBBON")
+        self.assertEqual(len(it.points), 2)
+        self.assertEqual(it.points[0][0].as_tuple(), it.points[1][0].as_tuple())
+
+    def test_gradient_and_unconfirmed_fields_are_noted_not_silently_dropped(self):
+        block = ("TypeRibbonFollow", dict(ribbonfollow_block()[1],
+                                          HeadColor={"rgba": 0xFFFFFFFF},
+                                          HeadScale=2.0, ShapeDivision=3,
+                                          StretchDistance={"X": 1e-45, "Y": 4.0}))
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10), block],
+                        SimConfig(seed=1))
+        sim.step()
+        self.assertTrue(any("HeadColor" in n for n in sim.em.notes))
+        self.assertTrue(any("HeadScale" in n for n in sim.em.notes))
+        self.assertTrue(any("ShapeDivision" in n for n in sim.em.notes))
+        self.assertTrue(any("StretchDistance" in n for n in sim.em.notes))
+
+    def test_follow_flags_common_sentinel_is_not_noted(self):
+        """`FollowFlags=3212836864`（按位重解释成 float 是 -1.0）是语料里 94% 的常见档，
+        不该被当成"异常配置"刷屏。"""
+        block = ("TypeRibbonFollow", dict(ribbonfollow_block()[1], FollowFlags=3212836864))
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10), block],
+                        SimConfig(seed=1))
+        sim.step()
+        self.assertFalse(any("FollowFlags" in n for n in sim.em.notes))
+
+    def test_follow_flags_uncommon_value_is_noted(self):
+        block = ("TypeRibbonFollow", dict(ribbonfollow_block()[1], FollowFlags=123456))
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10), block],
+                        SimConfig(seed=1))
+        sim.step()
+        self.assertTrue(any("FollowFlags" in n for n in sim.em.notes))
+
+
+# ---------------------------------------------------------------------------
+# TypeGpuPolygon / TypeGpuRibbonLength
+# ---------------------------------------------------------------------------
+
+class TestGpuPolygon(unittest.TestCase):
+
+    def test_matches_polygon_geometry(self):
+        """没有 `RotationOrder` 字段、多一个 `ParticleNum`，其余几何/染色和 `TypePolygon`
+        一致——这条钉住"确实复用了同一套模型"，不是两份各写各的、慢慢漂开。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         gpupolygon_block(width=2.0, height=3.0)], SimConfig(seed=1))
+        sim.step()
+        it = sim.build_render()[0]
+        self.assertEqual(it.kind, "PLANE")
+        self.assertAlmostEqual(it.axis_u.dot(it.axis_v), 0.0, places=6)
+        self.assertAlmostEqual(it.size.x, 2.0, places=6)
+        self.assertAlmostEqual(it.size.y, 3.0, places=6)
+        self.assertEqual(it.rot, 0.0)
+
+    def test_rotation_x_90_matches_the_real_game_sample(self):
+        """回归钉住实机样本本身：`[029] partical_4 (GpuPolygon)` 实测 RotationX=90°、
+        Y=Z=0、OrientDirectionUpVector=1，游戏内法线是 game +Y。"""
+        block = ("TypeGpuPolygon", dict(gpupolygon_block(up_axis=1)[1],
+                                        RotationX=_range(1.5707963267948966)))
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10), block], SimConfig(seed=1))
+        sim.step()
+        it = sim.build_render()[0]
+        n = it.axis_u.cross(it.axis_v).normalized()
+        self.assertTrue(_is_axis(n, "y"), "法线应该是 game +Y，实际 %r" % (n,))
+
+    def test_particle_num_is_noted_not_treated_as_a_multiplier(self):
+        """`ParticleNum` 语料实测像 GPU 侧旁路参数，不是逐粒子倍数——必须只 note，
+        不能让它影响任何几何/数量。"""
+        block = ("TypeGpuPolygon", dict(gpupolygon_block()[1], ParticleNum=24))
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10), block],
+                        SimConfig(seed=1))
+        sim.step()
+        items = sim.build_render()
+        self.assertEqual(len(items), 1, "ParticleNum 非 0 不该让一个粒子画出好几份")
+        self.assertTrue(any("ParticleNum" in n for n in sim.em.notes))
+
+
+class TestGpuRibbonLength(unittest.TestCase):
+
+    def test_matches_ribbonlength_geometry(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         gpuribbonlength_block(length=4.0, width=0.5, division=5,
+                                               direction=(1.0, 0.0, 0.0))],
+                        SimConfig(seed=1))
+        sim.step()
+        it = sim.build_render()[0]
+        self.assertEqual(it.kind, "RIBBON")
+        self.assertEqual(len(it.points), 5)
+        base, tip = it.points[0][0], it.points[-1][0]
+        self.assertAlmostEqual((tip - base).length(), 4.0, places=5)
+
+    def test_particle_num_is_noted_not_treated_as_a_multiplier(self):
+        """语料里这个字段能到几千上万（GPU 缓冲区容量的量级），必须确认它不会被当成
+        "画这么多份" 冲爆预览的粒子数上限。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         gpuribbonlength_block()], SimConfig(seed=1))
+        sim.step()
+        items = sim.build_render()
+        self.assertEqual(len(items), 1)
+        self.assertTrue(any("ParticleNum" in n for n in sim.em.notes))
+
+
+# ---------------------------------------------------------------------------
+# TypeMeshV2
+# ---------------------------------------------------------------------------
+
+class TestMeshV2(unittest.TestCase):
+
+    def test_produces_a_mesh_item_with_transform_and_color(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         meshv2_block(scale=(2.0, 3.0, 4.0), rotation=(0.1, 0.2, 0.3),
+                                     rotation_order=1)], SimConfig(seed=1))
+        sim.step()
+        it = sim.build_render()[0]
+        self.assertEqual(it.kind, "MESH")
+        self.assertAlmostEqual(it.size.x, 2.0, places=6)
+        self.assertAlmostEqual(it.size.y, 3.0, places=6)
+        self.assertAlmostEqual(it.size.z, 4.0, places=6)
+        self.assertEqual(it.extra["rot"], (0.1, 0.2, 0.3))
+        self.assertEqual(it.extra["rot_order"], 1)
+
+    def test_color_rate_and_emissive_rate_are_applied(self):
+        # rgba 打包低字节 R，高字节 A（见 `_unpack_rgba`）：0xFF0000FF = 纯红不透明，
+        # 0x00FF0000 = 纯蓝（自发光不看 alpha）。
+        block = ("TypeMeshV2", dict(meshv2_block(rgba=0xFF0000FF,
+                                                 emissive_rgba=0x00FF0000)[1],
+                                    ColorRate=2.0, EmissiveRate=0.5))
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10), block], SimConfig(seed=1))
+        sim.step()
+        it = sim.build_render()[0]
+        # ColorRate=2 应该把红色通道翻倍（乘法夹在导出颜色阶段前，允许 >1）
+        self.assertAlmostEqual(it.color[0], 2.0, places=5)
+        er, eg, eb = it.extra["emissive"]
+        self.assertAlmostEqual(er, 0.0, places=5)
+        self.assertAlmostEqual(eb, 0.5, places=5)   # 蓝色自发光 * 0.5
+
+    def test_max_parts_num_is_noted_not_simulated(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         meshv2_block(max_parts=6)], SimConfig(seed=1))
+        sim.step()
+        sim.build_render()
+        self.assertTrue(any("MaxPartsNum" in n for n in sim.em.notes))
+
+    def test_unbound_falls_back_to_mesh_kind_not_point(self):
+        """P0 没有 Blender 场景可绑定网格，这里只确认核心层老实产出 'MESH'——
+        胶水层（sim_preview.py）负责在没有绑定对象时画占位框，不是核心层的事。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10), meshv2_block()],
+                        SimConfig(seed=1))
+        sim.step()
+        self.assertEqual(sim.build_render()[0].kind, "MESH")
+
+
+# ---------------------------------------------------------------------------
+# ScaleAnim / ScaleAnimDelayFrame
+# ---------------------------------------------------------------------------
+
+class TestScaleAnim(unittest.TestCase):
+
+    def test_axis_add_accumulates_each_frame(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=100),
+                         scaleanim_block(axis_add=(-0.1, 0.0, 0.0),
+                                         axis_coef=(1.0, 1.0, 1.0))],
+                        SimConfig(seed=1))
+        sim.run(10)
+        p = sim.em.particles[0]
+        self.assertAlmostEqual(p.scale.x, 1.0 - 0.1 * 10, places=5)
+        self.assertAlmostEqual(p.scale.y, 1.0, places=5)
+
+    def test_coef_decays_the_increment_not_the_scale_itself(self):
+        """`AddCoef` 衰减的是"每帧加多少"这个量本身，不是直接乘 scale——
+        故障模式：如果错当成"scale 本身每帧乘 coef"，量级会完全不对。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=100),
+                         scaleanim_block(axis_add=(0.1, 0.0, 0.0),
+                                         axis_coef=(0.5, 1.0, 1.0))],
+                        SimConfig(seed=1))
+        sim.run(3)
+        p = sim.em.particles[0]
+        # 第1帧 scale.x += 0.1（增量随后变 0.05）；第2帧 += 0.05（变 0.025）；第3帧 += 0.025
+        expected = 1.0 + 0.1 + 0.05 + 0.025
+        self.assertAlmostEqual(p.scale.x, expected, places=5)
+
+    def test_uniform_group_applies_to_all_three_axes(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=100),
+                         scaleanim_block(scalar_add=0.2, scalar_coef=1.0)], SimConfig(seed=1))
+        sim.run(5)
+        p = sim.em.particles[0]
+        self.assertAlmostEqual(p.scale.x, 1.0 + 0.2 * 5, places=5)
+        self.assertAlmostEqual(p.scale.y, 1.0 + 0.2 * 5, places=5)
+        self.assertAlmostEqual(p.scale.z, 1.0 + 0.2 * 5, places=5)
+
+    def test_size_delay_frame_only_gates_the_axis_group(self):
+        """`SizeDelayFrame` 只挡逐轴组，不影响整体组（同上游 `animUpdateStart` 的先例）。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=100),
+                         scaleanim_block(scalar_add=0.1, axis_add=(0.3, 0.0, 0.0),
+                                         size_delay=5)], SimConfig(seed=1))
+        sim.run(3)
+        p = sim.em.particles[0]
+        self.assertAlmostEqual(p.scale.x, 1.0 + 0.1 * 3, places=5,
+                               msg="逐轴组还没到 SizeDelayFrame，不该生效")
+        sim.run(3)
+        self.assertGreater(p.scale.x, 1.0 + 0.1 * 6, "逐轴组该生效了")
+
+    def test_scale_anim_delay_frame_gates_both_groups(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=100),
+                         scaleanim_block(scalar_add=0.2), scaleanim_delay_block(frame_delay=4)],
+                        SimConfig(seed=1))
+        sim.run(3)
+        p = sim.em.particles[0]
+        self.assertAlmostEqual(p.scale.x, 1.0, places=5,
+                               msg="ScaleAnimDelayFrame 期间两组都不该生效")
+        sim.run(3)
+        self.assertGreater(p.scale.x, 1.0)
+
+    def test_scale_anim_delay_frame_unkn2_is_noted(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         scaleanim_block(scalar_add=0.1), scaleanim_delay_block(unkn2=7)],
+                        SimConfig(seed=1))
+        self.assertTrue(any("unkn2" in n for n in sim.em.notes))
+
+    def test_scale_anim_delay_frame_alone_is_not_reported_as_unsupported(self):
+        """伴生属性没有自己的钩子，但注册过，不该被误报成'未模拟'——它的数据确实被
+        `ScaleAnim` 读了，只是这里单独测的时候 `ScaleAnim` 没出现。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         scaleanim_delay_block(frame_delay=3)], SimConfig(seed=1))
+        self.assertNotIn("ScaleAnimDelayFrame", sim.em.unsupported)
+
+
+# ---------------------------------------------------------------------------
+# RotateAnim / RotateAnimDelayFrame
+# ---------------------------------------------------------------------------
+
+class TestRotateAnim(unittest.TestCase):
+
+    def test_add_accumulates_and_coef_decays_the_increment(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=100),
+                         rotateanim_block(add=(0.1, 0.0, 0.0), coef=(0.5, 1.0, 1.0))],
+                        SimConfig(seed=1))
+        sim.run(3)
+        p = sim.em.particles[0]
+        expected = 0.1 + 0.05 + 0.025   # 同 ScaleAnim 的衰减模型，p.rot 从 0 起
+        self.assertAlmostEqual(p.rot.x, expected, places=5)
+        self.assertAlmostEqual(p.rot.y, 0.0, places=6)
+
+    def test_coef_zero_is_treated_as_one_not_literal_zero(self):
+        """`RotationCoef{X,Y,Z}`=0 是"未设置"哨兵值，实机按 1（不衰减）处理——用户拿真机
+        对比过 0（恒速转到底）和 0.1（几帧内迅速停转），确认字面乘 0 的读法是错的。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=100),
+                         rotateanim_block(add=(0.1, 0.0, 0.0), coef=(0.0, 0.0, 0.0))],
+                        SimConfig(seed=1))
+        sim.run(5)
+        p = sim.em.particles[0]
+        self.assertAlmostEqual(p.rot.x, 0.1 * 5, places=5)   # 匀速：5 帧各加一次 0.1，没有衰减
+
+    def test_rotation_delay_frame_gates_start(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=100),
+                         rotateanim_block(add=(0.2, 0.0, 0.0), delay=4)], SimConfig(seed=1))
+        sim.run(3)
+        self.assertEqual(sim.em.particles[0].rot.x, 0.0)
+        sim.run(3)
+        self.assertGreater(sim.em.particles[0].rot.x, 0.0)
+
+    def test_rotate_anim_delay_frame_gates_start(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=100),
+                         rotateanim_block(add=(0.2, 0.0, 0.0)),
+                         rotateanim_delay_block(frame_delay=4)], SimConfig(seed=1))
+        sim.run(3)
+        self.assertEqual(sim.em.particles[0].rot.x, 0.0)
+        sim.run(3)
+        self.assertGreater(sim.em.particles[0].rot.x, 0.0)
+
+    def test_flags_and_unkn2_are_noted(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         rotateanim_block(flags=3), rotateanim_delay_block(unkn2=5)],
+                        SimConfig(seed=1))
+        self.assertTrue(any("RotateAnim.Flags" in n for n in sim.em.notes))
+        self.assertTrue(any("unkn2" in n for n in sim.em.notes))
+
+    def test_delay_frame_alone_is_not_reported_as_unsupported(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         rotateanim_delay_block(frame_delay=3)], SimConfig(seed=1))
+        self.assertNotIn("RotateAnimDelayFrame", sim.em.unsupported)
+
+    def test_billboard_gets_a_note_instead_of_a_silent_no_op(self):
+        """`TypeBillboard3D` 没接 `p.rot`（缺相机空间标定）——必须明说，不能既不转
+        也不吭声，那样用户会以为是模拟坏了而不是"这个没做"。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10),
+                         rotateanim_block(add=(0.1, 0.0, 0.0)), billboard_block()],
+                        SimConfig(seed=1))
+        self.assertTrue(any("TypeBillboard3D" in n for n in sim.em.notes))
+
+    def test_polygon_normal_rotates_with_accumulated_rot(self):
+        """`TypePolygon` 接了 `p.rot`：法线应该随着累积的旋转改变，不是钉死在
+        spawn 那一刻的静态朝向上。
+
+        ⚠ 不能用绕 Z 转：`_REST_NORMAL` 就是 Z 轴（game -Z），绕自己转是零效果——
+        同一个坑（"选中的那根轴自己转自己"）当初就是这么把 polygon.py 的朝向模型
+        坑穿的，这条测试专门避开它，走 X 轴。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=100),
+                         rotateanim_block(add=(0.5, 0.0, 0.0)), polygon_block()],
+                        SimConfig(seed=1))
+        sim.step()
+        first = sim.build_render()[0]
+        n0 = first.axis_u.cross(first.axis_v).normalized()
+        sim.run(5)
+        later = sim.build_render()[0]
+        n1 = later.axis_u.cross(later.axis_v).normalized()
+        self.assertGreater((n1 - n0).length(), 0.05, "法线没有随 p.rot 转动")
+
+    def test_meshv2_rot_extra_includes_accumulated_rot(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=100),
+                         rotateanim_block(add=(0.1, 0.0, 0.0)), meshv2_block()],
+                        SimConfig(seed=1))
+        sim.run(3)
+        it = sim.build_render()[0]
+        self.assertGreater(it.extra["rot"][0], 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -422,7 +1238,7 @@ class TestSimulator(unittest.TestCase):
 
     def test_unimplemented_render_body_falls_back_to_point(self):
         sim = Simulator([spawn_block(loops=1), life_block(keep=10),
-                         ("TypeRibbonLength", {})], SimConfig(seed=1))
+                         ("TypeMesh", {})], SimConfig(seed=1))
         sim.step()
         items = sim.build_render()
         self.assertEqual([it.kind for it in items], ["POINT"])
@@ -648,6 +1464,27 @@ class TestUVSequence(unittest.TestCase):
              uvs_block(seq=0)], 1, _resources())
         self.assertEqual(items2[0].tex_key, "texA")
 
+    def test_ribbon_items_are_not_textured(self):
+        """真实故障：`TypeRibbonFollow` 同一个 entry 上如果也有 `UVSequence`
+        （常见——序列帧贴图 + 轨迹条带经常配对），`build_render()` 会不分青红皂白地把
+        `tex_key`/`uv_rect` 写上去。`_collect_ribbon()` 对 RIBBON 恒写 `uv=(0,0)`，
+        于是整条带被按贴图那个固定角的像素采样成同一个颜色——贴图那个角常常是透明的，
+        看起来就是"这个渲染体完全不出现"，几何/颜色/透明度全对，唯独看不见。这条断言
+        钉住"RIBBON 的 tex_key/uv_rect 必须保持 UVSequence 介入前的原样"。"""
+        sim, items = self._items(
+            [spawn_block(loops=1), life_block(keep=100), ribbonfollow_block(),
+             uvs_block(seq=1, lo=0, hi=1)], 3, _resources())
+        for it in items:
+            self.assertEqual(it.kind, "RIBBON")
+            self.assertIsNone(it.tex_key)
+            self.assertEqual(it.uv_rect, (0.0, 0.0, 1.0, 1.0))
+
+    def test_skipping_ribbon_is_noted(self):
+        sim, items = self._items(
+            [spawn_block(loops=1), life_block(keep=100), ribbonfollow_block(),
+             uvs_block(seq=1, lo=0, hi=1)], 1, _resources())
+        self.assertTrue(any("RIBBON" in n for n in sim.em.notes))
+
     def test_no_resources_leaves_uv_alone_and_notes(self):
         """拿不到帧表就什么都不写，并 note——不编一个 0~1 的矩形冒充。"""
         sim, items = self._items(
@@ -697,3 +1534,99 @@ class TestUVSequence(unittest.TestCase):
         self.assertEqual(item.extra["uvs_frame"], 2, "出生当帧应取起手帧")
         # alpha 也应是 age=0 的淡入起点
         self.assertAlmostEqual(item.color[3], 0.0, places=6)
+
+
+# ---------------------------------------------------------------------------
+# TypeNoDraw
+# ---------------------------------------------------------------------------
+
+def nodraw_block():
+    return ("TypeNoDraw", {"Flags": 0, "Color": {"rgba": 0xFFFFFFFF},
+                           "ColorRange": {"rgba": 0xFFFFFFFF}, "RotationOrder": 0,
+                           "Rotation": {"x": 0.0, "y": 0.0, "z": 0.0},
+                           "RotationRandom": {"x": 0.0, "y": 0.0, "z": 0.0},
+                           "Size": {"x": 1.0, "y": 1.0, "z": 1.0},
+                           "SizeRandom": {"x": 0.0, "y": 0.0, "z": 0.0},
+                           "unkn14": 0.0, "unkn15": 0.0})
+
+
+class TestNoDraw(unittest.TestCase):
+    """真实故障：没有这个 behavior 之前，`TypeNoDraw` 会落进"有渲染主体、只是没实现"的
+    兜底分支，被画成一个假的退化点——它的名字本身就是"不画"，这是凭空捏造画面。"""
+
+    def test_produces_no_render_item(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10), nodraw_block()],
+                        SimConfig(seed=1))
+        sim.step()
+        self.assertEqual(sim.build_render(), [])
+
+    def test_has_renderer_body_is_still_true(self):
+        """区别于"没有渲染主体"（`test_no_render_body_means_no_items`）：这里是有主体、
+        主体自己说不画，两条路径都通向"不画"，但走的分支不一样，用 `unsupported` 反证——
+        `TypeNoDraw` 已注册，不该出现在未模拟属性列表里。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10), nodraw_block()],
+                        SimConfig(seed=1))
+        sim.step()
+        self.assertNotIn("TypeNoDraw", sim.em.unsupported)
+
+
+# ---------------------------------------------------------------------------
+# PtLife
+# ---------------------------------------------------------------------------
+
+def ptlife_block(status=4, action_index=0, flags=0):
+    return ("PtLife", {"Flags": flags, "Status": status, "ActionIndex": action_index})
+
+
+class TestPtLife(unittest.TestCase):
+
+    def test_death_summons_action_and_notes_it(self):
+        """故障模式：`PtLife` 完全没实现的话，粒子死亡时召唤 Action 这件事在预览里
+        彻彻底底没有任何反应，用户没法知道这个 Entry 其实还挂着一个召唤链。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=2), ptlife_block(
+            status=4, action_index=7)], SimConfig(seed=1))
+        sim.run(2)
+        self.assertEqual(len(sim.em.particles), 1)
+        sim.step()   # 第 3 帧粒子死亡（keep=2：age 0,1 活着，age 2 判死）
+        self.assertEqual(len(sim.em.particles), 0)
+        self.assertEqual(len(sim.em.spawn_requests), 1)
+        req = sim.em.spawn_requests[0]
+        self.assertEqual(req.kind, "action")
+        self.assertEqual(req.target, 7)
+        self.assertTrue(any("召唤 Action #7" in n for n in sim.em.notes))
+
+    def test_initialize_status_summons_on_spawn(self):
+        """真实样本（`11_it03_005.efx.5571972` 的 `0_PT` entry）走的正是这一档：一个只有
+        `TypeNoDraw`+`Spawn`+`Life`+`PtLife` 的纯逻辑 entry，一出生就召唤 Action——
+        "死亡时召唤"不是唯一常见形态，`Status=0` 必须在粒子出生的当帧就触发，不能等死亡。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10), ptlife_block(
+            status=0, action_index=7)], SimConfig(seed=1))
+        sim.step()
+        self.assertEqual(len(sim.em.particles), 1, "生成时触发不该连粒子本身都不生成")
+        self.assertEqual(len(sim.em.spawn_requests), 1)
+        req = sim.em.spawn_requests[0]
+        self.assertEqual(req.kind, "action")
+        self.assertEqual(req.target, 7)
+        self.assertTrue(any("召唤 Action #7" in n for n in sim.em.notes))
+
+    def test_unsupported_status_does_not_summon_and_is_noted(self):
+        """`Status=1`（淡入时）本仓没实现（需要跟踪 `Life` 的阶段迁移），必须如实 note，
+        不能悄悄按"生成时"或"死亡时"触发糊过去（那会在错误的时间点召唤 Action）。"""
+        sim = Simulator([spawn_block(loops=1), life_block(keep=2), ptlife_block(
+            status=1, action_index=7)], SimConfig(seed=1))
+        sim.run(3)
+        self.assertEqual(sim.em.spawn_requests, [])
+        self.assertTrue(any("Status=1" in n and "不会召唤 Action" in n
+                            for n in sim.em.notes), sim.em.notes)
+
+    def test_terminate_status_does_not_emit_stage_note(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=2), ptlife_block(
+            status=4, action_index=1)], SimConfig(seed=1))
+        sim.run(3)
+        self.assertFalse(any("不会召唤 Action" in n for n in sim.em.notes), sim.em.notes)
+
+    def test_initialize_status_does_not_emit_stage_note(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=10), ptlife_block(
+            status=0, action_index=1)], SimConfig(seed=1))
+        sim.step()
+        self.assertFalse(any("不会召唤 Action" in n for n in sim.em.notes), sim.em.notes)

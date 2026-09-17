@@ -34,6 +34,9 @@ efx_sim/simulator.py —— 顶层驱动（EmitterState + Simulator）
 约束：纯 Python，**禁 import bpy**；零第三方依赖。
 """
 
+import math
+
+from . import expr as _expr
 from . import registry as _reg
 from . import rng as _rng
 from . import stages as _stages
@@ -41,6 +44,184 @@ from .config import SimConfig
 from .shapes import FieldView
 from .state import Particle, RenderItem, Vec3, ViewContext
 from .uvs_table import SimResources
+
+#: vendor `ExpressionAssignType`（`EfxCommon.cs:8`，Add=0/Subtract=1/Multiply=2/Divide=3/
+#: Assign=4，无 vendor"not sure"注释，视为确认）。公式结果和目标字段**导入时的原始值**
+#: （不是上一帧被改过的值——否则 Add/Multiply 每帧都会在上一帧结果上再叠一次，无限发散）
+#: 按这个表合成，key 缺失（理论上不会，防御性兜底）按 Assign 处理。
+_EXPR_ASSIGN_OPS = {
+    0: lambda base, result: base + result,
+    1: lambda base, result: base - result,
+    2: lambda base, result: base * result,
+    3: lambda base, result: (base / result) if result != 0 else 0.0,
+    4: lambda base, result: result,
+}
+
+#: `_ExprCurve.is_angle_degrees` 只在这三档转换公式结果（度 -> 弧度）：Add(0)/Subtract(1)
+#: 把结果当成一个要叠加到弧度制基准上的角度增量，Assign(4) 直接替换成一个角度——三者的
+#: 结果本身就"是"一个角度。Multiply(2)/Divide(3) 不转：结果在这两档里是无量纲的倍率
+#: （"转速乘 2 倍"），不是角度本身，见 `_eval_expressions()` 的调用点。
+_DEGREES_CONVERTED_ASSIGN_TYPES = frozenset({0, 1, 4})
+
+
+def _ratio(current, prev):
+    """`current/prev`，`prev==0` 时退回 1.0（无法表示成比例，等同"这一帧没有额外缩放"）。
+    用于从 `scale_drift` 的累计值推导逐帧增量（`em.scale_velocity`），镜像
+    `transform3d.py::_safe_ratio` 但不依赖那个模块——核心层内部的小工具，不值得为它
+    建一条跨模块依赖。"""
+    return current / prev if prev else 1.0
+
+
+class _ExprCurve(object):
+    """一条已经解析、定位好目标字段（+ 子键）的 Expression 曲线
+    （`Simulator._resolve_expr_curves()` 的产物）。"""
+
+    __slots__ = ("type_name", "field", "sub_key", "parsed", "assign_type", "base_value",
+                "is_angle_degrees")
+
+    def __init__(self, type_name, field, sub_key, parsed, assign_type, base_value,
+                is_angle_degrees=False):
+        self.type_name = type_name
+        self.field = field
+        #: `None`=整个字段就是标量；`"primary"`/`"secondary"`=`{s,r}`/`{x,y}` 形状字段的
+        #: 主/副值；`"X"`/`"Y"`/`"Z"`=向量字段的某个分量。见 `_EXPR_FIELD_OVERRIDES`。
+        self.sub_key = sub_key
+        self.parsed = parsed
+        self.assign_type = assign_type
+        #: 目标（字段或子键）**导入时**的原始值——`ExpressionAssignType.Add/Subtract/
+        #: Multiply/Divide` 都是相对它算，不是相对上一帧被改过的值，否则每帧都会在自己
+        #: 头上再叠一次。
+        self.base_value = base_value
+        #: 目标字段是不是确认过的弧度制角度字段（`blender_efx_re.semantics.
+        #: is_angle_radians_field()` 算好、经胶水层随 `expressions=` 传进来的，核心层
+        #: 自己不认识语义表）。**这不是 UI 的"角度显示"开关**——是引擎/文件格式本身的事实：
+        #: 全语料实测 `Transform3DExpression` 的 227 个"和公式根节点同单位"的字面量常量，
+        #: 0 个落在弧度制常见值（π 的有理数倍）附近，172/202 超过 2π，众数是 360/10/5/30——
+        #: **公式里的字面量按度写，`LocalRotation` 的静态存储却已经字节级确认是弧度**。
+        #: 见 `efx_sim/behaviors/__init__.py` 或 `docs/EXPRESSION_SEMANTICS.md` 的记录。
+        self.is_angle_degrees = is_angle_degrees
+
+
+#: bit_name -> `(目标字段名, 子键)` 的每类型覆盖表。子键：`None`=整个标量字段；
+#: `"primary"`/`"secondary"`=只改 `{s,r}`/`{r,s}`/`{x,y}` 形状字段的主值/副值（主键按
+#: `_pick_primary_secondary_key()`——`{s,r}` 按 int/float 选 `r`/`s`，`{x,y}` 固定
+#: `x`=min=主值，同 `shapes.py::_primary_secondary()`/`FieldView.xy()` 的既有约定，不
+#: 重新发明）；`"X"`/`"Y"`/`"Z"`=只改向量字段的某一个分量。
+#:
+#: **"哪个字段"来自 vendor 源码本身**（"...Expression" 类的 `BitNameDict`/`BitNames`
+#: 用 `nameof()` 指向的本地字段，和 sibling 类的字段布局对照确认，不是猜）——bit_name
+#: 常常是语义化标签，不是字段名的机械变形（`appearLife` vs `AppearFrame`，见
+#: `EfxBasics.cs:169`）。**"主值还是副值"这一层是推断**：vendor 没有明说 `XxxRand`/
+#: `XxxRange` 变体一定对应副值，是从"单值字段 + 对应变体字段"这个命名规律反推的，
+#: 没有实机确认，标注来源方便以后复核。
+_EXPR_FIELD_OVERRIDES = {
+    # EfxBasics.cs:158 LifeExpression：bit 1/2/3 有名字（4/5/6 的 XxxRand 变体不在 vendor
+    # 的 BitNameDict 里，目前必然是空 bit_name，不会走到这里，收进表只是保持完整）。
+    ("Life", "appearLife"): ("AppearFrame", "primary"),
+    ("Life", "keepLife"): ("KeepFrame", "primary"),
+    ("Life", "vanishLife"): ("VanishFrame", "primary"),
+    ("Life", "appearLifeRand"): ("AppearFrame", "secondary"),
+    ("Life", "keepLifeRand"): ("KeepFrame", "secondary"),
+    ("Life", "vanishLifeRand"): ("VanishFrame", "secondary"),
+
+    # EfxBasics.cs:72 SpawnExpression：spawnNum/intervalFrame/emitterDelayFrame 直接对应
+    # 同名 `Int2` 字段（主值=x=min）；*Range 变体在 `EFXAttributeSpawn` 上没有独立字段，
+    # 推断是同一个 Int2 的 y（max）分量。`speed` 在 `EFXAttributeSpawn` 上没有任何对应
+    # 字段，不收进表——按"找不到字段"处理，不瞎猜它到底想改什么。
+    ("Spawn", "spawnNum"): ("SpawnNum", "primary"),
+    ("Spawn", "spawnNumRange"): ("SpawnNum", "secondary"),
+    ("Spawn", "intervalFrame"): ("IntervalFrame", "primary"),
+    ("Spawn", "intervalFrameRange"): ("IntervalFrame", "secondary"),
+    ("Spawn", "emitterDelayFrame"): ("EmitterDelayFrame", "primary"),
+    ("Spawn", "emitterDelayFrameRange"): ("EmitterDelayFrame", "secondary"),
+
+    # EfxTransform.cs:118 Transform3DExpression：9 个 bit 分别对应 LocalPosition/
+    # LocalRotation/LocalScale 三个 Vector3 各自的 X/Y/Z 分量。⚠ **`Transform3D` 目前
+    # 不是 efx_sim 里已注册的 behavior**（`efx_sim/behaviors/` 没有 transform3d.py），
+    # 这张表能把 bit_name 定位到正确的字段+分量，但 `_resolve_expr_curves()` 仍会因为
+    # `em._views` 里没有 "Transform3D" 这个 view 而跳过——这是"这个属性本来就没被模拟"，
+    # 不是这张表的问题，见 sim_preview 报告里的说明。
+    ("Transform3D", "translationX"): ("LocalPosition", "X"),
+    ("Transform3D", "translationY"): ("LocalPosition", "Y"),
+    ("Transform3D", "translationZ"): ("LocalPosition", "Z"),
+    ("Transform3D", "rotationX"): ("LocalRotation", "X"),
+    ("Transform3D", "rotationY"): ("LocalRotation", "Y"),
+    ("Transform3D", "rotationZ"): ("LocalRotation", "Z"),
+    ("Transform3D", "scaleX"): ("LocalScale", "X"),
+    ("Transform3D", "scaleY"): ("LocalScale", "Y"),
+    ("Transform3D", "scaleZ"): ("LocalScale", "Z"),
+}
+
+
+def _pick_primary_secondary_key(value, which):
+    """`{s,r}`/`{x,y}` 形状的 dict -> `which`（`"primary"`/`"secondary"`）对应的**键名**。
+
+    和 `shapes.py::_primary_secondary()` 同一套判据（镜像，不是重新发明）：`{s,r}` 两个
+    分量都是 int 时主键是 `r`，否则是 `s`；`{x,y}` 固定 `x` 是主值（`MIN_MAX_INT2_FIELDS`
+    的既有约定，见 `shapes.py::FieldView.xy()`）。查不出形状返回 `None`。
+    """
+    if "s" in value and "r" in value:
+        s, r = value["s"], value["r"]
+        is_ranged_int = (isinstance(s, int) and isinstance(r, int)
+                         and not isinstance(s, bool) and not isinstance(r, bool))
+        primary_key, secondary_key = ("r", "s") if is_ranged_int else ("s", "r")
+    elif "x" in value and "y" in value:
+        primary_key, secondary_key = "x", "y"
+    else:
+        return None
+    return primary_key if which == "primary" else secondary_key
+
+
+def _is_plain_scalar(value):
+    return not isinstance(value, bool) and isinstance(value, (int, float))
+
+
+def resolve_expr_field_name(base_type_name, bit_name):
+    """`(base_type_name, bit_name)` -> 它驱动的 sibling 字段名（不含 sub_key，也不校验
+    字段是否真的存在于某个具体实例上）——纯字符串规则，供只需要"哪个字段"这一层信息的
+    调用方用（比如 `blender_efx_re` 那边查语义表的 `unit` 标注，判断这条曲线是不是在
+    驱动一个弧度制角度字段），不需要 sibling 的原始字段 dict。`_resolve_expr_target()`
+    要完整定位（含 sub_key + 当前值）时在这基础上再往下走一层，两边共享同一张
+    `_EXPR_FIELD_OVERRIDES` 覆盖表 + fallback 规则，不重复维护两份。"""
+    override = _EXPR_FIELD_OVERRIDES.get((base_type_name, bit_name))
+    if override is not None:
+        return override[0]
+    return bit_name[:1].upper() + bit_name[1:]
+
+
+def _resolve_expr_target(base_type_name, bit_name, raw):
+    """`(base_type_name, bit_name)` + sibling attribute的原始字段 dict ->
+    `(field_name, sub_key, 当前标量值)`，或者 `None`（定位不到，调用方负责 note）。
+
+    没在 `_EXPR_FIELD_OVERRIDES` 里的类型退回旧的启发式（去掉 Expression 后缀 + 首字母
+    大写）——这只在少数字段刚好是"色彩"、"速度"这种单值概念、命名又恰好对得上时才准，
+    没被验证过的类型请把它当"最后一搏"而不是"应该对"，见 `collect_expressions()` 的说明。
+    """
+    if not bit_name:
+        return None
+    override = _EXPR_FIELD_OVERRIDES.get((base_type_name, bit_name))
+    field_name = resolve_expr_field_name(base_type_name, bit_name)
+    sub_key = override[1] if override is not None else None
+
+    if field_name not in raw:
+        return None
+    value = raw[field_name]
+
+    if sub_key is None:
+        return (field_name, None, value) if _is_plain_scalar(value) else None
+
+    if not isinstance(value, dict):
+        return None
+    if sub_key in ("primary", "secondary"):
+        actual_key = _pick_primary_secondary_key(value, sub_key)
+    else:  # "X" / "Y" / "Z"
+        actual_key = sub_key if sub_key in value else sub_key.lower()
+        if actual_key not in value:
+            actual_key = None
+    if actual_key is None:
+        return None
+    sub_value = value.get(actual_key)
+    return (field_name, actual_key, sub_value) if _is_plain_scalar(sub_value) else None
 
 #: 没有可用渲染体时，退化点的显示尺寸（米）。**纯显示默认值，不来自文件**——真实尺寸只有
 #: 渲染体属性（`TypeBillboard3D` 等）知道，这里没有，所以不假装知道。
@@ -83,6 +264,9 @@ class EmitterState(object):
     __slots__ = (
         "frame", "config", "seed",
         "origin", "host_origin", "drift", "velocity", "prev_origin",
+        "rotation_drift", "scale_drift", "rotation_order",
+        "prev_rotation_drift", "prev_scale_drift",
+        "rotation_velocity", "scale_velocity",
         "particles", "spawned_total", "spawn_requests",
         "unsupported", "user", "finished", "trail", "resources",
         "_views", "_pending_spawn", "_notes",
@@ -104,6 +288,25 @@ class EmitterState(object):
         self.origin = Vec3()
         self.velocity = Vec3()        # 每帧位移
         self.prev_origin = Vec3()
+
+        #: `Transform3D` 的 `LocalRotation`/`LocalScale` 相对烘焙基准的**累计**增量
+        #: （`transform3d.py` 写）。`rotation_order` 是 `RotationOrder` 字段的原始标量值
+        #: （不在这里转换成顺序串，见 transform3d.py）。
+        #:
+        #: `rotation_velocity`/`scale_velocity` 是从这两个累计量派生出的**逐帧增量**
+        #: （同 `velocity` 之于 `origin`：`origin` 是累计位置，`velocity` 是这一帧的位移）
+        #: ——只有 `ParentOptions`（已出生的粒子要不要跟着发射器转/缩放）消费，核心层
+        #: 不解释。用累计量相减取增量而不是直接记"上一帧的原始字段值"，是因为增量在
+        #: 基准是否恒等这件事上**天然无关**（`(cur-base)-(prev-base) == cur-prev`，
+        #: 基准抵消掉了）——不需要重复 `transform3d.py` 里"基准是否恒等"那层判断。
+        #: 没有 `Transform3D` 的 entry 里全部恒为默认值（零增量）。
+        self.rotation_drift = Vec3()
+        self.scale_drift = Vec3(1.0, 1.0, 1.0)
+        self.rotation_order = 0
+        self.prev_rotation_drift = Vec3()
+        self.prev_scale_drift = Vec3(1.0, 1.0, 1.0)
+        self.rotation_velocity = Vec3()
+        self.scale_velocity = Vec3(1.0, 1.0, 1.0)
 
         self.particles = []
         self.spawned_total = 0        # 累计生成数（逐粒子播种的序号）
@@ -151,6 +354,21 @@ class EmitterState(object):
     def noise_smooth3(self, seed, channel=0, period=8.0):
         return _rng.noise_smooth3(seed, self.frame, channel, period)
 
+    # -- Expression 曲线用：跨属性字段读写 ------------------------------------
+    def patch_field(self, type_name, key, value, sub_key=None):
+        """把 Expression 求值结果写回某个属性的某个字段（或字段的某个子键，见
+        `_ExprCurve.sub_key`）。找不到对应 view 就什么都不做——调用方
+        （`Simulator._eval_expressions`）已经先 `note()` 过，这里不重复记。"""
+        view = self._views.get(str(type_name))
+        if view is None:
+            return
+        if sub_key is None:
+            view.raw[key] = value
+            return
+        container = view.raw.get(key)
+        if isinstance(container, dict) and sub_key in container:
+            container[sub_key] = value
+
     # -- 记事（给 UI：本次模拟里跳过 / 猜了什么）------------------------------
     def note(self, msg):
         """**预览不静默撒谎**：凡是没模拟、按假设处理、被上限截断的，都要在这里留一条，
@@ -178,13 +396,25 @@ class Simulator(object):
     属性树。胶水层从当前正在编辑的属性树构造它，这样预览反映的是未保存的改动。
     """
 
-    def __init__(self, blocks, config=None, resources=None):
+    def __init__(self, blocks, config=None, resources=None, expressions=None,
+                 expr_parameters=None):
         self.blocks = list(blocks or [])
         self._has_body = _has_renderer_body(self.blocks)
         self.config = config or SimConfig()
         #: 属性块里没有、必须由宿主给的外部数据（`UVSequence` 的 `.uvs` 帧表）。
         #: 换资源要 reset —— 帧表在 on_emitter_init 里只看一次。
         self.resources = resources if resources is not None else SimResources()
+        #: `IExpressionAttribute` 的曲线，胶水层已经解析好"哪条曲线驱动哪个 sibling
+        #: attribute 的哪个字段"：`[(base_type_name, target_field, formula_text,
+        #: assign_type), ...]`。`efx_sim` 只管文本求值 + 按 `ExpressionAssignType` 合成，
+        #: 不认识 `Object`/`EFXExpressionCurveItem`（见 efx_sim/expr.py 的说明）。
+        self._expressions_raw = list(expressions or [])
+        #: 文件级具名参数表（`EfxFile.ExpressionParameters`）-> `{名字: 标量值}`。公式里
+        #: `Length`/`Color_A`/`BombRate` 这类名字就是从这张表来的。**不给的话它们会全部
+        #: 落成"未知变量 -> 0.0"**，公式算出来的数和面板读数会不一致——这是真踩过的坑，
+        #: 面板那半边在 `blender_efx_re/expr_preview.py`，两边的优先级必须保持一致。
+        self._expr_parameters = dict(expr_parameters or {})
+        self._expr_curves = []
 
         self.bound = []
         self.em = None
@@ -206,6 +436,8 @@ class Simulator(object):
         em.unsupported = list(unsupported)
         for b in self.bound:
             em._views[b.type_name] = b.fields
+
+        self._expr_curves = self._resolve_expr_curves(em)
 
         self._h_emitter_step = [b for b in self.bound
                                 if _reg.implements(b, "on_emitter_step")]
@@ -246,6 +478,12 @@ class Simulator(object):
             return em
 
         em.prev_origin = em.origin.copy()
+        em.prev_rotation_drift = em.rotation_drift.copy()
+        em.prev_scale_drift = em.scale_drift.copy()
+
+        # 0. Expression 曲线——必须在其余 behavior 读字段之前算完，见 _eval_expressions()
+        if self._expr_curves:
+            self._eval_expressions(em)
 
         # 1. 发射器时间轴
         for b in self._h_emitter_step:
@@ -255,6 +493,11 @@ class Simulator(object):
         #    就变成读上一帧的值。
         em.origin = em.host_origin + em.drift
         em.velocity = em.origin - em.prev_origin
+        em.rotation_velocity = em.rotation_drift - em.prev_rotation_drift
+        em.scale_velocity = Vec3(
+            _ratio(em.scale_drift.x, em.prev_scale_drift.x),
+            _ratio(em.scale_drift.y, em.prev_scale_drift.y),
+            _ratio(em.scale_drift.z, em.prev_scale_drift.z))
         if self._record_trail:
             em.trail.append(em.origin.copy())
 
@@ -328,7 +571,7 @@ class Simulator(object):
                     # 这个 entry 压根没有渲染主体类属性——不是"有主体但没实现"，是本来就
                     # 不该有画面，同 TypeNoDraw 一样明确不画（见 _has_renderer_body）。
                     continue
-                # 有渲染主体、只是没实现（比如主体是 TypeRibbonLength）-> 退化成一个点，
+                # 有渲染主体、只是没实现（比如主体是 TypeGpuMesh）-> 退化成一个点，
                 # 至少能看见"有多少、在哪、多亮"。
                 item = RenderItem(kind="POINT", pos=p.pos.copy(),
                                   size=p.scale * FALLBACK_SIZE)
@@ -363,6 +606,110 @@ class Simulator(object):
             if got:
                 best = max(best, int(got))
         return best or default
+
+    # -- Expression 曲线 -------------------------------------------------------
+    def _resolve_expr_curves(self, em):
+        """把 `self._expressions_raw` 解析成 `[_ExprCurve, ...]`：解析公式文本、定位目标
+        字段、快照"导入时的原始值"（`_EXPR_ASSIGN_OPS` 要用它当基准，不能用上一帧被改过的
+        值，见该表的说明）。任何一步失败都是"这条曲线不动"，不是"整条模拟崩掉"（铁律 #2
+        的只读侧对应物：note 一条，不静默丢、也不拖垮其他曲线）。"""
+        out = []
+        for item in self._expressions_raw:
+            # 第 5 个元素（是不是弧度制角度字段）是可选的：旧调用点/测试传 4 元组时
+            # 按"不是角度"处理，不强制所有调用方一起改。
+            base_type_name, bit_name, formula_text, assign_type = item[:4]
+            is_angle_degrees = bool(item[4]) if len(item) > 4 else False
+            base_type_name = str(base_type_name)
+            view = em._views.get(base_type_name)
+            if view is None:
+                em.note("expr: 找不到属性 %s（曲线 bit_name=%r 无法生效，这个属性本身没被"
+                        "模拟——见 unsupported 列表）" % (base_type_name, bit_name))
+                continue
+            target = _resolve_expr_target(base_type_name, bit_name, view.raw)
+            if target is None:
+                em.note("expr: %s 找不到 bit_name=%r 对应的（标量）字段，曲线无法生效"
+                        % (base_type_name, bit_name))
+                continue
+            field_name, sub_key, base_value = target
+            try:
+                parsed = _expr.parse(formula_text)
+            except _expr.ExprError as exc:
+                em.note("expr: %s.%s 公式解析失败（%s），曲线无法生效"
+                        % (base_type_name, field_name, exc))
+                continue
+            out.append(_ExprCurve(base_type_name, field_name, sub_key, parsed,
+                                   int(assign_type), float(base_value), is_angle_degrees))
+        return out
+
+    def _eval_expressions(self, em):
+        """每帧在其余 behavior 之前跑一遍：拼变量表 -> 逐条曲线求值 -> 按
+        `ExpressionAssignType` 合成 -> `patch_field()` 写回。变量表每帧重建（`TIMER`/
+        跨属性字段都可能变），不缓存。"""
+        variables = self._expr_builtin_vars(em)
+        # 优先级：内置外部变量 > 文件级具名参数 > 兄弟属性的标量字段。内置的最特殊
+        # （引擎全局），字段名最宽松（任何标量字段都能撞上），所以按这个顺序 setdefault。
+        for name, value in self._expr_parameters.items():
+            variables.setdefault(name, float(value))
+        for view in em._views.values():
+            for key, value in view.raw.items():
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    continue
+                variables.setdefault(key, float(value))
+
+        notes = []
+        ctx = _expr.EvalContext(variables, self.config.expr_unknown_func_policy, notes,
+                                self.config.expr_clamp_mode)
+        for curve in self._expr_curves:
+            try:
+                result = _expr.evaluate(curve.parsed, ctx)
+            except _expr.ExprError as exc:
+                em.note("expr: %s.%s 求值失败（%s）" % (curve.type_name, curve.field, exc))
+                continue
+            if curve.is_angle_degrees and curve.assign_type in _DEGREES_CONVERTED_ASSIGN_TYPES:
+                # 全语料实测：Expression 公式驱动一个确认过的弧度制角度字段时，公式本身按
+                # **度**写（见 `_ExprCurve.is_angle_degrees` 的说明），但字段的静态存储是
+                # 弧度——真正吃公式结果的只有 Add/Subtract/Assign（全语料 560 条真实绑定的
+                # `Transform3DExpression.rotationX/Y/Z` 公式，assign_type 只出现过
+                # Assign=427/Add=133，Multiply/Divide/Subtract 一次都没有），这里只转这三档：
+                # Multiply/Divide 的公式结果是无量纲的倍率，不该被当角度换算。
+                result = math.radians(result)
+            op = _EXPR_ASSIGN_OPS.get(curve.assign_type, _EXPR_ASSIGN_OPS[4])
+            em.patch_field(curve.type_name, curve.field, op(curve.base_value, result), curve.sub_key)
+        for msg in notes:
+            em.note("expr: " + msg)
+
+    def _expr_builtin_vars(self, em):
+        """公式里几个**不对应任何属性字段**的内置变量。语义置信度分层见 `efx_sim/expr.py`
+        模块 docstring——这里额外补的是"预览怎么建模"这一层（游戏本身怎么算，本仓不掌握）：
+
+        - `PI`：`math.pi`，无歧义。
+        - `TIMER`：按 `SimConfig.expr_timer_unit` 取帧数或秒数，已实机确认是帧数（默认档）。
+        - `RAND`：借用已有的确定性噪声 `em.noise1()`（同一个 seed/frame 恒定复现），映到
+          `[0, 1)`——范围本身也是猜的（"RAND"没有量级证据），选 `[0,1)` 是多数引擎的
+          常见约定。
+        - `EM_INIRAND`/`EM_INIRAND_SHARED`：命名暗示"初始化时抽一次、不逐帧变"，用
+          `on_emitter_init` 那条播种流抽一次并缓存在 `em.user`。两者按同一个值处理——
+          "SHARED" 大概率是"多个同时播放的实例共享同一个值"，预览只模拟单个实例，这一层
+          差异建模不出来。
+        - `PLAY_SPEED`：没有对应的模拟概念，固定给 1.0（未建模，不是"确认了就是 1"）。
+        """
+        cfg = self.config
+        if cfg.expr_timer_unit == "seconds":
+            timer = em.frame / float(cfg.fps or 60)
+        else:
+            timer = float(em.frame)
+        inirand = em.user.get("_expr_inirand")
+        if inirand is None:
+            inirand = (em.noise1(em.seed, channel=0x5152) + 1.0) * 0.5
+            em.user["_expr_inirand"] = inirand
+        return {
+            "PI": math.pi,
+            "TIMER": timer,
+            "RAND": (em.noise1(em.seed, channel=0x5241) + 1.0) * 0.5,
+            "EM_INIRAND": inirand,
+            "EM_INIRAND_SHARED": inirand,
+            "PLAY_SPEED": 1.0,
+        }
 
     # -- 内部 ----------------------------------------------------------------
     def _consume_spawn(self, em):

@@ -53,8 +53,13 @@ from .state import Vec3
 SR_INDEX_FIELDS = frozenset({"SequenceNo"})
 
 #: `{s,r}` 但实测是 min/max 范围。⚠ 两个字段的 s/r 顺序**相反**：
-#: `PatternNo` 是 s=Max / r=Min，`PlaySpeed` 是 s=Min / r=Max。
-SR_MIN_MAX_FIELDS = frozenset({"PatternNo", "PlaySpeed"})
+#: `PatternNo` / `PartsStartNo` 是 s=Max / r=Min，`PlaySpeed` 是 s=Min / r=Max。
+#: （名单按字段名，不按类型——`PartsStartNo` 在 TypeMesh 和 TypeGpuMesh 里语义相同。）
+SR_MIN_MAX_FIELDS = frozenset({"PatternNo", "PlaySpeed", "PartsStartNo"})
+
+#: `SR_MIN_MAX_FIELDS` 里**上界取不到**（`[Min, Max)`）的那些，判据见 model.py 同名常量。
+#: 只对整数字段有意义（浮点区间的开闭是零测度）。
+HALF_OPEN_MAX_FIELDS = frozenset({"PatternNo", "PartsStartNo"})
 
 #: `Int2{x,y}` 是 min/max 的那几个字段（其余 `{x,y}` 是普通二元组）。
 MIN_MAX_INT2_FIELDS = frozenset({"SpawnNum", "IntervalFrame", "EmitterDelayFrame"})
@@ -70,13 +75,49 @@ MIN_MAX_INT2_FIELDS = frozenset({"SpawnNum", "IntervalFrame", "EmitterDelayFrame
 #: 非相等的取值对也长得像区间而不像"基值+浮动"：VanishFrame 的 `(30,40) (60,80) (80,100)
 #: (100,120)`、KeepFrame 的 `(150,200)`。
 #:
-#: ⚠ 只有 `Life` 这四个是**语料验证过的**。`RgbCommon.GreenChAppearFrame` /
-#: `TexelChannelOperator.Appear` 等同概念字段**没验**，按铁律 #7 不先斩后奏地加进来。
+#: ⚠ **同概念不等于同语义**：`RgbCommon.*AppearFrame/KeepFrame/VanishFrame` 全族实测是
+#: static/random（副值<主值 1 万~2 万例），`VanishArea3D.VanishFrame` 同理。这张表只收
+#: 逐个查过的，不按名字外推。完整依据见 `model.py` 同名常量。
 PAIR_MIN_MAX_FIELDS = frozenset({
     ("Life", "AppearFrame"),
     ("Life", "KeepFrame"),
     ("Life", "VanishFrame"),
     ("Life", "KeepHoldFrame"),
+    # --- `EmitterShape3D` 的三个逐轴区间。2026-09-13 全语料定的，判据是**外边界是 `q`
+    # 还是 `p+q`**（min+max vs MHWI 那种 min+offset），不是 static/random：
+    #   `q < p` 0/62492，而主值非零的有 36590/20748/36840 例（58.6%/33.2%/59.0%）——
+    #   min+offset 下 `q` 是**厚度**，半径 1.0 厚 0.1 的薄壳就该写成 `(1.0, 0.1)` 即 `q < p`，
+    #   这种组合一次都没出现，等于说"从来没人做过半径大于厚度的壳"，讲不通。
+    #   反过来看"厚度"：读作 min+max 时 `q-p == 0`（粒子正好落在壳面上）占 69.2%/33.3%/60.0%，
+    #   是最常见的写法；读作 min+offset 时 `q == 0` 占 0.0%/11.1%/0.0%——没人做过纯表面
+    #   发射器，每个都非得有个中位 0.5~1.0 的厚度，不成立。
+    #   另有 Y 轴的对称负数对 `(-0.1,0.1)×588` `(-0.5,0.5)×507` `(-1,1)×489`：min+max 读作
+    #   "以原点为中心上下对称"，min+offset 则要求作者恰好挑一个等于 |min| 的 offset，挑了 1584 次。
+    ("EmitterShape3D", "RangeX"),
+    ("EmitterShape3D", "RangeY"),
+
+    ("EmitterShape3D", "RangeZ"),
+    # --- 以下 13 个是 2026-09-13 用 `EfxBridge pairstats` + `tools/audit_range_fields.py`
+    # 全语料排查出来的（223 个二元字段扫了一遍），此前一直被当成 (静态值, 随机量) 读。
+    # 共同判据：**副值 < 主值 0 例**（min/max 的必要条件），且**"副值==主值且主值≠0"占比高**
+    # ——static/random 下那等于"浮动幅度恰好等于基值"，不可能成规模。括号里是那个占比。
+    #
+    # ⚠ **必须按 (类型, 字段) 键**，这批里真有撞名的：`AngularVelocity3D.Radius`（1796 例）
+    # 和 `PtVortexelPhysics.BounceRate`（2192 例）都是**确证的 static/random**，用裸字段名会
+    # 把它们一起误伤。
+    ("PtCollision", "Radius"),                       # 94.7%  (0.1,0.1)×869
+    ("PtCollision", "BounceNum"),                    # 81.4%  (2,2) (1,1) (3,3) (2,3)
+    ("PtCollision", "BounceRate"),                   # 70.0%  (0.1,0.1) (0.1,0.2)
+    ("PlaneCollider", "BounceNum"),                  # 54.0%  (1,1) (1,2) (2,3)
+    ("PlaneCollider", "BounceRate"),                 # 16.1%  (0.4,0.5) (0.5,0.8)
+    ("PlaneCollider", "IdleTime"),                   # 12.6%  (10,10) (60,60) (500,500)
+    ("UVSequenceModifier", "PlaySpeedInit"),         # 83.4%  (1,1) (2,2) (1.5,1.5)
+    ("UVSequenceModifier", "PlaySpeedFinal"),        # 74.5%  (0.5,0.5) (0.3,0.3)
+    ("UVSequenceModifier", "PlaySpeedChangeTimeCoef"),  # 93.4%  (0.97,0.97) (0.98,0.98)
+    ("EmitterHSV", "Range1"),                        # 77.5%  (100,100) (100,650)
+    ("EmitterHSV", "Range3"),                        # 75.0%  (100,100) (240,650)
+    ("TexelChannelOperator", "Keep"),                # 26.3%  (20,60) (100,100) (0,5)
+    ("TexelChannelOperator", "Vanish"),              # 73.7%  (80,80) (20,20)
 })
 
 _XYZ_UPPER = ("X", "Y", "Z")
@@ -227,6 +268,23 @@ class FieldView(object):
         if key not in SR_INDEX_FIELDS:
             raise FieldShapeError("%s.%s 不在 SR_INDEX_FIELDS 里" % (self.type_name, key))
         return self._sr_raw(key)
+
+    def roll_sr_min_max_int(self, key, rng):
+        """`SR_MIN_MAX_FIELDS` 里的整数区间 -> 抽一个整数值，**上界开闭由名单说了算**。
+
+        存在的意义就是不让"开闭"这件事散落到各个 behavior 里：`PatternNo` 的左闭右开原本是
+        `uvsequence.py` 里一句光秃秃的 `hi - 1`，`PartsStartNo` 是同样的约定却还没有消费者
+        ——下一个实现它的人拿 `sr_min_max()` 得到的是裸 `(min, max)`，几乎必然当闭区间用，
+        静默偏一位。约定写在名单里、取样只此一条路，才不会再漂。
+        """
+        lo, hi = self.sr_min_max(key)
+        lo = int(lo)
+        hi = int(hi)
+        if key in HALF_OPEN_MAX_FIELDS:
+            hi -= 1          # `[lo, hi)` -> 闭区间取样器要的 `[lo, hi-1]`
+        if hi <= lo:
+            return lo        # 空区间 / 单值区间：退回下界，不抛
+        return _rng.roll_uniform_int(lo, hi, rng)
 
     def sr_min_max(self, key):
         """`PatternNo` / `PlaySpeed` 专用 → `(min, max)`。

@@ -20,8 +20,8 @@ from .i18n import T
 _CATEGORY = "MHWilds UVS"
 
 
-def _active_root_poll(self, col):
-    return col.get("~TYPE") == uvs_model.TYPE_UVS_ROOT
+def _active_root_poll(self, obj):
+    return obj.get("~TYPE") == uvs_model.TYPE_UVS_ROOT
 
 
 def _draw_uilist_row(layout, list_cls, obj, coll_name, index_name, add_op, remove_op, rows=3):
@@ -86,15 +86,15 @@ class EFX_UVS_PT_main(Panel):
 
         layout.prop(context.scene, "efx_uvs_active_root", text=T("uvs.active_uvs"))
 
-        root_col = uvs_io.resolve_uvs_root(context)
-        if root_col is not None:
+        root_obj = uvs_io.resolve_uvs_root(context)
+        if root_obj is not None:
             layout.operator(
                 "efx_uvs.advanced_edit", text=T("uvs.advanced_edit"), icon="IMAGE_DATA",
                 translate=False,
             )
             box = layout.box()
             box.label(text=f"File Version: {uvs_model.MHWILDS_UVS_FILE_VERSION} (MHWilds)", translate=False)
-            box.prop(root_col, "efx_uvs_cutout_related")
+            box.prop(root_obj, "efx_uvs_cutout_related")
             hint = box.row()
             hint.enabled = False
             hint.label(text=T("uvs.advanced_edit_hint"), translate=False)
@@ -113,16 +113,16 @@ class EFX_UVS_PT_textures(Panel):
         return uvs_io.resolve_uvs_root(context) is not None
 
     def draw(self, context):
-        root_col = uvs_io.resolve_uvs_root(context)
+        root_obj = uvs_io.resolve_uvs_root(context)
         layout = self.layout
         _draw_uilist_row(
-            layout, "EFX_UVS_UL_textures", root_col, "efx_uvs_textures",
+            layout, "EFX_UVS_UL_textures", root_obj, "efx_uvs_textures",
             "efx_uvs_textures_active_index", "efx_uvs.texture_add", "efx_uvs.texture_remove",
             rows=5,
         )
-        index = root_col.efx_uvs_textures_active_index
-        if 0 <= index < len(root_col.efx_uvs_textures):
-            item = root_col.efx_uvs_textures[index]
+        index = root_obj.efx_uvs_textures_active_index
+        if 0 <= index < len(root_obj.efx_uvs_textures):
+            item = root_obj.efx_uvs_textures[index]
             box = layout.box()
             box.prop(item, "path")
             row = box.row(align=True)
@@ -148,17 +148,17 @@ class EFX_UVS_PT_sequences(Panel):
         return uvs_io.resolve_uvs_root(context) is not None
 
     def draw(self, context):
-        root_col = uvs_io.resolve_uvs_root(context)
+        root_obj = uvs_io.resolve_uvs_root(context)
         layout = self.layout
         _draw_uilist_row(
-            layout, "EFX_UVS_UL_sequences", root_col, "efx_uvs_sequences",
+            layout, "EFX_UVS_UL_sequences", root_obj, "efx_uvs_sequences",
             "efx_uvs_sequences_active_index", "efx_uvs.sequence_add", "efx_uvs.sequence_remove",
         )
 
-        seq_index = root_col.efx_uvs_sequences_active_index
-        if not (0 <= seq_index < len(root_col.efx_uvs_sequences)):
+        seq_index = root_obj.efx_uvs_sequences_active_index
+        if not (0 <= seq_index < len(root_obj.efx_uvs_sequences)):
             return
-        seq = root_col.efx_uvs_sequences[seq_index]
+        seq = root_obj.efx_uvs_sequences[seq_index]
 
         layout.separator()
         layout.label(text=T("uvs.patterns"), translate=False)
@@ -199,9 +199,9 @@ def register():
         bpy.utils.register_class(cls)
 
     bpy.types.Scene.efx_uvs_active_root = PointerProperty(
-        type=bpy.types.Collection,
+        type=bpy.types.Object,
         name="Active UVS",
-        description="当前操作的目标 UVS 文件（活动集合不属于任何 EFX_UVS 树时的兜底选择器）",
+        description="当前操作的目标 UVS 文件（选不出唯一活动 UVS 时的兜底选择器）",
         poll=_active_root_poll,
     )
 

@@ -166,7 +166,20 @@ def build_behaviors(blocks, config):
     返回 `(bound_list, unsupported)`：
       bound_list  —— 已按 (stage, order, 属性在 entry 里的位置) 排序
       unsupported —— `[type_name, ...]`，未注册或被 disable 的
+
+    **`fields` 必须深拷贝一份，不能直接把调用方的 dict 塞进 `FieldView`**——真实故障：
+    `Simulator.reset()` 每次都重新调用这个函数，但 `blocks` 本身是 `Simulator.__init__`
+    时存的**同一份**引用，跨多次 `reset()` 复用；`Expression` 曲线的 `patch_field()`
+    会直接在 `FieldView.raw` 上原地写（`view.raw[key] = value`），如果这里不拷贝，第一次
+    播放留下的"上一帧改过的值"会污染进 `fields` 这个字典本身，第二次 `reset()` 时
+    `Transform3D.on_emitter_init()` 快照的"基准值"读到的就不是导入时的原始值，而是上一轮
+    播放跑到最后一帧时的残留值——**同一个预览重播两次会得到两个不同的结果，且从第二次起
+    永久卡在被污染的状态**（`tools/verify_blender_sim_preview.py` 加了"连续重播两次结果
+    一致"这条门禁钉住它）。`copy.deepcopy` 不是性能敏感路径——每个 entry 的字段树也就几十到
+    百来个标量，一次 `reset()` 里发生一次，不是每帧。
     """
+    import copy
+
     from .shapes import FieldView
 
     bound = []
@@ -182,7 +195,7 @@ def build_behaviors(blocks, config):
             continue
         stage, order = resolve_stage(cls, type_name, config)
         bound.append(BoundBehavior(cls(type_name), type_name, stage, order,
-                                   FieldView(fields, type_name), idx))
+                                   FieldView(copy.deepcopy(fields), type_name), idx))
     bound.sort(key=lambda b: b.sort_key)
     return bound, unsupported
 

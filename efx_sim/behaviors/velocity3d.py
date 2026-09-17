@@ -8,7 +8,7 @@ efx_sim/behaviors/velocity3d.py —— `Velocity3D`（初速度 + 逐帧积分�
     DirectionVectorX/Y/Z  Range   运动方向分量（无量纲）。**仅 VelocityType=Direction 生效**
     Speed                 Range   初速度（时间基见下）
     SpeedCoef             Range   每帧对速度乘一次的系数（无量纲）：1=匀速 >1 加速 <1 减速
-    GravityRate           Range   叠加到速度上的下坠量（时间基见下）
+    GravityRate           Range   下坠加速度：**正值向下**（时间基见下，符号见下方 note）
     SpeedDelayFrame       RangeI  开始运动前的延迟帧数
     GravityDelayFrame     RangeI  重力开始生效前的延迟帧数
     VelocityType          enum    0=Direction 1=Normal 2=Radial 3=Spread 4=ScreenSpace
@@ -33,6 +33,11 @@ efx_sim/behaviors/velocity3d.py —— `Velocity3D`（初速度 + 逐帧积分�
 ⚠ `GravityRate` 还有一层没定：名字是"Rate"，可能是**标准重力的倍率**（0.3 → 0.3×9.8 ≈
 2.9 m/s²）而不是绝对加速度（0.3 m/s²）。两者都在合理量级里，语料分不出来，实机对拍才能定。
 P0 按绝对加速度处理并 note。
+
+**符号是 `EfxBridge fieldstats` 定的：正值向下。** 全语料非零值里正数是负数的 3.6 倍
+（30078 vs 8341），中位数/p90/p99 全是正——"Gravity"这个名字加上"绝大多数样本是正数"，
+只可能是"正值 = 向下拉"，所以积分时是 `p.vel.y -= GravityRate * dt`（减，不是加）。少数
+负值样本（"漂浮"特效，如烟雾/羽毛上升）符号相反，符合直觉。
 
 **乘法递推那部分保留**：`SpeedCoef` 每帧乘一次，不是"每秒乘一次再开方"之类的东西——
 上游 `velocity3d.py` 明写"别改成 dt"，指的正是这个系数。
@@ -115,8 +120,10 @@ class Velocity3D(Behavior):
         if p.age >= p.rolled.get("v_grav_delay", 0):
             g = p.rolled.get("v_gravity", 0.0)
             if g:
-                # 游戏坐标系 +Y = 上。`GravityRate` 的标注是"叠加到运动速度上的**下坠量**"，
-                # 语料里它本身就常是负数（样本 -0.2）——所以是**加**不是减，别再取一次负号。
-                p.vel.y += g * dt
+                # 游戏坐标系 +Y = 上。全语料 `GravityRate` 非零值里正数是负数的 3.6 倍
+                # （30078 vs 8341，`fieldstats` 实测），中位数、p90、p99 全是正——一个叫
+                # "Gravity"的字段绝大多数样本是正的，只可能是"正值 = 向下拉"，所以要**减**：
+                # 正的 GravityRate 让 vel.y 变小（往下坠），不是变大（往上飘）。
+                p.vel.y -= g * dt
         if p.age >= p.rolled.get("v_move_delay", 0):
             p.pos += p.vel * dt
