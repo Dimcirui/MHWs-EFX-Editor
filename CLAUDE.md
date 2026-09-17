@@ -325,6 +325,22 @@ Python 胶水层（`blender_efx_re/`）↔ C# 桥接 CLI（`tools/EfxBridge`）�
     逐条判据和语料回读见
     [EXPRESSION_SEMANTICS.md 第 10、11 节](docs/EXPRESSION_SEMANTICS.md)。
 
+34. **界面上显示的函数名走 `efx_sim/expr.py::CALL_DISPLAY_NAMES`（规范名），公式文本里
+    必须保持 vendor 字面量。** 规范名按操作码是 `Sin`/`Cos`/`Asin`（弧度）、
+    `Floor`/`Ceil`/`Log`(ln)/`Log10`/`Exp`/`Abs`/`Saturate`、`SinDeg`/`CosDeg`（角度）、
+    `LerpTFirst`/`LerpTLast`/`Smoothstep`（15/16/17）、`Min`/`Max`/`Pow`/`LerpRange`
+    （18~21）。`node_summary()` 和 `expr_edit._call_label()` 显示它，行数据里存的、
+    `from_rows()` 写出去的永远是 `Unary0`/`Clamp` 这一侧——**那是
+    `EfxExpressionParser` 认的唯一写法，换了就往返不回来**（`ExpressionTree.cs` 那条
+    "改名字要把旧名字加进 `functionArgCount`" 的注释说的就是这件事）。
+    ⚠ **中缀符号 `+ - * /` 不改显示**：树里换成 `×` 会和上面那条原始公式文本对不上，
+    它们的真实语义只在 `CALL_SEMANTICS` 里说。
+    ⚠ **规范名和 vendor 字面量会撞名，别把字面量抢走**：`Func18` 的显示名是 `Min`，而
+    `Min` 同时是操作码 5 的字面量（语义 `b - a`）。`normalize_call_name()` 的别名表为此
+    排掉所有"本身就是字面量"的名字——漏掉这一步，语料里到处都有的 `Min(5, Length)`
+    会被静默读成 `min(5, Length)`，求值和往返一起错（已经真的踩过一次，回归在
+    `tests/test_sim_expr_edit.py::TestArgRoles::test_display_names_never_shadow_a_vendor_literal`）。
+
 ## 遇到怪现象先查这里，别从头排查
 
 - **公式面板卡顿：别逐行"重建子树文本 -> 重新解析 -> 求值"，那是 O(N²)。**

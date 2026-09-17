@@ -248,14 +248,23 @@ def _grouped_call_names():
 
 
 def _call_label(name) -> str:
-    """菜单里一项的显示文字。函数带上参数个数——换成参数个数不同的函数会补/丢参数，
-    点之前就该看得见——再带上**真实语义**。
+    """菜单里一项的显示文字：**规范名** + 参数个数 + vendor 字面量 + 真实语义。
 
-    语义必须显示：`Unary*`/`Func*` 是纯编号，而 `+ - * /` 和 `Min`/`Max` 这几个**名字
-    是错的**（`+` 是乘、`Min(a,b)` 是 `b-a`……见 `efx_sim/expr.py::CALL_SEMANTICS`）。
-    只显示名字等于让用户照字面意思写错公式。"""
-    arity = _expr.call_arity(name)
-    head = name if name in _expr.BINARY_OPERATORS else "%s (%d)" % (name, arity)
+    参数个数要显示：换成参数个数不同的函数会补/丢参数，点之前就该看得见。
+
+    vendor 字面量（`Unary0`/`Clamp`/…）在规范名之外**还要再显示一次**：公式文本里写的
+    是它，不摆出来的话用户对不上"我在菜单里选的 `Sin` 就是文本里那个 `Unary0`"。
+
+    语义在规范名说不完的时候显示（弧度还是角度、`Pow` 的指数在第几个参数……）；
+    `+ - * /` 这四个符号则**只能**靠语义说话——它们的名字本身就是错的（`+` 是乘、
+    `-` 是除），见 `efx_sim/expr.py::CALL_SEMANTICS`。"""
+    display = _expr.call_display_name(name)
+    if name in _expr.BINARY_OPERATORS:
+        head = name
+    else:
+        head = "%s (%d)" % (display, _expr.call_arity(name))
+        if display != name:
+            head = "%s  [%s]" % (head, name)
     semantics = _expr.call_semantics(name)
     return "%s  =  %s" % (head, semantics) if semantics else head
 

@@ -321,15 +321,44 @@ class TestArgRoles(unittest.TestCase):
         for name in ("Unary10", "Func18", "Func19"):
             self.assertNotIn(name, expr.CALL_ARG_ROLES)
 
-    def test_every_settled_call_has_a_semantics_string(self):
-        """**名字全是错的，所以界面必须显示真实语义**（`CALL_SEMANTICS`）。
-        每个语义已定的调用都要有一条，否则菜单里只剩一个纯编号。"""
+    def test_every_settled_call_is_readable_in_the_ui(self):
+        """vendor 字面量要么是纯编号（`Unary0`/`Func18`）、要么名字就是错的
+        （`Clamp` 其实是 smoothstep 重映射），所以每个语义已定的调用在界面上**至少**
+        得有一样说得清它是什么：规范显示名，或者一条真实语义公式。两样都没有的话
+        菜单里就只剩一个编号。"""
         for name in expr.CALL_SIGNATURES:
             if expr.call_confidence(name) == expr.CONFIDENCE_UNKNOWN:
                 continue
-            self.assertTrue(expr.call_semantics(name), name)
+            renamed = expr.call_display_name(name) != name
+            self.assertTrue(renamed or expr.call_semantics(name), name)
+        # 四个中缀符号显示时原样保留（换掉就和公式文本对不上），所以它们**只能**靠语义
+        # 说话——`+` 是乘、`-` 是除，不写出来用户一定照字面写错。
         for symbol in expr.BINARY_OPERATORS:
+            self.assertEqual(expr.call_display_name(symbol), symbol)
             self.assertTrue(expr.call_semantics(symbol), symbol)
+
+    def test_display_names_never_shadow_a_vendor_literal(self):
+        """规范显示名和 vendor 字面量**撞名**时，归一化绝不能把字面量抢走。
+
+        真实故障：`Func18`（真 min）的显示名是 `Min`，而 `Min` 同时是操作码 5 的字面量
+        （语义 `b - a`）。把 `Min -> Func18` 收进别名表，语料里到处都有的
+        `Min(5, Length)` 就被静默读成 `min(5, Length)` —— 求值和往返一起错。
+        """
+        for name in expr.CALL_SIGNATURES:
+            self.assertEqual(expr.normalize_call_name(name), name, name)
+        for symbol in expr.BINARY_OPERATORS:
+            self.assertEqual(expr.normalize_call_name(symbol), symbol, symbol)
+        # 语料里的真实写法必须还是操作码 5（减法），不是 min
+        value = expr.evaluate(expr.parse("Min(5, Length)"),
+                              expr.EvalContext({"Length": 12.0}, "identity", []))
+        self.assertEqual(value, 7.0)
+
+    def test_display_names_normalize_back_to_the_vendor_literal(self):
+        """照界面上的规范名打公式要能解析，但存下来/写出去的还是 vendor 字面量
+        ——文本里的函数名是 `EfxExpressionParser` 认的唯一写法。"""
+        rows = expr.to_rows(expr.parse("Smoothstep(Sin(TIMER), 12, 0)"))
+        self.assertEqual([r.get("name") for r in rows[:2]], ["Clamp", "Unary0"])
+        self.assertEqual(expr.from_rows(rows), "Clamp(Unary0(TIMER), 12, 0)")
 
 
 class TestPropagateSameUnitAsRoot(unittest.TestCase):
@@ -465,8 +494,11 @@ class TestSlots(unittest.TestCase):
 
     def test_node_summary(self):
         rows = self._rows()
+        # 函数显示规范名（`Lerp` -> `LerpTFirst`、`Clamp` -> `Smoothstep`），
+        # 行数据里存的还是 vendor 字面量。
         self.assertEqual([expr.node_summary(rows, i) for i in (0, 1, 2, 3, 5, 6)],
-                         ["Lerp", "Clamp", "TIMER", "12", "190", "-30"])
+                         ["LerpTFirst", "Smoothstep", "TIMER", "12", "190", "-30"])
+        self.assertEqual([rows[i].get("name") for i in (0, 1)], ["Lerp", "Clamp"])
 
     def test_negation_summary(self):
         rows = expr.to_rows(expr.parse("Min(-TIMER, 1)"))

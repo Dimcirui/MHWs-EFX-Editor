@@ -329,12 +329,17 @@ def verify_editing_operations(report: Report) -> None:
     curve.formula = "Lerp(Clamp(TIMER, 12, 0), 190, -30)"
     expr_edit.rebuild_rows(curve)
     srows = expr_edit.read_rows(curve)
-    report.check("根节点的槽位是 [Clamp, 190, -30]",
+    # 函数槽位显示的是**规范名**（`Clamp` 其实是 smoothstep 重映射），行数据里存的还是
+    # vendor 字面量 —— 下面紧跟着一条就是查这个，两者混起来会把"显示层改名"
+    # 和"文本被改坏"看成同一件事。
+    report.check("根节点的槽位是 [Smoothstep, 190, -30]",
                  [_expr.node_summary(srows, i)
-                  for i in _expr.child_indices(srows, 0)] == ["Clamp", "190", "-30"],
+                  for i in _expr.child_indices(srows, 0)] == ["Smoothstep", "190", "-30"],
                  str([_expr.node_summary(srows, i)
                       for i in _expr.child_indices(srows, 0)]))
-    report.check("Clamp 的槽位是 [TIMER, 12, 0]",
+    report.check("显示改名不碰公式文本",
+                 curve.formula == "Lerp(Clamp(TIMER, 12, 0), 190, -30)", curve.formula)
+    report.check("Smoothstep 的槽位是 [TIMER, 12, 0]",
                  [_expr.node_summary(srows, i)
                   for i in _expr.child_indices(srows, 1)] == ["TIMER", "12", "0"],
                  str([_expr.node_summary(srows, i)
