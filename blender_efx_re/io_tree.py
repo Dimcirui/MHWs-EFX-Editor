@@ -76,17 +76,23 @@ short_attr_name = model.short_attr_name
 _CLIP_HEADER_SIZE = 8  # EfxClipHeader: int frameCount + int(enum) valueType
 _CLIP_FRAME_SIZE = 12  # EfxClipFrame: float frameTime + int(enum) type + float value
 _CLIP_TANGENT_SIZE = 16  # EfxClipInterpolationTangents: 4 个 float
-_CLIP_BEZIER_TYPE = 5  # FrameInterpolationType.Bezier
+_CLIP_HERMITE_TYPE = 5  # FrameInterpolationType.Hermite——不是字面 Bezier，见 clip_fcurve.py 模块文档
 
 
 def _populate_clip_attribute(obj: Object, attr_dict: dict) -> None:
     """把一个 IClipAttribute 的 clipData/clipBits 展开成 obj.efx_clip_* 系列属性——不依赖
     vendor 算好的 ParsedClip 只读便利视图，直接照抄 EfxClipData.ParseClip() 的分组逻辑：
-    按 clips[] 每一项的 frameCount 依次切 frames[]，type==Bezier 的帧再顺带从
+    按 clips[] 每一项的 frameCount 依次切 frames[]，type==Hermite(5) 的帧再顺带从
     interpolationData[] 里取一个——两个并行数组都是"遇到顺序"消费，不按下标对齐，见
     docs/TOPLEVEL_STRUCTURE.md "Clip 结构调研"。子曲线数组下标和排序后的置位 bit 下标一一
     对应（vendor BitSet.GetBitInsertIndex() 就是算这个映射用的），所以按 sorted(bits) 和
-    clips[] 一起 zip 消费。"""
+    clips[] 一起 zip 消费。
+
+    每条曲线切出来的关键帧数据直接交给 `clip_fcurve.import_curve()` 建成原生 fcurve——不再
+    经过任何 `EFXClipKeyframeItem` 中转，fcurve 是关键帧的唯一权威，见 clip_fcurve.py 模块
+    文档。"""
+    from . import clip_fcurve
+
     clip_data = attr_dict.get("clipData") or {}
     clip_bits = attr_dict.get("clipBits") or {}
 
@@ -112,24 +118,30 @@ def _populate_clip_attribute(obj: Object, attr_dict: dict) -> None:
         value_type = int(header.get("valueType", 5) or 5)
         curve.value_type = str(value_type)
 
+        entries = []
         for _ in range(int(header.get("frameCount", 0) or 0)):
             frame = frames[frame_i]
             frame_i += 1
-            kf = curve.keyframes.add()
-            kf.frame_time = model.json_float_in(frame.get("frameTime", 0.0))
+            frame_time = model.json_float_in(frame.get("frameTime", 0.0))
             interp_type = int(frame.get("type", 2) or 2)
-            kf.interp_type = str(interp_type)
             if value_type == 3:  # Int：IntValue 的 getter 没问题，直接读
-                kf.value = float(int(frame.get("IntValue", 0) or 0))
+                value = float(int(frame.get("IntValue", 0) or 0))
             else:
-                kf.value = model.json_float_in(frame.get("FloatValue", 0.0))
-            if interp_type == _CLIP_BEZIER_TYPE:
+                value = model.json_float_in(frame.get("FloatValue", 0.0))
+            entry = {"frame_time": frame_time, "interp_type": interp_type, "value": value}
+            if interp_type == _CLIP_HERMITE_TYPE:
                 tangent = tangents[tangent_i]
                 tangent_i += 1
-                kf.tangent_out_x = model.json_float_in(tangent.get("out_x", 0.0))
-                kf.tangent_out_y = model.json_float_in(tangent.get("out_y", 0.0))
-                kf.tangent_in_x = model.json_float_in(tangent.get("in_x", 0.0))
-                kf.tangent_in_y = model.json_float_in(tangent.get("in_y", 0.0))
+                entry["tangent"] = {
+                    "out_x": model.json_float_in(tangent.get("out_x", 0.0)),
+                    "out_y": model.json_float_in(tangent.get("out_y", 0.0)),
+                    "in_x": model.json_float_in(tangent.get("in_x", 0.0)),
+                    "in_y": model.json_float_in(tangent.get("in_y", 0.0)),
+                }
+            entries.append(entry)
+
+        clip_fcurve.add_channel(obj, curve)
+        clip_fcurve.import_curve(obj, curve, entries)
 
 
 def _populate_expression_attribute(obj: Object, attr_dict: dict) -> None:
@@ -168,6 +180,44 @@ def _populate_expression_attribute(obj: Object, attr_dict: dict) -> None:
         expr_edit.rebuild_rows(curve)
 
 
+def _populate_material_expression_attribute(obj: Object, attr_dict: dict) -> None:
+    """把一个 IMaterialExpressionAttribute 的 MaterialExpressions 展开成
+    obj.efx_material_expression_* 系列属性——同 `_populate_expression_attribute()`，公式
+    内容直接读 `parsedExpressions[].expression` 文本；没有 bits，条目按数组原始顺序
+    (`expressions[]`/`parsedExpressions[]` 同一个下标)一一对应，不重排。
+
+    只处理 `model.MATERIAL_EXPRESSION_VERIFIED_TYPES` 里的两个类型（调用方已经用
+    `model.is_material_expression_attribute_dict()` 判过），字段固定齐全，不用像 Clip/
+    Expression 那样防"这个类型缺某个键"。
+    """
+    container = attr_dict.get("MaterialExpressions") or {}
+    entries = container.get("expressions") or []
+    parsed = container.get("parsedExpressions") or []
+
+    obj.efx_is_material_expression_attribute = True
+    obj.efx_material_expression_indices = json.dumps(container.get("indices") or [])
+
+    for i, entry_dict in enumerate(entries):
+        item = obj.efx_material_expression_entries.add()
+        item.mdf_property_hash = str(int(entry_dict.get("mdfPropertyHash", 0) or 0))
+        item.component_index = int(entry_dict.get("propertyComponentIndex", 0) or 0)
+        # assign_type/is_color 原名 unkn1/unkn2——2026-09-18 全语料排查拟的名字，
+        # 见 model.EFXMaterialExpressionItem 里两者的说明（不把猜测当事实：拟名不等于坐实语义）。
+        item.assign_type_raw = int(entry_dict.get("unkn1", 0) or 0)
+        item.is_color = bool(int(entry_dict.get("unkn2", 0) or 0))
+        item.struct3_count = int(entry_dict.get("struct3Count", 0) or 0)
+        # is_single_param 原名 unkn5：`[RszVersion(EfxVersion.RE4)]`，翻译成
+        # `Version >= RE4`——MHWs 落在这个范围内，是真实字段，不是"RE4 专属用不到"，见
+        # model.EFXMaterialExpressionItem.is_single_param 的说明。字段本身是
+        # `{"value": <int>}`，不存在时（理论上不会，MHWs 版本号必然满足条件）退到 0。
+        item.is_single_param = bool(int((entry_dict.get("unkn5") or {}).get("value", 0) or 0))
+        parsed_entry = parsed[i] if i < len(parsed) else {}
+        item.formula = parsed_entry.get("expression", "0") or "0"
+        item.tree_parameters = json.dumps(parsed_entry.get("parameters") or [])
+        from . import expr_edit
+        expr_edit.rebuild_rows(item)
+
+
 def apply_attribute_content(obj: Object, attr_dict: dict) -> None:
     """把 attr_dict 的"内容"字段（Fields 通用树 + Clip/Expression 曲线）套到 obj 上。
 
@@ -202,8 +252,10 @@ def apply_attribute_content(obj: Object, attr_dict: dict) -> None:
         _populate_clip_attribute(obj, attr_dict)
     if model.is_expression_attribute_dict(attr_dict):
         # Expression/ExpressionBits 走专属的 efx_expression_* 结构（见
-        # _populate_expression_attribute()），不进通用树——IMaterialExpressionAttribute
-        # 暴露的是不同的键名 MaterialExpressions，不受影响，仍然原样进通用树。
+        # _populate_expression_attribute()）,不进通用树——IMaterialExpressionAttribute
+        # 暴露的是不同的键名 MaterialExpressions，独立判断（见下面这个 if 块），两者可以在
+        # 同一个 attribute 上同时命中（TypeBillboard3DMaterialExpression/
+        # TypeRibbonLengthMaterialExpression 两者都实现）。
         #
         # 和 Clip 同一个模式：小写的 expressions/expressionBits 才是真字段，大写的
         # Expression/ExpressionBits 是类上的属性别名（`Expression` 带 setter，
@@ -218,6 +270,18 @@ def apply_attribute_content(obj: Object, attr_dict: dict) -> None:
         content.pop("expressions", None)
         content.pop("expressionBits", None)
         _populate_expression_attribute(obj, attr_dict)
+    if model.is_material_expression_attribute_dict(attr_dict):
+        # MaterialExpressions 走专属的 efx_material_expression_* 结构（见
+        # _populate_material_expression_attribute()），只覆盖
+        # model.MATERIAL_EXPRESSION_VERIFIED_TYPES 里语料验证过的几个类型——其余
+        # IMaterialExpressionAttribute 实现类继续原样进通用树，不受影响。同 Expression：
+        # 大写 `MaterialExpressions`（属性别名，带 setter）和小写 `materialExpressions`
+        # （真字段）内容相同，两个键都要从通用树里剔除，避免重复显示；导出时只写小写那个，
+        # 见 export_attribute_object()。`materialExpressionCount` 不在这个剔除列表里——它
+        # 留在通用树里原样透传，v1 不支持增删条目，这个数永远等于导入时的条目数，不需要重算。
+        content.pop("MaterialExpressions", None)
+        content.pop("materialExpressions", None)
+        _populate_material_expression_attribute(obj, attr_dict)
     model.populate_dict_as_children(obj.efx_fields, content)
     collapse_mdf_properties(obj)
     # 批量填充期间 update 回调是关掉的（见 model.suppress_field_updates()），所以在这里补一次：
@@ -550,7 +614,12 @@ def _export_clip_attribute(obj: Object) -> tuple[dict, dict]:
     """_populate_clip_attribute() 的反函数——按 bit_index 升序重建扁平并行数组，复刻
     EfxClipData.SetFromClipList()/AssignFromList() 的重算逻辑。三个 *Size 字节长度字段
     vendor 写出时不会重算（不像 clipCount/frameCount/interpolationDataCount 那样能从数组
-    长度自愈），必须自己算对，见 docs/TOPLEVEL_STRUCTURE.md "Clip 结构调研"。"""
+    长度自愈），必须自己算对，见 docs/TOPLEVEL_STRUCTURE.md "Clip 结构调研"。
+
+    每条曲线的关键帧数据从它的原生 fcurve 读回（`clip_fcurve.export_curve()`），不是从
+    `EFXClipCurveItem` 自己的字段——fcurve 才是关键帧的权威，见 clip_fcurve.py 模块文档。"""
+    from . import clip_fcurve
+
     curves = sorted(obj.efx_clip_curves, key=lambda c: c.bit_index)
 
     clip_headers = []
@@ -558,27 +627,13 @@ def _export_clip_attribute(obj: Object) -> tuple[dict, dict]:
     tangents = []
     max_frame_time = 0.0
     for curve in curves:
-        value_type = int(curve.value_type)
-        clip_headers.append({"frameCount": len(curve.keyframes), "valueType": value_type})
-        for kf in curve.keyframes:
-            interp_type = int(kf.interp_type)
-            if value_type == 3:  # Int：IntValue 的 setter 是死代码，只能靠 FloatValue 位转换
-                float_value = model.int_bits_to_float(int(round(kf.value)))
-            else:
-                float_value = model.json_float_out(kf.value)
-            frames.append({
-                "IntValue": 0,
-                "FloatValue": float_value,
-                "frameTime": model.json_float_out(kf.frame_time),
-                "type": interp_type,
-            })
-            if interp_type == _CLIP_BEZIER_TYPE:
-                tangents.append({
-                    "out_x": kf.tangent_out_x, "out_y": kf.tangent_out_y,
-                    "in_x": kf.tangent_in_x, "in_y": kf.tangent_in_y,
-                })
-            if kf.frame_time > max_frame_time:
-                max_frame_time = kf.frame_time
+        header, frame_part, tangent_part = clip_fcurve.export_curve(obj, curve)
+        clip_headers.append(header)
+        frames.extend(frame_part)
+        tangents.extend(tangent_part)
+        for f in frame_part:
+            if f["frameTime"] > max_frame_time:
+                max_frame_time = f["frameTime"]
 
     clip_data = {
         "loopType": int(obj.efx_clip_loop_type),
@@ -635,7 +690,7 @@ def _export_expression_attribute(obj: Object) -> tuple[dict, dict]:
     提供，v1 不处理"——那个判断是错的：公式文本区分不了"引擎喂的外部变量"和"值存在文件里
     的具名常量"（两者都只是一个名字），只有这张表的 `source`/`constantValue` 知道。留空的
     后果实测过：导入用了 `PI` 的官方特效再导出，`source` 从 1(Constant) 退成 2(External)、
-    值从 3.1415927 变成 0，效果静默改掉（铁律 #2）。"""
+    值从 3.1415927 变成 0，效果静默改掉（铁律 #1）。"""
     curves = sorted(obj.efx_expression_curves, key=lambda c: c.bit_index)
     expression_dict = {
         "version": obj.efx_version,
@@ -647,6 +702,48 @@ def _export_expression_attribute(obj: Object) -> tuple[dict, dict]:
     }
     expression_bits = {"bitCount": obj.efx_expression_bit_count, "bits": [c.bit_index for c in curves]}
     return expression_dict, expression_bits
+
+
+def _export_material_expression_attribute(obj: Object) -> dict:
+    """_populate_material_expression_attribute() 的反函数。同 `_export_expression_attribute()`：
+    只写 `parsedExpressions`（文本公式），`expressions` 里每条带 v1 真正可编辑的结构字段
+    （`mdfPropertyHash`/`propertyComponentIndex`/`unkn1`(`assign_type_raw`)/
+    `unkn2`(`is_color`)/`struct3Count`/`unkn5`(`is_single_param`)），不带
+    `components`/`parameters`（留给 C# 默认值——`EfxBridge` 的 `load` 会在反序列化后把
+    每条 `parsedExpressions[i]` 摊平回同一条 `expressions[i]` 的 `components`/`parameters`，
+    就地覆盖，见 `tools/EfxBridge/Program.cs` 的 `CompileExpressions()` 里
+    `IMaterialExpressionAttribute` 分支；结构字段不会被摊平覆盖）。
+
+    `struct3Count`/`unkn5` **必须写**，不能省：两者都是 `FlattenExpressionTree()` 造新对象时
+    会被默认值 0 覆盖的字段（见 `model.EFXMaterialExpressionItem` 里两者各自的说明）——
+    `unkn5`(`is_single_param`) 尤其容易漏，第一版实现按 `[RszVersion(EfxVersion.RE4)]` 的
+    字面意思误判成"MHWs 用不到"，实测样本（`11_sfc_052.efx.5571972`）原始值是 1，漏写会
+    导致编辑任意一条公式就把同一个 attribute 上其它条目的这个字段静默清零。
+
+    条目顺序固定：`efx_material_expression_entries` 的下标就是导出后 `expressions[i]`/
+    `parsedExpressions[i]` 的下标，两边一一对应，不重排、不增删——见
+    `model.EFXMaterialExpressionItem` 的说明。`indices` 原样带回去（语义未证实，不把猜测当事实）。
+    """
+    entries = list(obj.efx_material_expression_entries)
+    return {
+        "version": obj.efx_version,
+        "parsedExpressions": [
+            {"expression": e.formula, "parameters": _expression_tree_parameters(e)}
+            for e in entries
+        ],
+        "expressions": [
+            {
+                "unkn1": e.assign_type_raw,
+                "unkn2": int(e.is_color),
+                "mdfPropertyHash": int(e.mdf_property_hash or 0),
+                "propertyComponentIndex": e.component_index,
+                "struct3Count": e.struct3_count,
+                "unkn5": {"value": int(e.is_single_param)},
+            }
+            for e in entries
+        ],
+        "indices": json.loads(obj.efx_material_expression_indices or "[]"),
+    }
 
 
 # `MdfProperty.GetSize()`（vendor EfxCommon.cs:81）：RE3 起每条 32 字节，更早的 28。
@@ -720,6 +817,12 @@ def export_attribute_object(obj: Object) -> dict:
         # 命名只会让下一个人再踩一次——两个都统一写小写，和 clipData/clipBits 那条路对齐。
         attr_dict["expressions"] = expression_dict
         attr_dict["expressionBits"] = expression_bits
+
+    if obj.efx_is_material_expression_attribute:
+        # 同上：写小写的真字段名 `materialExpressions`，不写 `MaterialExpressions`——这个
+        # 属性虽然带 setter（不像 `ExpressionBits` 那样只读），但和 `expressions`/`expressionBits`
+        # 统一走同一条约定，不给这一个字段开特例。
+        attr_dict["materialExpressions"] = _export_material_expression_attribute(obj)
 
     # 嵌套的 efxrData：Collection 挂不到 Object 下面，所以由 attribute 拿指针指向它，
     # 见 model.py `Object.efx_nested_root` 的说明。
@@ -938,7 +1041,7 @@ def check_bone_relation_alignment(efxfile_dict: dict) -> None:
     KNOWN_UPSTREAM_ISSUES.md #9，已由 vendor-patches/0004-* 修复）——这道校验就是为了下次
     再冒出第三个时当场拒绝导入，而不是让用户拿着错位的绑定改完再导出。
 
-    按铁律 #1 整文件拒绝：错位是全局性的，没有"只坏了这一个 attribute"这种局部降级可言。
+    按"解析失败整文件拒绝"：错位是全局性的，没有"只坏了这一个 attribute"这种局部降级可言。
     唯一的放行路径是插件首选项里的「绕过骨骼绑定索引对齐校验」，那一步在导入算子里做，不在这里。
     """
     problems = bone_relation_alignment_problems(efxfile_dict)
@@ -974,38 +1077,75 @@ def _clip_bit_issues(attr_obj: Object) -> list:
     return issues
 
 
-def _walk_clip_issues(obj: Object) -> list:
+def _walk_clip_issues(obj: Object, leaf_check) -> list:
     """递归遍历一个 ~TYPE 对象树下所有 EFX_ATTRIBUTE（含嵌套 PlayEmitter.efxrData 子树里的），
-    收集 Clip bit 校验问题。和 check_bone_references() 不同，这里不需要排除嵌套子树——Clip
-    的 bit_count/bits 校验是纯粹局部的（不依赖任何文件级共享表，不像 Bones 那样有已知的嵌套
-    读写不对称问题），直接沿 Blender parent-child 关系整棵树走一遍即可。"""
+    对每个 Clip attribute 跑 `leaf_check(attr_obj) -> list[str]` 收集问题。和
+    check_bone_references() 不同，这里不需要排除嵌套子树——Clip 的校验都是纯粹局部的（不依赖
+    任何文件级共享表，不像 Bones 那样有已知的嵌套读写不对称问题），直接沿 Blender
+    parent-child 关系整棵树走一遍即可。`leaf_check` 参数化是因为 bit_index 校验
+    （`_clip_bit_issues`）和插值类型校验（`_clip_interpolation_issues`）除了叶子检查逻辑外
+    树遍历部分完全一样。"""
     issues = []
     if obj.get("~TYPE") == model.TYPE_ATTRIBUTE:
-        issues.extend(_clip_bit_issues(obj))
+        issues.extend(leaf_check(obj))
         # 嵌套的 efxrData 是一个集合，不在 children 里，走指针下去
         nested = obj.efx_nested_root
         if nested is not None and nested.get("~TYPE") == model.TYPE_ROOT:
-            issues.extend(_walk_clip_issues_root(nested))
+            issues.extend(_walk_clip_issues_root(nested, leaf_check))
     for child in obj.children:
         if child.get("~TYPE") in (model.TYPE_ENTRY, model.TYPE_ACTION, model.TYPE_ATTRIBUTE):
-            issues.extend(_walk_clip_issues(child))
+            issues.extend(_walk_clip_issues(child, leaf_check))
     return issues
 
 
-def _walk_clip_issues_root(root_col: Collection) -> list:
+def _walk_clip_issues_root(root_col: Collection, leaf_check) -> list:
     issues = []
     for obj in root_entries(root_col) + root_actions(root_col):
-        issues.extend(_walk_clip_issues(obj))
+        issues.extend(_walk_clip_issues(obj, leaf_check))
     return issues
 
 
 def check_clip_bits(root_col: Collection) -> None:
     """导出前校验：见 ClipBitError 的说明。"""
-    issues = _walk_clip_issues_root(root_col)
+    issues = _walk_clip_issues_root(root_col, _clip_bit_issues)
     if issues:
         raise ClipBitError(
             "以下 Clip attribute 的曲线 bit_index 有问题（越界或重复），会导致导出出错或"
             "静默丢数据，请先修正：\n" + "\n".join(f"  {m}" for m in issues)
+        )
+
+
+class ClipInterpolationError(Exception):
+    """check_clip_interpolations() 校验失败时抛出：某条 Clip 曲线的 fcurve 关键帧用了
+    `clip_fcurve._STANDARD_EXPORT_INTERP`（Constant/Linear/Bezier）以外的插值类型——
+    2026-09-19 用户拍板收紧到只有这三个 Blender 原生真实类型才能导出，Event 借用的 SINE
+    占位名字也在拦截范围内（它不是真的正弦缓动）。按铁律 #1 直接拦截，不悄悄降级成某个
+    凑合的邻近值。message 就是给用户看的原文，不额外拼位置信息——见下面的说明。"""
+
+
+def _clip_interpolation_issues(attr_obj: Object) -> list:
+    if not attr_obj.efx_is_clip_attribute:
+        return []
+    from . import clip_fcurve
+
+    issues = []
+    for curve in attr_obj.efx_clip_curves:
+        issues.extend(clip_fcurve.curve_interpolation_issues(attr_obj, curve))
+    return issues
+
+
+def check_clip_interpolations(root_col: Collection) -> None:
+    """导出前校验：见 ClipInterpolationError 的说明。
+
+    ⚠ 2026-09-19 用户拍板：弹窗文案只保留这一句话本身，不额外拼"是哪个 attribute/哪个
+    bit"这类位置信息，也不解释"为什么只认这三种"——按用户原话"就这么写，不要加多余的
+    描述"。这跟仓库其它校验（`ClipBitError`/`BoneRelationAlignmentError` 等，都会拼具体
+    出错位置）风格不一致，是这条校验专门要的效果，不是疏漏。"""
+    bad_names = sorted(set(_walk_clip_issues_root(root_col, _clip_interpolation_issues)))
+    if bad_names:
+        raise ClipInterpolationError(
+            "\n".join(f'不支持的插值类型{name}，请使用"常量"、"线性"或者"贝塞尔"其中一种'
+                      for name in bad_names)
         )
 
 
@@ -1068,7 +1208,7 @@ def check_expression_bits(root_col: Collection) -> None:
 # 目前 #6（Func18/19/20 两参函数）、#7（material 字段反序列化）都已经修掉了——#7 在
 # EfxBridge 自己的 JSON 多态配置里修（`MaterialPolymorphismResolver`，
 # tools/EfxBridge/Program.cs），#6 是少见的、正式打了本地补丁的 vendor 例外
-# （tools/vendor-patches/，CLAUDE.md 铁律 #4 的唯一例外）。两条都没剩下要在这里拦的构造，
+# （tools/vendor-patches/，CLAUDE.md 铁律 #2 的唯一例外）。两条都没剩下要在这里拦的构造，
 # 下面这个函数暂时是空的——**空是因为已知问题都解决了，不是没做**，下次撞上新的"能导入、
 # 改得动、但确定写不回去"的构造，就往 `_unwritable_in_attribute()` 里加一条分支。
 #

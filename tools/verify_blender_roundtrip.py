@@ -25,12 +25,24 @@ Blender 这条用户真正会走的路径上——这个脚本就是补那一刀
 
 每个样本的检查项：
 
-1. **Blender 对象树往返的产物 == 纯 CLI 往返的产物（逐字节）**。判据不是"和原文件逐字节
-   相同"——vendor 是"解码成对象模型后总是重新生成字节"的哲学，对原文件本来就有既有差异
-   （见 tools/EfxBridge/Program.cs 头部）。这里要求的是更强也更贴题的东西：**过一遍 Blender
-   对象树，不引入任何额外差异**。
+1. **Blender 对象树往返的产物 == 纯 CLI 往返的产物（逐字节，或数值容差内）**。判据不是
+   "和原文件逐字节相同"——vendor 是"解码成对象模型后总是重新生成字节"的哲学，对原文件本来
+   就有既有差异（见 tools/EfxBridge/Program.cs 头部）。这里要求的是更强也更贴题的东西：**过
+   一遍 Blender 对象树，不引入任何额外差异**。
+   ⚠ 唯一已知、已接受的例外：`clip_fcurve.py` 把 Bezier 切线句柄接进 Blender 原生 fcurve 后
+   有不可修复的 float32 ULP 级精度损失（`BezTriple` 本身的存储精度，2026-09-19 实测确认，
+   见 `clip_fcurve.py` 模块文档）。字节不同时退化成 `semantic_diff()` 的数值容差比对
+   （`math.isclose`，`rel_tol=1e-4`），容差外才算失败——这不是放宽了整体判据，容差小到
+   不会把真正的逻辑 bug 也放过去（`tools/verify_blender_clip_fcurve.py` 已经用一次真实的
+   切线符号错误验证过这一点）。
 2. 产物能被 RE-Engine-Lib 读回来（E1 根因 1 的回归点：版本号后缀）。
-3. 二次往返稳定 `bytes1 == bytes2`（PLAN.md 第 0 阶段定的 PASS 判据）。
+3. 二次往返稳定 `bytes1 == bytes2`（PLAN.md 第 0 阶段定的 PASS 判据，或数值容差内）。
+   ⚠ 2026-09-19 `clip_fcurve.py` 加上 Hermite→Bezier 的 ÷3（导入）/×3（导出）换算之后，
+   多引入了一次浮点运算，会把检查项 1 里那种 float32 ULP 级精度损失也带进这条"重复保存
+   不漂移"的检查——实测 `11_guide_110` 样本上 `in_x: -98.15201` 变成 `-98.152016`，跟检查项
+   1 里"98.152 存一圈变成 98.15199..."是同一量级（~1e-6 绝对误差），不是无限累积漂移
+   （第二次和第三次往返之间的差异不会继续变大）。跟用户确认过，比照检查项 1 的先例，同样
+   退化成 `semantic_diff()` 数值容差比对，不是新开一个判据。
 4. `expressionBits` 置位全部保住（E1 根因 2 的回归点）。
 5. 读回来的 JSON 与 CLI 产物语义 diff 为 0（E1 根因 3 的回归点：内嵌 `efxrData` 里的具名
    Expression 参数会不会退化成 `ext:<hash>`）。
@@ -43,6 +55,7 @@ Blender 这条用户真正会走的路径上——这个脚本就是补那一刀
 from __future__ import annotations
 
 import json
+import math
 import pathlib
 import shutil
 import sys
@@ -85,7 +98,11 @@ class Report:
 
 def semantic_diff(a, b, path: str = "", out: list[str] | None = None) -> list[str]:
     """递归比对两份 dump 出来的 JSON。两边都是同一个 vendor 读出来的，所以浮点表示、键序
-    这些噪声不会出现——任何差异都是真实的语义差异。"""
+    这些噪声一般不会出现——任何差异都是真实的语义差异。
+
+    唯一的例外是 Bezier 切线句柄的 float32 ULP 级精度损失（见本文件模块文档"检查项 1"的
+    说明）：float 叶子按 `math.isclose()` 容差判等，其余类型仍然要求完全相等，容差本身很小
+    （`rel_tol=1e-4`），不会把真正的逻辑差异也吸收掉。"""
     out = [] if out is None else out
     if isinstance(a, dict) and isinstance(b, dict):
         for key in a:
@@ -101,6 +118,10 @@ def semantic_diff(a, b, path: str = "", out: list[str] | None = None) -> list[st
             out.append(f"LEN {path}: {len(a)} -> {len(b)}")
         for i, (x, y) in enumerate(zip(a, b)):
             semantic_diff(x, y, f"{path}[{i}]", out)
+    elif isinstance(a, float) or isinstance(b, float):
+        if not (isinstance(a, float) and isinstance(b, float)
+                and math.isclose(a, b, rel_tol=1e-4, abs_tol=1e-6)):
+            out.append(f"VALUE {path}: {json.dumps(a)[:60]} -> {json.dumps(b)[:60]}")
     elif a != b:
         out.append(f"VALUE {path}: {json.dumps(a)[:60]} -> {json.dumps(b)[:60]}")
     return out
@@ -146,13 +167,21 @@ def verify_sample(orig: pathlib.Path, workdir: pathlib.Path, report: Report) -> 
     blender_out = blender_roundtrip(src, workdir / f"{stem}_blender.efx.5571972")
 
     cli_bytes, blender_bytes = cli_out.read_bytes(), blender_out.read_bytes()
-    report.check(
-        f"{stem}: Blender 产物 == 纯 CLI 产物（逐字节）",
-        cli_bytes == blender_bytes,
-        f"长度 {len(cli_bytes)}/{len(blender_bytes)}，"
-        f"差异字节数 {sum(1 for x, y in zip(cli_bytes, blender_bytes) if x != y)}；"
-        f"两份产物留在 {workdir}",
-    )
+    if cli_bytes == blender_bytes:
+        bytes_ok, bytes_detail = True, ""
+    else:
+        # 字节不同不直接判失败——先看是不是只有 Bezier 切线句柄的 float32 ULP 级精度损失
+        # （见模块文档"检查项 1"），是的话数值容差内也算过。
+        tolerant_diffs = semantic_diff(bridge.dump_efx(cli_out), bridge.dump_efx(blender_out))
+        bytes_ok = not tolerant_diffs
+        bytes_detail = (
+            f"长度 {len(cli_bytes)}/{len(blender_bytes)}，"
+            f"差异字节数 {sum(1 for x, y in zip(cli_bytes, blender_bytes) if x != y)}；"
+            f"两份产物留在 {workdir}；数值容差比对{'仍不通过' if tolerant_diffs else '通过'}："
+            + "; ".join(tolerant_diffs[:5])
+        )
+    report.check(f"{stem}: Blender 产物 == 纯 CLI 产物（逐字节，或数值容差内）",
+                 bytes_ok, bytes_detail)
 
     readback = None
     try:
@@ -163,12 +192,20 @@ def verify_sample(orig: pathlib.Path, workdir: pathlib.Path, report: Report) -> 
 
     try:
         second = blender_roundtrip(blender_out, workdir / f"{stem}_blender2.efx.5571972")
-        report.check(
-            f"{stem}: 二次往返稳定（bytes1 == bytes2）",
-            second.read_bytes() == blender_bytes,
-        )
+        second_bytes = second.read_bytes()
+        if second_bytes == blender_bytes:
+            second_ok, second_detail = True, ""
+        else:
+            # 同检查项 1 的理由：Hermite 切线 ÷3/×3 换算多引入一次浮点运算，字节不同时
+            # 退化成数值容差比对，不是新判据（2026-09-19 用户确认，见模块文档）。
+            tolerant_diffs = semantic_diff(bridge.dump_efx(blender_out), bridge.dump_efx(second))
+            second_ok = not tolerant_diffs
+            second_detail = "数值容差比对" + ("仍不通过：" + "; ".join(tolerant_diffs[:5])
+                                              if tolerant_diffs else "通过")
+        report.check(f"{stem}: 二次往返稳定（bytes1 == bytes2，或数值容差内）",
+                     second_ok, second_detail)
     except (bridge.BridgeError, RuntimeError) as ex:
-        report.check(f"{stem}: 二次往返稳定（bytes1 == bytes2）", False, str(ex)[:400])
+        report.check(f"{stem}: 二次往返稳定（bytes1 == bytes2，或数值容差内）", False, str(ex)[:400])
 
     if readback is None:
         return
@@ -332,4 +369,14 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # ⚠ 必须自己捕获异常再 sys.exit(1)：`blender --background --python x.py` 在脚本抛出
+    # **未捕获异常**时**退出码仍然是 0**（实测），`sys.exit(main())` 那行根本轮不到执行——
+    # 净效果是"门禁崩在第一行"和"门禁全过"对调用方长得一模一样，正是静默全绿。
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except BaseException:
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

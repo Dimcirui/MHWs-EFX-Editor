@@ -55,6 +55,7 @@ using ReeLib.Common;
 using ReeLib.Efx;
 using ReeLib.Efx.Structs.Basic;
 using ReeLib.Efx.Structs.Common;
+using ReeLib.Efx.Structs.Pt;
 using ReeLib.Efx.Structs.Transforms;
 using ReeLib.Uvs;
 
@@ -201,6 +202,18 @@ if (args.Length >= 1 && args[0] == "exprhostcorr")
 {
     return RunExprHostCorr(args);
 }
+if (args.Length >= 1 && args[0] == "instancedefaults")
+{
+    return RunInstanceDefaults(args);
+}
+if (args.Length >= 1 && args[0] == "clipinterpstats")
+{
+    return RunClipInterpStats(args);
+}
+if (args.Length >= 1 && args[0] == "clipeventstats")
+{
+    return RunClipEventStats(args);
+}
 
 if (args.Length < 2 || args[0] != "roundtrip")
 {
@@ -229,6 +242,7 @@ if (args.Length < 2 || args[0] != "roundtrip")
     Console.WriteLine("  dotnet <dll> exprassignstats <语料目录> <json 输出路径>");
     Console.WriteLine("  dotnet <dll> exprrotationstats <语料目录> <json 输出路径>");
     Console.WriteLine("  dotnet <dll> exprhostcorr <语料目录> <json 输出路径> [每桶保留的不同取值数，默认 10]");
+    Console.WriteLine("  dotnet <dll> instancedefaults <语料目录> <逗号分隔的类型名列表|all> <json 输出路径>");
     return 1;
 }
 
@@ -417,8 +431,9 @@ static int RunLoad(string[] args)
         // 由 vendor 的 EFXExpressionTreeJsonConverter 调用 EfxExpressionStringParser.Parse()
         // 编译成树了），不写 expressions（真正参与二进制写出的扁平后缀栈）。这里补一步把树
         // 摊平回 expressions，镜像 EfxFile.ParseExpressions() 自己的遍历方式（Entries + 递归
-        // Actions/efxrData），但只处理 IExpressionAttribute——IMaterialExpressionAttribute
-        // 本轮不碰，维持原样透传。
+        // Actions/efxrData）。IExpressionAttribute 和 IMaterialExpressionAttribute 都处理
+        // （后者只有 Python 端 model.MATERIAL_EXPRESSION_VERIFIED_TYPES 里那两个类型才会有
+        // 非空的 parsedExpressions，其余实现类维持原样透传，这里的分支对它们是空操作）。
         CompileExpressions(efx);
 
         // Subselect（EffectGroups）组内成员顺序（efxEntryIndexes）快照：`UpdateEffectGroups()`
@@ -522,6 +537,49 @@ static void CompileExpressions(EfxFile file)
                     var flat = file.FlattenExpressionTree(tree);
                     flat.Version = file.Header!.Version;
                     expr.Expression.AddExpression(flat);
+                }
+            }
+
+            // IMaterialExpressionAttribute：同一套 EFXExpressionObject 树，但每条
+            // EFXMaterialExpression 额外带 4 个结构字段（mdfPropertyHash/propertyComponentIndex/
+            // unkn1/unkn2，Python 侧 _export_material_expression_attribute() 已经原样写出）。
+            // 只有语料验证过的两个类型（model.MATERIAL_EXPRESSION_VERIFIED_TYPES）会走到这里，
+            // Python 端只对它们生成 parsedExpressions/expressions；其余实现类的 expressions
+            // 数量本来就是 0（Python 从不碰它们），下面的循环体自然是空操作。
+            //
+            // 不 Clear()+AddExpression()（那样会丢 Python 已经写回的 4 个结构字段，
+            // FlattenExpressionTree() 只产出裸 EFXExpressionObject，没有那些字段可填）——
+            // 改成就地覆盖每条已有条目的 components/parameters/Version，其余字段保持
+            // Python 写的值不动。两个数组长度不一致说明 Python 那边没能一一对应写出
+            // （不该发生，v1 不支持增删条目），直接报错而不是静默错位覆盖（铁律 #1）。
+            if (attr is IMaterialExpressionAttribute matExpr && matExpr.MaterialExpressions != null)
+            {
+                var list = matExpr.MaterialExpressions;
+                var parsedList = list.ParsedExpressions ?? new();
+                if (list.expressions.Count != parsedList.Count)
+                {
+                    throw new Exception(
+                        $"MaterialExpressions 条目数不匹配（$type={attr.type}）：" +
+                        $"expressions={list.expressions.Count}, parsedExpressions={parsedList.Count}");
+                }
+                for (int i = 0; i < parsedList.Count; i++)
+                {
+                    var tree = parsedList[i];
+                    for (int j = 0; j < tree.parameters.Count; j++)
+                    {
+                        var p = tree.parameters[j];
+                        if (p.source != ExpressionParameterSource.Parameter && file.FindParameterByHash(p.parameterNameHash) != null)
+                        {
+                            p.source = ExpressionParameterSource.Parameter;
+                            tree.parameters[j] = p;
+                        }
+                    }
+                    var flat = file.FlattenExpressionTree(tree);
+                    var target = list.expressions[i];
+                    target.components.Clear();
+                    target.components.AddRange(flat.components);
+                    target.parameters = flat.parameters;
+                    target.Version = file.Header!.Version;
                 }
             }
         }
@@ -772,7 +830,7 @@ static int RunTex2Dds(string[] args)
 // TypeMeshV2 的 `properties`（MdfProperty 数组）语义是"这个 attribute 覆盖了所引用材质的哪几个
 // 参数"：能覆盖哪些、每个几个分量、`mdfPropertyIndex` 该填几，全部由 `MaterialPath` 指向的那个
 // .mdf2 决定。所以"新增一条 property"必须先读到材质本身，否则只能照语料里见过的组合猜，而
-// `mdfPropertyIndex` 猜错等于静默改到另一个参数上（铁律 #2/#7）。
+// `mdfPropertyIndex` 猜错等于静默改到另一个参数上（铁律 #1、用户文案规则）。
 //
 // 哈希：EFX 侧的 `PropertyNameUTF8Hash` 和 mdf2 自己存的 `hash`/`asciiHash` 是同一个名字的三种
 // 不同哈希（mdf2 存 UTF-16 和 ASCII 两种，EFX 用 UTF-8），互相对不上。这里按参数名现算一遍
@@ -1022,7 +1080,7 @@ static int RunTypes(string[] args)
 }
 
 // bitnames 子命令：给每个 IExpressionAttribute/IClipAttribute 类型算一份"bit_index -> 字段名"
-// 静态表，喂给 Blender 面板把裸整数 bit_index 换成按名字选的下拉（见仓库 CLAUDE.md 铁律 #29
+// 静态表，喂给 Blender 面板把裸整数 bit_index 换成按名字选的下拉（见仓库 CLAUDE.md 铁律 #19
 // 附近关于 Expression bit 语义的讨论）。
 //
 // Expression 侧：每个类只声明了 bit 位数（`expressionBits = new BitSet(N)`），bit 的身份靠
@@ -1038,7 +1096,7 @@ static int RunTypes(string[] args)
 // per-bit 的具名字段可反射**，唯一的名字来源是 vendor 自己愿不愿意给 `clipBits` 挂
 // `BitNames`/`BitNameDict`——绝大多数类型什么都没挂（比如 Transform3DClip 的 9 位无一具名），
 // 只有极少数（RGBA 四件套、TypeMesh 的材质槽）挂了。挂了就如实抄，没挂的就是没挂，不编名字
-// （铁律 #7/#28）——Python 侧对这些 null 条目只能显示裸 "bit{N}"。
+// （用户文案规则）——Python 侧对这些 null 条目只能显示裸 "bit{N}"。
 static int RunBitNames(string[] args)
 {
     if (args.Length < 2)
@@ -1693,7 +1751,7 @@ static int RunExprRotationStats(string[] args)
 // "这一位在 ExpressionBits 里到底有没有置位（即有没有一条真正绑定的公式）" x "同一个字段
 // 自己存的 ExpressionAssignType 静态值（Add/Subtract/Multiply/Divide/Assign）"，
 // 用来验证"是不是只有 Assign 才会真的吃公式结果、其余取值和公式互不相干"这个假说——
-// 光看单个文件猜不出来，语料级的联合分布才是证据（铁律 #7/#9）。
+// 光看单个文件猜不出来，语料级的联合分布才是证据（不把猜测当事实）。
 //
 //   exprassignstats <语料目录> <json 输出路径>
 //
@@ -2185,14 +2243,547 @@ static int RunFieldStatsBatch(string[] args)
     return 0;
 }
 
+// instancedefaults 子命令：给"新建 attribute 用什么默认值"换一条不同的生成策略——不是逐字段
+// 独立取众数再拼回零值结构（那样会拆散字段耦合：某个开关字段本身是 0 时，另一组字段可能
+// 从来不是全 0——逐字段各自取众数完全可能拼出语料里从没出现过的假组合，见用户原话
+// "分块默认值可能恰好让一些非0值字段没法作用"），而是先算出逐字段众数向量，再从语料里挑一份
+// "跟众数向量最贴近的真实实例"整份抄下来——保证落地的默认值是游戏文件里真实存在过的字段
+// 组合，不是统计拼出来的。分两遍扫描：第一遍复用 fieldstatsbatch 的直方图逻辑算众数向量，
+// 第二遍按众数向量给每份实例打分（匹配上的叶子字段数），只留分数最高的那份（整份 JSON，不
+// 是众数向量本身）。判断"这个字段是否等于全语料最常见取值"不需要知道字段含义，所以这条流程
+// 可以覆盖全部 282 个类型（包括语义完全未标注的字段）——我们限制的是语义结论，不是这种
+// 纯字节层面的"复制一份真实存在过的实例"。
+//
+// clipeventstats — raw=3（Event，共享枚举里叫 Event）严格来说不是真正的曲线形状（vendor 自己
+// 注释 "found at end"），但语料里用得很频繁（clipinterpstats 已经看到几千次），需要单独看它在
+// 每条曲线内部"长在哪个位置、和邻居帧的值什么关系"，才能判断它该归进"能用原生 fcurve 编辑的
+// 标准曲线"（如果表现纯粹是"保持值不变+在这一帧触发点什么"，可以用 CONSTANT + 一个额外标记
+// 代表）还是该归"非标准，暂不做"。2026-09-19 用户明确要求先看分布再分类。
+//
+//   clipeventstats <语料目录> <json 输出路径>
+static int RunClipEventStats(string[] args)
+{
+    if (args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> clipeventstats <语料目录> <json 输出路径>");
+        return 1;
+    }
+    var dir = args[1];
+    var jsonOutPath = args[2];
+    if (!Directory.Exists(dir))
+    {
+        Console.WriteLine($"目录不存在: {dir}");
+        return 1;
+    }
+
+    const int EventType = 3;
+    var files = Directory.EnumerateFiles(dir, "*.efx.*", SearchOption.AllDirectories).ToList();
+    int scanned = 0, failed = 0, curvesWithEvent = 0, eventFrames = 0;
+    var positionHist = new Dictionary<string, int>();      // "first"/"middle"/"last"/"only"
+    var valueVsPrevHist = new Dictionary<string, int>();   // "no_prev"/"equal_prev"/"different_prev"
+    var valueVsNextHist = new Dictionary<string, int>();   // "no_next"/"equal_next"/"different_next"
+    var valueTypeHist = new Dictionary<string, int>();     // Int / Float
+    var attrTypeHist = new Dictionary<string, int>();
+    var sampleValues = new List<double>();                 // 只存前 200 个，看看数值本身长什么样
+
+    static void Bump(Dictionary<string, int> hist, string key) => hist[key] = hist.GetValueOrDefault(key) + 1;
+
+    void VisitAttr(EFXAttribute attr)
+    {
+        if (attr is not IClipAttribute clipAttr) return;
+        var clipData = clipAttr.Clip;
+        var headers = clipData.clips ?? Array.Empty<EfxClipHeader>();
+        var frames = clipData.frames ?? Array.Empty<EfxClipFrame>();
+        var typeName = attr.type.ToString();
+        int frameIndex = 0;
+        foreach (var header in headers)
+        {
+            int start = frameIndex;
+            int count = header.frameCount;
+            bool sawEvent = false;
+            for (int f = 0; f < count && frameIndex < frames.Length; ++f)
+            {
+                int i = frameIndex++;
+                if (frames[i].type != (FrameInterpolationType)EventType) continue;
+                sawEvent = true;
+                eventFrames++;
+                Bump(valueTypeHist, header.valueType.ToString());
+                Bump(attrTypeHist, typeName);
+
+                string pos = count == 1 ? "only" : i == start ? "first" : i == start + count - 1 ? "last" : "middle";
+                Bump(positionHist, pos);
+
+                double v = frames[i].AsFloat(header.valueType);
+                if (sampleValues.Count < 200) sampleValues.Add(v);
+
+                if (i == start)
+                {
+                    Bump(valueVsPrevHist, "no_prev");
+                }
+                else
+                {
+                    double prev = frames[i - 1].AsFloat(header.valueType);
+                    Bump(valueVsPrevHist, Math.Abs(prev - v) < 1e-6 ? "equal_prev" : "different_prev");
+                }
+                if (i == start + count - 1)
+                {
+                    Bump(valueVsNextHist, "no_next");
+                }
+                else
+                {
+                    double next = frames[i + 1].AsFloat(header.valueType);
+                    Bump(valueVsNextHist, Math.Abs(next - v) < 1e-6 ? "equal_next" : "different_next");
+                }
+            }
+            if (sawEvent) curvesWithEvent++;
+        }
+    }
+
+    void Visit(EFXEntryBase container)
+    {
+        foreach (var attr in container.Attributes)
+        {
+            VisitAttr(attr);
+            if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
+            {
+                foreach (var e in pe.efxrData.Entries) Visit(e);
+                foreach (var a in pe.efxrData.Actions) Visit(a);
+            }
+        }
+    }
+
+    foreach (var path in files)
+    {
+        try
+        {
+            var efx = new EfxFile(new FileHandler(path));
+            efx.Read();
+            scanned++;
+            foreach (var e in efx.Entries) Visit(e);
+            foreach (var a in efx.Actions) Visit(a);
+        }
+        catch (Exception)
+        {
+            failed++;
+        }
+    }
+
+    var payload = new
+    {
+        filesTotal = files.Count,
+        filesScanned = scanned,
+        filesFailed = failed,
+        curvesWithEvent,
+        eventFrames,
+        positionHist,
+        valueVsPrevHist,
+        valueVsNextHist,
+        valueTypeHist,
+        attrTypeHist,
+        sampleValues,
+    };
+
+    File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine($"scanned={scanned} failed={failed} curvesWithEvent={curvesWithEvent} eventFrames={eventFrames} -> {jsonOutPath}");
+    return 0;
+}
+
+// clipinterpstats — 按 bit_index 统计**全部** IClipAttribute 类型（不只 Transform3DClip/
+// PtTransform3DClip，是全部 12 个实现了 IClipAttribute 的 attribute 类型）的
+// FrameInterpolationType 实际取值分布，用来交叉验证"FrameInterpolationType 和独立 .clip/.tml
+// 共用同一套枚举"这个假设——第一版只扫了 Transform3D 那两个类型，会漏看其它 Clip 类型（比如
+// PtColorClip/PtVelocity3DClip/AttractorClip）有没有用过 Transform3D 系列从没出现过的原始值
+// （2026-09-19 用户指出这个盲区）。role（position/rotation/scale/other）的分类只对 bit 顺序已经
+// 实机确认过的 Transform3D 系列有意义（见 `blender_efx_re/clip_fcurve.py` 的
+// `_TRANSFORM3D_CLIP_XFORM` 和 `PtTransform3DExpression` 的 `BitNameDict`），其它类型的 bit
+// 落进 "other"，靠 byAttributeType 那份按类型名分开的统计单独看。
+//
+//   clipinterpstats <语料目录> <json 输出路径>
+static int RunClipInterpStats(string[] args)
+{
+    if (args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> clipinterpstats <语料目录> <json 输出路径>");
+        return 1;
+    }
+    var dir = args[1];
+    var jsonOutPath = args[2];
+    if (!Directory.Exists(dir))
+    {
+        Console.WriteLine($"目录不存在: {dir}");
+        return 1;
+    }
+
+    var files = Directory.EnumerateFiles(dir, "*.efx.*", SearchOption.AllDirectories).ToList();
+    int scanned = 0, failed = 0, instances = 0;
+    // role ("position"/"rotation"/"scale") -> bitIndex -> rawInterpType -> count
+    var byRole = new Dictionary<string, Dictionary<int, Dictionary<int, int>>>();
+    // attribute 类型名 -> bitIndex -> rawInterpType -> count（避免把 Transform3DClip 和
+    // PtTransform3DClip 的 9 位混在一起，万一两者 bit 顺序其实不一样也能看出来）
+    var byAttrType = new Dictionary<string, Dictionary<int, Dictionary<int, int>>>();
+
+    static void Bump(Dictionary<int, int> hist, int key) => hist[key] = hist.GetValueOrDefault(key) + 1;
+
+    static string RoleOf(EfxAttributeType type, int bitIndex)
+    {
+        // 只有这两个类型的 bit 顺序被实机确认过是"3 位移+3 旋转+3 缩放"；其它类型的 BitSet
+        // 是各自独立定义的字段布局，同一个数字 bitIndex 在别的类型上完全是另一件事，不能套用
+        // 这张表——分类不到就统一归 "other"，靠 byAttributeType 单独看。
+        if (type != EfxAttributeType.Transform3DClip && type != EfxAttributeType.PtTransform3DClip)
+            return "other";
+        return bitIndex switch
+        {
+            0 or 1 or 2 => "position",
+            3 or 4 or 5 => "rotation",
+            6 or 7 or 8 => "scale",
+            _ => "other",
+        };
+    }
+
+    void VisitAttr(EFXAttribute attr)
+    {
+        if (attr is not IClipAttribute clipAttr) return;
+
+        instances++;
+        var activeBits = clipAttr.ClipBits.GetExpressionInts().OrderBy(i => i).ToList();
+        var clipData = clipAttr.Clip;
+        var headers = clipData.clips ?? Array.Empty<EfxClipHeader>();
+        var frames = clipData.frames ?? Array.Empty<EfxClipFrame>();
+        var typeName = attr.type.ToString();
+        int frameIndex = 0;
+        for (int i = 0; i < headers.Length && i < activeBits.Count; ++i)
+        {
+            var header = headers[i];
+            var bitIndex = activeBits[i];
+            var role = RoleOf(attr.type, bitIndex);
+            for (int f = 0; f < header.frameCount && frameIndex < frames.Length; ++f)
+            {
+                var rawType = (int)frames[frameIndex++].type;
+
+                if (!byRole.TryGetValue(role, out var roleBits))
+                    byRole[role] = roleBits = new Dictionary<int, Dictionary<int, int>>();
+                if (!roleBits.TryGetValue(bitIndex, out var hist))
+                    roleBits[bitIndex] = hist = new Dictionary<int, int>();
+                Bump(hist, rawType);
+
+                if (!byAttrType.TryGetValue(typeName, out var typeBits))
+                    byAttrType[typeName] = typeBits = new Dictionary<int, Dictionary<int, int>>();
+                if (!typeBits.TryGetValue(bitIndex, out var thist))
+                    typeBits[bitIndex] = thist = new Dictionary<int, int>();
+                Bump(thist, rawType);
+            }
+        }
+    }
+
+    void Visit(EFXEntryBase container)
+    {
+        foreach (var attr in container.Attributes)
+        {
+            VisitAttr(attr);
+            if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
+            {
+                foreach (var e in pe.efxrData.Entries) Visit(e);
+                foreach (var a in pe.efxrData.Actions) Visit(a);
+            }
+        }
+    }
+
+    foreach (var path in files)
+    {
+        try
+        {
+            var efx = new EfxFile(new FileHandler(path));
+            efx.Read();
+            scanned++;
+            foreach (var e in efx.Entries) Visit(e);
+            foreach (var a in efx.Actions) Visit(a);
+        }
+        catch (Exception)
+        {
+            failed++;  // 语料里本来就有一批读不了的，见 KNOWN_UPSTREAM_ISSUES
+        }
+    }
+
+    static Dictionary<string, Dictionary<string, int>> Flatten(Dictionary<int, Dictionary<int, int>> bits) =>
+        bits.OrderBy(b => b.Key).ToDictionary(
+            b => b.Key.ToString(),
+            b => b.Value.OrderBy(t => t.Key).ToDictionary(t => t.Key.ToString(), t => t.Value));
+
+    var payload = new
+    {
+        filesTotal = files.Count,
+        filesScanned = scanned,
+        filesFailed = failed,
+        instances,
+        byRole = byRole.OrderBy(r => r.Key).ToDictionary(r => r.Key, r => Flatten(r.Value)),
+        byAttributeType = byAttrType.OrderBy(r => r.Key).ToDictionary(r => r.Key, r => Flatten(r.Value)),
+    };
+
+    File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine($"scanned={scanned} failed={failed} instances={instances} -> {jsonOutPath}");
+    return 0;
+}
+
+//   instancedefaults <语料目录> <逗号分隔的类型名列表|all> <json 输出路径>
+static int RunInstanceDefaults(string[] args)
+{
+    if (args.Length < 4)
+    {
+        Console.WriteLine("用法: dotnet <dll> instancedefaults <语料目录> <逗号分隔的类型名列表|all> <json 输出路径>");
+        return 1;
+    }
+    var dir = args[1];
+    var typeArg = args[2];
+    var jsonOutPath = args[3];
+
+    if (!Directory.Exists(dir))
+    {
+        Console.WriteLine($"目录不存在: {dir}");
+        return 1;
+    }
+
+    var wanted = new Dictionary<EfxAttributeType, string>();
+    if (typeArg == "all")
+    {
+        foreach (EfxAttributeType t in Enum.GetValues(typeof(EfxAttributeType)))
+            wanted[t] = t.ToString();
+    }
+    else
+    {
+        foreach (var typeName in typeArg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!Enum.TryParse<EfxAttributeType>(typeName, true, out var t))
+            {
+                Console.WriteLine($"[ERROR] 未知的 attribute 类型名: {typeName}");
+                return 1;
+            }
+            wanted[t] = typeName;
+        }
+    }
+
+    // 记账字段：type/Version/UniqueID/IsTypeAttribute。不参与众数/打分，也不进最终输出——
+    // 它们该由创建逻辑自己填（尤其 UniqueID，抄某一份实例当时的值等于让两份文件共享同一个 ID）。
+    var bookkeeping = new HashSet<string> { "type", "Version", "UniqueID", "IsTypeAttribute" };
+
+    var options = CreateBridgeJsonOptions();
+    // 排序保证跨次运行文件遍历顺序一致——打分打平时"先出现的赢"才是确定性的，不依赖文件系统
+    // 底层的目录遍历顺序（不同操作系统/文件系统不保证一致）。
+    var files = Directory.EnumerateFiles(dir, "*.efx.*", SearchOption.AllDirectories)
+        .OrderBy(p => p, StringComparer.Ordinal).ToList();
+
+    // ---------- 第一遍：逐字段众数直方图（逻辑照抄 fieldstatsbatch）----------
+    var histograms = new Dictionary<EfxAttributeType, Dictionary<string, Dictionary<string, int>>>();
+    var instanceCounts = new Dictionary<EfxAttributeType, int>();
+    foreach (var t in wanted.Keys)
+    {
+        histograms[t] = new Dictionary<string, Dictionary<string, int>>();
+        instanceCounts[t] = 0;
+    }
+
+    void Bump(Dictionary<string, Dictionary<string, int>> hist, string path, string value)
+    {
+        if (!hist.TryGetValue(path, out var h))
+            hist[path] = h = new Dictionary<string, int>();
+        h[value] = h.GetValueOrDefault(value) + 1;
+    }
+
+    void Tally(Dictionary<string, Dictionary<string, int>> hist, System.Text.Json.Nodes.JsonNode? node, string path)
+    {
+        switch (node)
+        {
+            case System.Text.Json.Nodes.JsonObject obj:
+                foreach (var (key, child) in obj)
+                {
+                    if (key == "$type" || (path.Length == 0 && bookkeeping.Contains(key))) continue;
+                    Tally(hist, child, path.Length == 0 ? key : path + "." + key);
+                }
+                break;
+            case System.Text.Json.Nodes.JsonArray arr:
+                Bump(hist, path + "[].length", arr.Count.ToString());
+                break;
+            case null:
+                Bump(hist, path, "null");
+                break;
+            default:
+                Bump(hist, path, node.ToJsonString());
+                break;
+        }
+    }
+
+    void VisitPass1(EFXEntryBase container)
+    {
+        foreach (var attr in container.Attributes)
+        {
+            if (wanted.ContainsKey(attr.type))
+            {
+                instanceCounts[attr.type]++;
+                var json = JsonSerializer.Serialize(attr, typeof(EFXAttribute), options);
+                Tally(histograms[attr.type], System.Text.Json.Nodes.JsonNode.Parse(json), "");
+            }
+            if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
+            {
+                foreach (var e in pe.efxrData.Entries) VisitPass1(e);
+                foreach (var a in pe.efxrData.Actions) VisitPass1(a);
+            }
+        }
+    }
+
+    int scanned1 = 0, failed1 = 0;
+    foreach (var path in files)
+    {
+        try
+        {
+            var efx = new EfxFile(new FileHandler(path));
+            efx.Read();
+            scanned1++;
+            foreach (var e in efx.Entries) VisitPass1(e);
+            foreach (var a in efx.Actions) VisitPass1(a);
+        }
+        catch (Exception) { failed1++; }
+    }
+
+    // 每个类型一份众数向量：字段路径 -> 出现次数最多的取值（原始 JSON 字面量字符串）。
+    var modeVectors = new Dictionary<EfxAttributeType, Dictionary<string, string>>();
+    foreach (var (t, hist) in histograms)
+    {
+        var mode = new Dictionary<string, string>();
+        foreach (var (fieldPath, counts) in hist)
+        {
+            if (counts.Count == 0) continue;
+            var (modeVal, _) = counts.OrderByDescending(kv => kv.Value).First();
+            mode[fieldPath] = modeVal;
+        }
+        modeVectors[t] = mode;
+    }
+
+    // ---------- 第二遍：找一份跟众数向量最贴近的真实实例，整份留下来 ----------
+    var best = new Dictionary<EfxAttributeType, (int score, int totalFields, string sourceFile, System.Text.Json.Nodes.JsonObject instance)>();
+
+    void ScoreAndRecord(EfxAttributeType t, EFXAttribute attr, string sourceFile)
+    {
+        var json = JsonSerializer.Serialize(attr, typeof(EFXAttribute), options);
+        if (System.Text.Json.Nodes.JsonNode.Parse(json) is not System.Text.Json.Nodes.JsonObject obj) return;
+
+        var flat = new Dictionary<string, string>();
+        void Flatten(System.Text.Json.Nodes.JsonNode? n, string path)
+        {
+            switch (n)
+            {
+                case System.Text.Json.Nodes.JsonObject o:
+                    foreach (var (key, child) in o)
+                    {
+                        if (key == "$type" || (path.Length == 0 && bookkeeping.Contains(key))) continue;
+                        Flatten(child, path.Length == 0 ? key : path + "." + key);
+                    }
+                    break;
+                case System.Text.Json.Nodes.JsonArray arr:
+                    flat[path + "[].length"] = arr.Count.ToString();
+                    break;
+                case null:
+                    flat[path] = "null";
+                    break;
+                default:
+                    flat[path] = n.ToJsonString();
+                    break;
+            }
+        }
+        Flatten(obj, "");
+
+        var mode = modeVectors[t];
+        int score = 0;
+        foreach (var (path, val) in flat)
+        {
+            if (mode.TryGetValue(path, out var modeVal) && modeVal == val) score++;
+        }
+
+        if (!best.TryGetValue(t, out var current) || score > current.score)
+        {
+            var trimmed = new System.Text.Json.Nodes.JsonObject();
+            foreach (var (key, child) in obj)
+            {
+                if (key == "$type" || bookkeeping.Contains(key)) continue;
+                trimmed[key] = child?.DeepClone();
+            }
+            best[t] = (score, flat.Count, sourceFile, trimmed);
+        }
+    }
+
+    void VisitPass2(EFXEntryBase container, string sourceFile)
+    {
+        foreach (var attr in container.Attributes)
+        {
+            if (wanted.ContainsKey(attr.type))
+            {
+                ScoreAndRecord(attr.type, attr, sourceFile);
+            }
+            if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
+            {
+                foreach (var e in pe.efxrData.Entries) VisitPass2(e, sourceFile);
+                foreach (var a in pe.efxrData.Actions) VisitPass2(a, sourceFile);
+            }
+        }
+    }
+
+    int scanned2 = 0, failed2 = 0;
+    foreach (var path in files)
+    {
+        try
+        {
+            var efx = new EfxFile(new FileHandler(path));
+            efx.Read();
+            scanned2++;
+            foreach (var e in efx.Entries) VisitPass2(e, path);
+            foreach (var a in efx.Actions) VisitPass2(a, path);
+        }
+        catch (Exception) { failed2++; }
+    }
+
+    var payload = new Dictionary<string, object?>();
+    foreach (var (t, name) in wanted)
+    {
+        if (!best.TryGetValue(t, out var b))
+        {
+            payload[name] = null; // 语料里一次都没出现过这个类型
+            continue;
+        }
+        payload[name] = new
+        {
+            instances = instanceCounts[t],
+            matchScore = b.score,
+            totalFields = b.totalFields,
+            sourceFile = b.sourceFile,
+            instance = b.instance,
+        };
+    }
+
+    var envelope = new
+    {
+        filesTotal = files.Count,
+        filesScanned = scanned2,
+        filesFailed = failed2,
+        types = payload,
+    };
+    File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(envelope, new JsonSerializerOptions { WriteIndented = true }));
+    var covered = best.Count;
+    Console.WriteLine($"OK: {wanted.Count} 种类型请求，{covered} 种在语料里有命中（扫描 {scanned2}/{files.Count} 个文件，失败 {failed2}）-> {jsonOutPath}");
+    return 0;
+}
+
 // attrindex 子命令：在整个语料上建一份 "attribute 类型 -> 出现过它的文件列表" 反查索引，
 // 给 Blender 那边的资产库面板用（"设定语料路径 -> 挑一个 attr 类型 -> 列出命中文件 -> 直接
 // 导入"）。只做文件级命中，不记录具体是哪个 entry/第几个实例——用途是"找一个带这个 attr 的
 // 参考文件"，不是"精确定位"。
 //
+// 同一趟遍历顺带建第二张反查表：`behaviors`，key 是 PtBehavior.behaviorString（游戏原生类名，
+// 如 `via.effect.script.EffectLight5000lm`），value 同样是命中文件列表。"PtBehavior" 这个
+// attribute 类型太粗——语料里成百上千个文件都挂着某个 PtBehavior，但具体是哪个游戏类完全
+// 不同，只靠类型反查找不到"这个具体行为类的参考文件"；behaviorString 是直接内联在结构体里的
+// `RszInlineString`（不是偏移间接引用，见 EfxPtBehavior.cs:192-195），扫描时不用额外解析
+// 成本就能读到，值得单独建一张表。
+//
 // 和 fieldstats/fieldstatsbatch 的关键区别：那两个只统计跨语料的聚合值（取值分布、实例数），
-// 从不记录"这个实例来自哪个文件"；这里反过来，每种类型只需要知道"文件命中过没有"，不需要
-// 字段级直方图，所以不走 Tally/Bump 那一套，只用 HashSet 去重。
+// 从不记录"这个实例来自哪个文件"；这里反过来，每种类型/behaviorString 只需要知道"文件命中过
+// 没有"，不需要字段级直方图，所以不走 Tally/Bump 那一套，只用 HashSet 去重。
 //
 //   attrindex <语料目录> <json 输出路径>
 static int RunAttrIndex(string[] args)
@@ -2216,16 +2807,24 @@ static int RunAttrIndex(string[] args)
     // `name` 字段、`attribute_types.py` 里 readable_types() 的 "name" 是同一个字符串——
     // Blender 侧用这个反查回类目/可读性目录才对得上号。
     var hits = new Dictionary<string, HashSet<string>>();
+    // 第二张反查表：PtBehavior.behaviorString -> 出现过它的文件。跟 `types` 表同一趟遍历一起
+    // 收集，不另开一遍全语料扫描——behaviorString 是 `RszInlineString`，就在 attribute 结构体
+    // 里，不是偏移间接引用，扫描到 EFXAttributePtBehavior 时直接能读到，不用额外解析成本。
+    var behaviorHits = new Dictionary<string, HashSet<string>>();
 
-    void Visit(EFXEntryBase container, HashSet<string> touched)
+    void Visit(EFXEntryBase container, HashSet<string> touchedTypes, HashSet<string> touchedBehaviors)
     {
         foreach (var attr in container.Attributes)
         {
-            touched.Add(attr.type.ToString());
+            touchedTypes.Add(attr.type.ToString());
+            if (attr is EFXAttributePtBehavior { behaviorString: { Length: > 0 } bs })
+            {
+                touchedBehaviors.Add(bs);
+            }
             if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
             {
-                foreach (var e in pe.efxrData.Entries) Visit(e, touched);
-                foreach (var a in pe.efxrData.Actions) Visit(a, touched);
+                foreach (var e in pe.efxrData.Entries) Visit(e, touchedTypes, touchedBehaviors);
+                foreach (var a in pe.efxrData.Actions) Visit(a, touchedTypes, touchedBehaviors);
             }
         }
     }
@@ -2239,20 +2838,28 @@ static int RunAttrIndex(string[] args)
             efx.Read();
             scanned++;
 
-            // 一个文件里同一类型可能出现好几次，只需要记一次"这个文件命中过"——先收集到
-            // 一个临时集合里，再统一写回 hits，避免同一文件在 hits[type] 里被 Add 好几遍
-            // （HashSet.Add 本身就去重，这里只是省一次重复的字典查找，不影响正确性）。
-            var touched = new HashSet<string>();
-            foreach (var e in efx.Entries) Visit(e, touched);
-            foreach (var a in efx.Actions) Visit(a, touched);
+            // 一个文件里同一类型/同一 behaviorString 可能出现好几次，只需要记一次"这个文件
+            // 命中过"——先收集到临时集合里，再统一写回 hits/behaviorHits，避免同一文件在
+            // 命中列表里被 Add 好几遍（HashSet.Add 本身就去重，这里只是省一次重复的字典
+            // 查找，不影响正确性）。
+            var touchedTypes = new HashSet<string>();
+            var touchedBehaviors = new HashSet<string>();
+            foreach (var e in efx.Entries) Visit(e, touchedTypes, touchedBehaviors);
+            foreach (var a in efx.Actions) Visit(a, touchedTypes, touchedBehaviors);
 
-            if (touched.Count > 0)
+            if (touchedTypes.Count > 0 || touchedBehaviors.Count > 0)
             {
                 var relPath = Path.GetRelativePath(dir, path).Replace('\\', '/');
-                foreach (var typeName in touched)
+                foreach (var typeName in touchedTypes)
                 {
                     if (!hits.TryGetValue(typeName, out var set))
                         hits[typeName] = set = new HashSet<string>();
+                    set.Add(relPath);
+                }
+                foreach (var behaviorString in touchedBehaviors)
+                {
+                    if (!behaviorHits.TryGetValue(behaviorString, out var set))
+                        behaviorHits[behaviorString] = set = new HashSet<string>();
                     set.Add(relPath);
                 }
             }
@@ -2271,9 +2878,11 @@ static int RunAttrIndex(string[] args)
         filesFailed = failed,
         types = hits.OrderBy(kv => kv.Key)
             .ToDictionary(kv => kv.Key, kv => kv.Value.OrderBy(p => p, StringComparer.Ordinal).ToList()),
+        behaviors = behaviorHits.OrderBy(kv => kv.Key)
+            .ToDictionary(kv => kv.Key, kv => kv.Value.OrderBy(p => p, StringComparer.Ordinal).ToList()),
     };
     File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
-    Console.WriteLine($"OK: {hits.Count} 种类型（扫描 {scanned}/{files.Count} 个文件，失败 {failed}）-> {jsonOutPath}");
+    Console.WriteLine($"OK: {hits.Count} 种类型、{behaviorHits.Count} 种 PtBehavior（扫描 {scanned}/{files.Count} 个文件，失败 {failed}）-> {jsonOutPath}");
     return 0;
 }
 
@@ -3041,6 +3650,7 @@ static int RunPtBehaviorCatalog(string[] args)
 
     var options = CreateBridgeJsonOptions();
     var byBehavior = new Dictionary<string, PtBehaviorBucket>();
+    var byRawDataType = new Dictionary<int, DataTypeBucket>();
 
     void Visit(EFXEntryBase container)
     {
@@ -3066,10 +3676,41 @@ static int RunPtBehaviorCatalog(string[] args)
                     prop.DataTypes[typeName] = prop.DataTypes.GetValueOrDefault(typeName) + 1;
                     var hashKey = "0x" + v.varHash.ToString("X8");
                     prop.VarHashes[hashKey] = prop.VarHashes.GetValueOrDefault(hashKey) + 1;
+
+                    // 全局按原始 dataType 整数值分桶（不管 vendor 认不认识），收集字节形状证据。
+                    int rawType = (int)v.dataType;
+                    if (!byRawDataType.TryGetValue(rawType, out var dtBucket))
+                        byRawDataType[rawType] = dtBucket = new DataTypeBucket();
+                    dtBucket.Count++;
+                    dtBucket.VarSizes[v.varSize] = dtBucket.VarSizes.GetValueOrDefault(v.varSize) + 1;
+                    if (v.variable != null)
+                    {
+                        dtBucket.InnerUnkn[v.variable.unkn] = dtBucket.InnerUnkn.GetValueOrDefault(v.variable.unkn) + 1;
+                        dtBucket.InnerSize[v.variable.size] = dtBucket.InnerSize.GetValueOrDefault(v.variable.size) + 1;
+                        var nameKey = bstr + "::" + name;
+                        string? dataHex = v.variable is ReeLib.Efx.Structs.Pt.PtBehaviorVariableDataPrefabUnknown unk
+                            ? Convert.ToHexString(unk.data ?? Array.Empty<byte>())
+                            : null;
+                        if (dtBucket.Samples.Count < 40 && dtBucket.SeenNames.Add(nameKey))
+                        {
+                            dtBucket.Samples.Add(new
+                            {
+                                behaviorString = bstr,
+                                name,
+                                varHash = hashKey,
+                                variableType = v.variable.GetType().Name,
+                                dataHex,
+                            });
+                        }
+                        if (dataHex != null && (dtBucket.DistinctDataHex.ContainsKey(dataHex) || dtBucket.DistinctDataHex.Count < 500))
+                        {
+                            dtBucket.DistinctDataHex[dataHex] = dtBucket.DistinctDataHex.GetValueOrDefault(dataHex) + 1;
+                        }
+                    }
                     // 第一次见到这个 (behaviorString, name) 组合时，把这条 PtBehaviorVariable
                     // 原样序列化存一份当"新增候选"的模板——varSize/内层 unkn+size 这些没有
                     // [RszByteSizeField]/[RszArraySizeField] 标注、不会被 vendor 自愈的记账
-                    // 字段，靠克隆真实样本规避手工拼字节的风险（铁律 #7，见 PLAN.md 对应小节）。
+                    // 字段，靠克隆真实样本规避手工拼字节的风险（用户文案规则，见 PLAN.md 对应小节）。
                     if (prop.Template is null)
                     {
                         var varJson = JsonSerializer.Serialize(v, options);
@@ -3078,6 +3719,13 @@ static int RunPtBehaviorCatalog(string[] args)
                 }
                 var seqKey = string.Join("|", names);
                 bucket.Sequences[seqKey] = bucket.Sequences.GetValueOrDefault(seqKey) + 1;
+                // 这个字段组合第一次出现时，把当前这一个实例的完整 properties 数组整体存一份
+                // ——挑众数组合当默认字段块时，要用同一份真实文件的值，不是东拼西凑。
+                if (!bucket.SequenceTemplates.ContainsKey(seqKey))
+                {
+                    var propsJson = JsonSerializer.Serialize(pb.properties, options);
+                    bucket.SequenceTemplates[seqKey] = System.Text.Json.Nodes.JsonNode.Parse(propsJson);
+                }
             }
             if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
             {
@@ -3103,6 +3751,13 @@ static int RunPtBehaviorCatalog(string[] args)
         }
     }
 
+    // 众数字段组合（出现次数最多的 seqKey；并列时取字典序最小的，保证同一份语料重新生成时
+    // 结果稳定）。没有任何实例时返回 null。
+    static string? PickModalSequenceKey(PtBehaviorBucket bucket) =>
+        bucket.Sequences.Count == 0 ? null
+            : bucket.Sequences.OrderByDescending(s => s.Value).ThenBy(s => s.Key, StringComparer.Ordinal)
+                .First().Key;
+
     var payload = new
     {
         filesTotal = files.Count,
@@ -3112,25 +3767,55 @@ static int RunPtBehaviorCatalog(string[] args)
         behaviors = byBehavior.Count,
         byBehavior = byBehavior.OrderByDescending(kv => kv.Value.InstanceCount).ToDictionary(
             kv => kv.Key,
+            kv =>
+            {
+                var modalKey = PickModalSequenceKey(kv.Value);
+                return new
+                {
+                    instanceCount = kv.Value.InstanceCount,
+                    properties = kv.Value.Properties.OrderBy(p => p.Key).ToDictionary(
+                        p => p.Key,
+                        p => new
+                        {
+                            freq = p.Value.Freq,
+                            dataTypes = p.Value.DataTypes,
+                            varHashes = p.Value.VarHashes,
+                            template = p.Value.Template,
+                        }),
+                    sequences = kv.Value.Sequences.OrderByDescending(s => s.Value)
+                            .ToDictionary(s => s.Key, s => s.Value),
+                    // 众数组合对应的那一个完整真实实例——挑默认字段块时，众数组合里每个字段的
+                    // 值都来自同一个真实文件，不是从各字段各自的"第一次见到"东拼西凑。
+                    defaultSequenceKey = modalKey,
+                    defaultTemplate = modalKey is null ? null : kv.Value.SequenceTemplates.GetValueOrDefault(modalKey),
+                };
+            }),
+        // 按 dataType 原始整数值分组的全局统计，跟 behaviorString 无关——回答"这个数值
+        // 对应的字节形状是什么"，不管哪个类用了它。
+        byRawDataType = byRawDataType.OrderBy(kv => kv.Key).ToDictionary(
+            kv => kv.Key.ToString(),
             kv => new
             {
-                instanceCount = kv.Value.InstanceCount,
-                properties = kv.Value.Properties.OrderBy(p => p.Key).ToDictionary(
-                    p => p.Key,
-                    p => new
-                    {
-                        freq = p.Value.Freq,
-                        dataTypes = p.Value.DataTypes,
-                        varHashes = p.Value.VarHashes,
-                        template = p.Value.Template,
-                    }),
-                sequences = kv.Value.Sequences.OrderByDescending(s => s.Value)
-                        .ToDictionary(s => s.Key, s => s.Value),
+                count = kv.Value.Count,
+                knownEnumName = Enum.IsDefined(typeof(ReeLib.Efx.Structs.Pt.PtBehaviorPropType), kv.Key)
+                    ? ((ReeLib.Efx.Structs.Pt.PtBehaviorPropType)kv.Key).ToString()
+                    : null,
+                varSizes = kv.Value.VarSizes.OrderByDescending(s => s.Value)
+                    .ToDictionary(s => s.Key.ToString(), s => s.Value),
+                innerUnkn = kv.Value.InnerUnkn.OrderByDescending(s => s.Value)
+                    .ToDictionary(s => s.Key.ToString(), s => s.Value),
+                innerSize = kv.Value.InnerSize.OrderByDescending(s => s.Value)
+                    .ToDictionary(s => s.Key.ToString(), s => s.Value),
+                samples = kv.Value.Samples,
+                distinctDataHex = kv.Value.DistinctDataHex.OrderByDescending(s => s.Value)
+                    .Take(50).ToDictionary(s => s.Key, s => s.Value),
+                distinctDataHexCount = kv.Value.DistinctDataHex.Count,
             }),
     };
     File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
     Console.WriteLine(
-        $"OK: PtBehavior 共 {instances} 个实例，{byBehavior.Count} 个 behaviorString"
+        $"OK: PtBehavior 共 {instances} 个实例，{byBehavior.Count} 个 behaviorString、"
+        + $"{byRawDataType.Count} 种 dataType 原始值"
         + $"（扫描 {scanned}/{files.Count} 个文件，失败 {failed}）-> {jsonOutPath}");
     return 0;
 }
@@ -3381,6 +4066,10 @@ class PtBehaviorBucket
     public int InstanceCount;
     public Dictionary<string, PtBehaviorPropertyBucket> Properties = new();
     public Dictionary<string, int> Sequences = new();
+    // 每个不同的字段组合（seqKey）第一次出现时，把那一个真实实例的完整 properties 数组
+    // 原样存一份——不是靠 Properties[name].Template 那种"每个字段各自第一次见到时"拼出来的
+    // 拼盘，而是让"挑众数当默认字段块"时，众数组合里每个字段的值都来自同一个真实文件。
+    public Dictionary<string, System.Text.Json.Nodes.JsonNode?> SequenceTemplates = new();
 }
 
 class PtBehaviorPropertyBucket
@@ -3389,6 +4078,28 @@ class PtBehaviorPropertyBucket
     public Dictionary<string, int> DataTypes = new();
     public Dictionary<string, int> VarHashes = new();
     public System.Text.Json.Nodes.JsonNode? Template;
+}
+
+// 跨 behaviorString 的全局桶，按 PtBehaviorVariable.dataType 的**原始整数值**分组（不管
+// vendor 认不认识这个枚举值）——用于确认 PtBehaviorPropType 里那批"观测到但 vendor 没登记"
+// 的未知取值（3/6/8/12/20/22/24/25/26 等）实际的字节形状：`InnerUnkn`/`InnerSize` 分别是
+// `variable.unkn`/`variable.size` 的取值分布，已知类型里 `unkn` 看起来等于"4 字节分量个数"
+// （PropInt/PropFloat=1、PropFloat2=2、PropFloat3=3），这里同时收集已知类型的分布用来交叉
+// 验证这条假设是否对未知类型也成立。
+class DataTypeBucket
+{
+    public int Count;
+    public Dictionary<int, int> VarSizes = new();
+    public Dictionary<int, int> InnerUnkn = new();
+    public Dictionary<int, int> InnerSize = new();
+    public List<object> Samples = new();
+    // 每个 (behaviorString, name) 组合只存一份样本——诊断"这个 dataType 到底覆盖了哪些字段"
+    // 时，40 条来自同一个高频字段的重复样本没有意义，宁可少存几条但覆盖面广。
+    public HashSet<string> SeenNames = new();
+    // 原始字节（hex）的取值分布，不限定字段——诊断"这个 dataType 的值到底有多少种真实变化"
+    // （比如两个 int32 里第二个是不是真的会变，不是每次都是 0）。字节多、值种类爆炸的类型
+    // （25/26，材质参数嵌套结构）超过上限就不再新增 key，但已有 key 的计数继续累加。
+    public Dictionary<string, int> DistinctDataHex = new();
 }
 
 sealed class FloatKeepsDecimalPointConverter : System.Text.Json.Serialization.JsonConverter<float>

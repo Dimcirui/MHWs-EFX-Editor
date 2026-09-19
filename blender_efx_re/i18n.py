@@ -154,6 +154,37 @@ _STRINGS: dict[str, dict[str, str]] = {
     "attribute.show_all_fields": {"EN": "Show all fields", "ZH": "显示全部字段"},
     "attribute.bit_field":    {"EN": "Field",              "ZH": "字段"},
     "attribute.no_free_bits": {"EN": "No free bits left",  "ZH": "没有空闲的 bit 了"},
+    "attribute.clip_edit_hint": {
+        "EN": "Edit this curve's keyframes in the Dope Sheet / Graph Editor "
+              "(select this object, insert/move keyframes there — changes are live).",
+        "ZH": "在 Dope Sheet / Graph Editor 里编辑这条曲线的关键帧（选中这个对象，直接插入/"
+              "拖动关键帧——改动即时生效）。",
+    },
+    "attribute.clip_interp_unverified": {
+        "EN": "Import accepts most raw types (real files only ever use Discrete/Linear/Event/"
+              "Hermite, but a few placeholder types import too) — you can freely change any "
+              "keyframe's interpolation after import. Only Constant/Linear/Bezier can be "
+              "exported though; anything else (including Event's placeholder \"Sine\" label) "
+              "must be changed to one of those three first. Blender's own \"Bezier\" label "
+              "here is really Hermite (tangents are /3-converted) — not literal Bezier; "
+              "Blender has no separate Hermite identifier so this is the closest native fit.",
+        "ZH": "导入接受大部分原始类型（真实文件只会用到 Discrete/Linear/Event/Hermite，但少数"
+              "占位类型也能导入）——导入后可以在原生下拉框里随意改任何关键帧的插值。不过只有 "
+              "Constant/Linear/Bezier 能导出，其它的（包括 Event 借用的\"正弦\"占位名字）都要"
+              "先改成这三种之一才能导出。这里 Blender 自己显示的\"Bezier\"其实是 Hermite（切线"
+              "已按 ÷3 换算），不是字面贝塞尔——Blender 没有单独的 Hermite 标识符，借用这个名字"
+              "只是最接近的原生选项。",
+    },
+    "attribute.clip_select_special": {
+        "EN": "Select Event/Hermite Keyframes",
+        "ZH": "选中 Event/Hermite 关键帧",
+    },
+    "attribute.clip_xform_channel": {
+        "EN": "Keyframes for this curve live on the parent object's native transform "
+              "(select it in the Dope Sheet, not this attribute):",
+        "ZH": "这条曲线的关键帧挂在父对象的原生变换上（去 Dope Sheet 里选它，不是选这个"
+              "attribute）：",
+    },
 
     # Expression 公式的结构化编辑（blender_efx_re/expr_edit.py）
     "expr.structure":         {"EN": "Structure",           "ZH": "结构"},
@@ -179,7 +210,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "expr.kind.expr":         {"EN": "Expression",          "ZH": "表达式"},
     "expr.wrap.negate":       {"EN": "Negate",              "ZH": "取负"},
     "expr.op.desc":           {"EN": "Arithmetic operator", "ZH": "四则运算"},
-    # 三档的措辞一律写**未知状态本身**，不写验证状态（CLAUDE.md #25：不写"尚未实机确认"
+    # 三档的措辞一律写**未知状态本身**，不写验证状态（docs/PITFALLS.md #25：不写"尚未实机确认"
     # 这类出处/过程；出处在 efx_sim/expr.py 的模块 docstring 里）
     "expr.conf.confirmed":    {"EN": "Known meaning",       "ZH": "语义明确"},
     "expr.conf.corpus":       {"EN": "Meaning inferred",    "ZH": "语义为推断"},
@@ -188,6 +219,9 @@ _STRINGS: dict[str, dict[str, str]] = {
     "expr.preview":           {"EN": "Value at current frame", "ZH": "当前帧的值"},
     "expr.preview.failed":    {"EN": "cannot evaluate",     "ZH": "算不出来"},
     "expr.preview.frames":    {"EN": "Frames",              "ZH": "采样帧数"},
+    "expr.preview.notes_disclaimer": {
+        "EN": "Below only affects this preview, not the exported formula",
+        "ZH": "以下提示只影响这里的预览，不影响导出的公式文本"},
     "expr.hud.toggle":        {"EN": "Curve in viewport",   "ZH": "视口显示曲线"},
     "expr.hud.gaps":          {"EN": "%d frames cannot be evaluated (line is broken there)",
                                "ZH": "%d 帧算不出来（曲线在那里断开）"},
@@ -203,6 +237,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "EN": "This formula uses functions whose meaning is unknown.",
         "ZH": "这条公式用到了语义未知的函数。",
     },
+
+    # IMaterialExpressionAttribute 的公式列表（blender_efx_re/panels.py _draw_material_expression_content）
+    "matexpr.none":           {"EN": "No material expressions.", "ZH": "没有材质参数公式。"},
+    "matexpr.component":      {"EN": "Component",          "ZH": "分量下标"},
 
     # Add（新增结构）
     "add.action":             {"EN": "Add Action",          "ZH": "新增 Action"},
@@ -254,6 +292,9 @@ _STRINGS: dict[str, dict[str, str]] = {
 
     # PtBehavior 属性候选目录
     "ptbehavior.add_property": {"EN": "Add from Catalog",  "ZH": "从候选目录添加"},
+    "ptbehavior.add_all_properties": {"EN": "Add All",     "ZH": "全部添加"},
+    "ptbehavior.unknown_shape": {"EN": "(unknown data type, expand to inspect)",
+                                  "ZH": "（未知数据类型，展开查看）"},
 
     # 重命名
     "name.label":             {"EN": "Name",                "ZH": "名称"},
@@ -318,6 +359,7 @@ _STRINGS: dict[str, dict[str, str]] = {
                                "ZH": "（索引尚未建立——设置 EFX 根目录后点重建）"},
     "asset.stats_prefix":     {"EN": "Indexed: ",           "ZH": "已索引："},
     "asset.types_suffix":     {"EN": "types",               "ZH": "种类型"},
+    "asset.behaviors_suffix": {"EN": "PtBehavior classes",  "ZH": "种 PtBehavior"},
     "asset.pick_type":        {"EN": "Pick Type",           "ZH": "选择类型"},
     "asset.no_type_selected": {"EN": "(no type selected)",  "ZH": "（未选择类型）"},
     "asset.no_types_in_category": {"EN": "(no indexed types in this category)",

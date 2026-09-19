@@ -34,12 +34,13 @@ from bpy.props import (
     FloatProperty,
     FloatVectorProperty,
     IntProperty,
+    IntVectorProperty,
     PointerProperty,
     StringProperty,
 )
 from bpy.types import Collection, Object, PropertyGroup
 
-from . import i18n
+from . import attribute_types, i18n
 
 # ---------------------------------------------------------------------------
 # ~TYPE 常量
@@ -334,6 +335,110 @@ def _set_float4_color(self, value) -> None:
         by_key[key].float_value = component
 
 
+# PtBehaviorVariable 里 vendor 自己的 PtBehaviorPropType 枚举不认识的 dataType，落进
+# `PtBehaviorVariableDataPrefabUnknown` 的兜底形状：一个不透明字节块，JSON 里序列化成
+# `variable.data`（base64 字符串）。这几个 get/set 不是猜出来的——2026-09-19 用
+# `EfxBridge ptbehaviorcatalog` 的 `byRawDataType` 统计扫过全语料（9175/9221 个文件），
+# 按 dataType 数值分组看 `variable.size`（字节数）和实际数值分布，只对**全语料字节数恒定
+# 且解出来的数值明显合理**（小整数、或者按 int32 读会是天文数字但按 float32 读是正常范围）
+# 的几个数值开放紧凑编辑；`_UNKNOWN_DATATYPE_SHAPES`（panels.py）记着每一条的取证依据。
+def _unknown_data_child(node: "EFXValueNode"):
+    """一个 OBJECT 节点如果是 `PtBehaviorVariableDataPrefabUnknown` 的序列化形状（含 `data`
+    这个 base64 字符串子键），返回那个子节点，否则 None。"""
+    if node.data_type != "OBJECT":
+        return None
+    return find_field(node.children, "data")
+
+
+def unknown_data_byte_length(node: "EFXValueNode") -> int | None:
+    """`variable.data` 解码之后的字节数；解不出来（不是这个形状/不是合法 base64）返回
+    `None`。panels.py 用它核对"这条数据的实际长度是不是正好等于某个已知形状需要的字节数"
+    ——长度对不上就不提供紧凑编辑，回退到通用展开区，不猜、不截断、不补零。
+    """
+    import base64
+
+    child = _unknown_data_child(node)
+    if child is None or child.data_type not in ("STRING", "NULL"):
+        return None
+    try:
+        return len(base64.b64decode(child.string_value or ""))
+    except (ValueError, TypeError):
+        return None
+
+
+def _get_unknown_packed(node: "EFXValueNode", fmt: str) -> tuple:
+    import base64
+    import struct
+
+    child = _unknown_data_child(node)
+    count = len(fmt)
+    if child is None or child.data_type not in ("STRING", "NULL"):
+        return (0,) * count
+    try:
+        raw = base64.b64decode(child.string_value or "")
+    except (ValueError, TypeError):
+        return (0,) * count
+    needed = struct.calcsize("<" + fmt)
+    if len(raw) != needed:
+        # 长度对不上：面板侧本来就已经用 unknown_data_byte_length() 核对过才会画出这个
+        # 控件，这里只是双重保险，不该发生——发生了就返回全零而不是拿越界字节猜，不伪造数据。
+        return (0,) * count
+    return struct.unpack("<" + fmt, raw)
+
+
+def _set_unknown_packed(node: "EFXValueNode", values, fmt: str) -> None:
+    import base64
+    import struct
+
+    child = _unknown_data_child(node)
+    if child is None:
+        return
+    packed = struct.pack("<" + fmt, *values)
+    if child.data_type == "NULL":
+        child.data_type = "STRING"
+    child.string_value = base64.b64encode(packed).decode("ascii")
+
+
+def _get_unknown_int32(self) -> int:
+    return _get_unknown_packed(self, "i")[0]
+
+
+def _set_unknown_int32(self, value: int) -> None:
+    _set_unknown_packed(self, (value,), "i")
+
+
+def _get_unknown_int16(self) -> int:
+    return _get_unknown_packed(self, "h")[0]
+
+
+def _set_unknown_int16(self, value: int) -> None:
+    _set_unknown_packed(self, (max(-32768, min(32767, value)),), "h")
+
+
+def _get_unknown_uint8(self) -> int:
+    return _get_unknown_packed(self, "B")[0]
+
+
+def _set_unknown_uint8(self, value: int) -> None:
+    _set_unknown_packed(self, (max(0, min(255, value)),), "B")
+
+
+def _get_unknown_int32x2(self) -> tuple:
+    return _get_unknown_packed(self, "ii")
+
+
+def _set_unknown_int32x2(self, value) -> None:
+    _set_unknown_packed(self, tuple(value), "ii")
+
+
+def _get_unknown_float32x4(self) -> tuple:
+    return _get_unknown_packed(self, "ffff")
+
+
+def _set_unknown_float32x4(self, value) -> None:
+    _set_unknown_packed(self, tuple(value), "ffff")
+
+
 # `IBoneRelationAttribute` 各实现类里"内联存的那份骨骼名"字段名（`ParentOptions.BoneName` /
 # `Attractor.boneName` / `VanishArea3D.JointName` / `TypeLightning3D.boneName` /
 # `TypeStrainRibbonV3.boneName`）。它和 `ParentBone` 是**同一个值的两种编码**：一个内联在
@@ -388,6 +493,45 @@ def _mirror_parent_bone_to_inline(node: "EFXValueNode") -> None:
             return
 
 
+def _apply_ptbehavior_default(node: "EFXValueNode") -> None:
+    """`behaviorString` 被改写成一个候选目录里收录的类名，就把 `properties` 整个替换成
+    这个类在全语料里出现次数最多的那一套字段组合（`ptbehavior_catalog.default_instance()`，
+    取自同一个真实实例）——不管改之前 `properties` 里有什么。这不是候选目录 `candidates()`
+    的全量并集——那是"这个类见过的所有字段"，用来支持手动增删，不代表任何一个真实文件真的
+    长这样。
+
+    **无条件替换，不是只在为空时才填**（2026-09-19 改，推翻了第一版"已有内容就不碰"的判断）：
+    `behaviorProperty`（字段名）在 PtBehavior 里不是全局唯一 ID，同一个名字在不同 behaviorString
+    下可以对应完全不同的 `dataType`/取值语义——engine 侧按 `(behaviorString, behaviorProperty)`
+    这一对去查怎么解读这条数据，换了 `behaviorString` 之后原来那些字段名即使字面上还留着，
+    对新的类来说也是要么查不到、要么查到但语义完全不对，运行时至少是无效覆盖，往坏了说会报错/
+    崩溃。留着旧字段"看起来没丢数据"，实际上是留着一堆在新语境下已经失效甚至有害的垃圾——
+    这种情况下"替换"比"保留"更接近"不丢数据"的本意，铁律 #1 保护的是"用户认得出来、有意义
+    的数据"，不是"字面上还在但已经对不上号的字节"。
+
+    `default_entries` 为空（这个类的众数用法就是"什么都不覆盖"，如 `EffectPassThrough`）时，
+    替换的结果就是清空——这同样是正确行为，不是"没找到默认值所以什么也不做"。
+    """
+    fields = getattr(node.id_data, "efx_fields", None)
+    if fields is None:
+        return
+    properties_node = find_field(fields, "properties")
+    if properties_node is None or properties_node.data_type != "ARRAY":
+        return
+    from . import ptbehavior_catalog
+    default_entries = ptbehavior_catalog.default_instance(node.string_value)
+    with suppress_field_updates():
+        properties_node.children.clear()
+        for entry in default_entries:
+            child = properties_node.children.add()
+            populate_node(child, str(len(properties_node.children) - 1), entry["template"])
+            # 每条都已经有紧凑主行了（见 panels._draw_ptbehavior_property），跟
+            # io_tree.collapse_mdf_properties() 对导入路径的处理一致，默认折起来，
+            # 不要一次性摊开一整块字段把 attribute 挤出屏幕。
+            child.ui_expand = False
+    properties_node.ui_expand = True
+
+
 def _promote_null_to_string(self, context) -> None:
     """`string_value` 的 `update` 回调：`data_type == "NULL"` 的节点被用户往里面打字，就地
     转正成 `STRING`。
@@ -416,6 +560,8 @@ def _promote_null_to_string(self, context) -> None:
         self.string_value = fixed
     if self.key == "ParentBone" and not _suppress_field_updates:
         _mirror_parent_bone_to_inline(self)
+    if self.key == "behaviorString" and not _suppress_field_updates:
+        _apply_ptbehavior_default(self)
     _on_field_edited(self, context)
 
 
@@ -631,6 +777,27 @@ class EFXValueNode(PropertyGroup):
         get=_get_float4_color, set=_set_float4_color,
     )
 
+    # 只在这个节点是 PtBehaviorVariable 的 `variable`、且 `data` 的字节数正好等于对应形状
+    # 需要的字节数时才有意义（见 panels._PTBEHAVIOR_UNKNOWN_DATATYPE_SHAPES 的取证依据）。
+    # get/set 直接读写 `data` 这个 base64 字符串子节点，字段树仍然是唯一数据源。
+    unknown_int32_value: IntProperty(
+        name="Value", get=_get_unknown_int32, set=_set_unknown_int32,
+    )
+    unknown_int16_value: IntProperty(
+        name="Value", min=-32768, max=32767,
+        get=_get_unknown_int16, set=_set_unknown_int16,
+    )
+    unknown_uint8_value: IntProperty(
+        name="Value", min=0, max=255,
+        get=_get_unknown_uint8, set=_set_unknown_uint8,
+    )
+    unknown_int32x2_value: IntVectorProperty(
+        name="Value", size=2, get=_get_unknown_int32x2, set=_set_unknown_int32x2,
+    )
+    unknown_float32x4_value: FloatVectorProperty(
+        name="Value", size=4, get=_get_unknown_float32x4, set=_set_unknown_float32x4,
+    )
+
     # 只在这个节点是弧度制角度字段的标量子节点时才有意义——覆盖三种形状：Transform3D.
     # LocalRotation 这类 Vector3 的 X/Y/Z、TypeMeshV2.RotationX 这类 via.Range 的 s/r、
     # Transform3DModifier.unkn7 这类孤立标量。纯 UI 层的角度显示代理，get/set 直接读写
@@ -784,6 +951,15 @@ _PAIR_MIN_MAX_FIELDS = frozenset({
     ("EmitterHSV", "Range3"),                        # 75.0%  (100,100) (240,650)
     ("TexelChannelOperator", "Keep"),                # 26.3%  (20,60) (100,100) (0,5)
     ("TexelChannelOperator", "Vanish"),              # 73.7%  (80,80) (20,20)
+    # --- `EFXAttributeAttractor.ShapeRangeX/Y/Z`（2026-09-18，用户实机测试）：给三轴各自的
+    # 主值设置不同数值，观测到的是形状沿该轴伸缩到"主值±副值"这个区间，不是"主值+随机抖动"。
+    # 语料复核（`EfxBridge pairstats`）不是教科书式的零违例：`secondLtFirst` 分别是 4/1105、
+    # 5/1105、0/1105——个别文件副值小于主值，比 `_PAIR_MIN_MAX_FIELDS` 其余条目噪声大，
+    # 参考 `boneName` 95204 次里 1 次不一致仍判 confirmed 的先例，判定是语料里的个别脏数据，
+    # 不是模型错误，但比表里其余条目的证据弱，标注置信度时要如实体现。
+    ("Attractor", "ShapeRangeX"),
+    ("Attractor", "ShapeRangeY"),
+    ("Attractor", "ShapeRangeZ"),
 })
 
 
@@ -1067,9 +1243,47 @@ def is_expression_attribute_dict(attr_dict: dict) -> bool:
 
     不需要 `is_clip_attribute_dict()` 那种"减去 IMaterialXxxAttribute"的排除逻辑——
     `IMaterialExpressionAttribute` 暴露的是完全不同的键名 `MaterialExpressions`（没有配对的
-    bits 键），不会和这两个键撞名，本轮不处理，继续走通用树透传。
+    bits 键），不会和这两个键撞名，两个检测函数可以在同一个 attribute 上同时命中（见
+    `is_material_expression_attribute_dict()`）。
     """
     return "Expression" in attr_dict and "ExpressionBits" in attr_dict
+
+
+#: `IMaterialExpressionAttribute` 里**语料验证过、真的见过非空条目**的三个类型：
+#: `TypeBillboard3DMaterialExpression` 14 例、`TypeRibbonLengthMaterialExpression` 12 例
+#: （`Art\VFX` 9175 个文件扫描），`TypeMeshExpression`（`11_sfc_052.efx.5571972`，3 个实例，
+#: 含一条 2 条目的——`OpacityPower`/`Opacity` 两个分量各一条公式）。均已核对 `mdfPropertyHash`
+#: 能查到真实材质参数名（EmissiveParam/ChromaColor/OpacityPower/Opacity 等）。
+#:
+#: 结构上 `IMaterialExpressionAttribute` 还有 8 个同形状的实现类，本函数**故意不做纯结构判断**
+#: （不像 `is_clip_attribute_dict()`），只认这几个具体 `$type`——按决定，先只覆盖语料里验证过的。
+#: 另外还发现一个真实的坑：`EFXAttributeTypeRibbonParticleMaterialExpression`
+#: （`EfxTypeRibbon.cs:1182`）字段上确实有 `materialExpressions`，但类声明**没有**实现
+#: `IMaterialExpressionAttribute` 接口——vendor `EfxFile.ParseExpressions()` 的
+#: `attr is IMaterialExpressionAttribute` 判断会跳过它，`MaterialExpressions.parsedExpressions`
+#: 永远解析不出来。语料里这个类型唯一的一个实例 `materialExpressionCount == 0`（空），没有
+#: 真实数据能验证这条路径，先排除在外，等遇到真样本再处理这个额外的 vendor 不一致。
+MATERIAL_EXPRESSION_VERIFIED_TYPES = frozenset({
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeBillboard3DMaterialExpression",
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeRibbonLengthMaterialExpression",
+    "ReeLib.Efx.Structs.Main.EFXAttributeTypeMeshExpression",
+})
+
+
+def is_material_expression_attribute_dict(attr_dict: dict) -> bool:
+    """一个 attribute 字典是不是我们已经建了专属 UI 的 `IMaterialExpressionAttribute`
+    （`MaterialExpressions`，每条额外带 `mdfPropertyHash`/`propertyComponentIndex`——驱动
+    一个 mdf2 材质参数的某个分量，用的是和 `mesh.properties`/`PropertyNameUTF8Hash`
+    完全同一张 UTF-8 MurMur3 名字哈希表，见 `semantics.lookup_name_hash()`）。
+
+    按 `$type` 精确匹配 `MATERIAL_EXPRESSION_VERIFIED_TYPES`，不是结构判断——其余 9 个同形状
+    的实现类继续走通用树透传，见该常量上面的说明。
+    """
+    return (
+        attr_dict.get("$type", "") in MATERIAL_EXPRESSION_VERIFIED_TYPES
+        and "MaterialExpressions" in attr_dict
+        and attr_dict.get("MaterialExpressions") is not None
+    )
 
 
 #: vendor 源码里"没起真名，只是编号占位"的字段一律长这个形状：`unkn1`、`unkn5`、`ukn1_7`……
@@ -1124,16 +1338,25 @@ def bit_display_label(bit_index: int, bit_name: str) -> str:
 
 def expression_bit_index_for_field(attr_type: str, field_key: str) -> "int | None":
     """`resolve_expression_bit_name()` 的反函数：给一个字段名，反查它在这个
-    `IExpressionAttribute` 类型里对应哪个 bit。bit 和字段是反射验证过的 1:1
-    （全语料核查 58 个类型，54 个完全对应，见 docs/EXPRESSION_SEMANTICS.md §7.1），
-    所以字段那一行可以直接画一个"加/减这条公式"的按钮，不需要再单独维护一份
-    "选哪个字段"的下拉——bit_index 只是这份数据在文件里的存储位置，不是用户需要
-    关心的另一个身份。查不到（这个类型没有反射表，或这个字段名不在表里——多数
-    `TextureUnitExpression` 这类数组形态、以及少数声明位数多于字段数的类型）返回
-    `None`，调用方据此判断要不要退回按 bit_index 操作的旧列表 UI（见
-    `panels._draw_expression_bit_toggle()` / `EFX_RE_UL_expression_curves.filter_items()`）。"""
-    from . import semantics
-    names = semantics.get_expression_bit_names(attr_type)
+    `IExpressionAttribute` 类型里对应哪个 bit。bit 和字段是反射验证过的 1:1（全语料核查
+    58 个类型，54 个完全对应，见 docs/EXPRESSION_SEMANTICS.md §7.1），所以字段那一行可以
+    直接画一个"加/减这条公式"的按钮，不需要再单独维护一份"选哪个字段"的下拉——bit_index
+    只是这份数据在文件里的存储位置，不是用户需要关心的另一个身份。
+
+    按**声明顺序做位置匹配**（`attribute_types.expression_assign_field_order()`），不比较
+    任何名字——原来这里查的是 `semantics.get_expression_bit_names()`，那张表在某个 bit 有
+    `BitNameDict`（vendor 手写的"友好名字"）覆盖时，存的是那个友好名字而不是字段自己的
+    C# 名字，字段名找不到就查不到 bit，明明有 bit 却不出现 [+]（已用真实样本
+    `EFXAttributeRgbCommonExpression` 复现：`particleColor` 被 `BitNameDict` 起名
+    `"GreenChColor"`，找 `"particleColor"` 永远找不到）。换成位置匹配后不再依赖任何
+    人工写的名字表，友好名字只在**显示**时（`resolve_expression_bit_name()`）还会用到。
+
+    查不到（这个类型没有反射记录，或这个字段名不是声明成 `ExpressionAssignType` 的字段——
+    多数 `TextureUnitExpression` 这类数组形态）返回 `None`，调用方据此判断要不要退回按
+    bit_index 操作的旧列表 UI（见 `panels._draw_expression_bit_toggle()` /
+    `EFX_RE_UL_expression_curves.filter_items()`）。"""
+    from . import attribute_types
+    names = attribute_types.expression_assign_field_order(attr_type)
     if not names:
         return None
     try:
@@ -1419,10 +1642,13 @@ _EXPR_PARAM_TYPE_ITEMS = (
     ("Float", "Float", "type == Float：单个浮点值，value1 生效，value2/value3 未用"),
     ("Color", "Color", "type == Color：value 是一个打包 uint32 RGBA（`via.Color.rgba`，"
                         "存进 rgba_str），不占用 value1/2/3"),
-    ("Range", "Range", "type == Range：value1/value2/value3 三个浮点值都生效。vendor 注释"
-                        "推测是{初始值, 最小值, 最大值}（X 总是落在 Y-Z 区间内），未证实"),
-    ("Float2", "Float2", "type == Float2：value1/value2 两个浮点值生效，value3 未用。"
-                          "vendor 注释里样本只见过 0.0/1.0，疑似布尔语义，未证实"),
+    # Range：vendor 注释推测 value1/2/3 是 {初始值, 最小值, 最大值}（样本里初始值总是落在
+    # 最小-最大区间内），未证实，tooltip 只保留"可能是什么"，不铺开举证过程（用户文案规则）。
+    # Float2：vendor 注释里样本只见过 0.0/1.0，疑似布尔语义，同样未证实。
+    ("Range", "Range", "type == Range：value1/value2/value3 三个浮点值都生效，"
+                        "可能是{初始值, 最小值, 最大值}（未证实）"),
+    ("Float2", "Float2", "type == Float2：value1/value2 两个浮点值生效，value3 未用，"
+                          "可能是布尔值（未证实）"),
 )
 
 _UINT32_MASK = 2**32 - 1
@@ -1484,32 +1710,47 @@ class EFXExpressionParamItem(PropertyGroup):
 
 
 # ---------------------------------------------------------------------------
-# EFXClipCurveItem / EFXClipKeyframeItem —— IClipAttribute 的动画曲线编辑（挂在 EFX_ATTRIBUTE
-# 对象上，不是 EFX_ROOT——每个 Clip attribute 有自己独立的一份，不是文件级共享表）
+# EFXClipCurveItem —— IClipAttribute 的动画曲线编辑（挂在 EFX_ATTRIBUTE 对象上，不是
+# EFX_ROOT——每个 Clip attribute 有自己独立的一份，不是文件级共享表）
+#
+# 关键帧数据（frame/value/插值选择/Hermite 切线句柄）**不**存在这里，活在 `clip_fcurve.py`
+# 建的原生 Blender fcurve 里——用户直接在 Dope Sheet / Graph Editor 里编辑，`io_tree.py`
+# 导入/导出时调 `clip_fcurve.import_curve()`/`export_curve()` 在 fcurve 和字节之间搬运。
+# `EFXClipCurveItem` 只保留"这条曲线是什么"的结构性字段：驱动哪个 bit、按 Int 还是 Float
+# 读取、这条曲线的 fcurve 定位 key。
+#
+# `FrameInterpolationType` 导入能接受 `{0,1,2,3,4,5,6,8,9,10,11,12,13}`（`7` 除外），但只有
+# `{1=Discrete, 2=Linear, 5=Hermite}` 能直接导出，`3=Event` 借的占位名字必须先转成这三种
+# 之一才能导出，剩下 9 个"非标准"值（语料从没用过，实机测出大多恒为 0/9 飞天）导入后能在
+# Blender 原生下拉框里改成任何类型，但导出前也必须先转成标准三种之一——见 `clip_fcurve.py`
+# 模块文档"插值类型语义"一节的完整证据链和分类。`5`（Hermite）借用 Blender 唯一支持自由
+# 切线的 `BEZIER` 插值标识符表示（切线要过 ÷3/×3 换算，不是字面 Bezier）。`7`（真 Bezier）
+# 是唯一仍然硬拒绝导入的值——不是证据不够，是它会消费 `interpolationData[]` 里的切线槽位，
+# 猜错消费顺序会连锁腐蚀同一条曲线里其它 Hermite 帧的数据，属于铁律 #1 要拒绝的风险，跟
+# 其它 9 个"纯值+位置，不摸切线数组"的非标准值不是同一类问题。仍未证实的只剩一处：
+# `Transform3DClip`/`PtTransform3DClip` 的 bit 顺序（哪个 bit 是位移/旋转/缩放的哪个分量）。
+# 详见 `docs/PITFALLS.md` 对应条目和 `clip_fcurve.py` 模块文档。
 # ---------------------------------------------------------------------------
 
 # EfxClipPlaybackType（ClipSubstructs.cs:7-12）。vendor 注释原文只是猜测（"might be coded as
 # a Playback / loop trigger flag enum"），结构上 4 个取值完全确认，游戏侧真正含义不确认——
-# 分开标注，不写进下拉框标签本身。
+# 分开标注，不写进下拉框标签本身。-1/2 的具体猜测（"全部触发循环"/"都不触发循环，手动控制？"）
+# 就是 vendor 那句注释的直接转述，tooltip 只留结论，不重复举证过程（用户文案规则）。
 _CLIP_LOOP_TYPE_ITEMS = (
-    ("-1", "Looping", "loopType == -1：vendor 注释推测『一切都触发循环』，未证实"),
+    ("-1", "Looping", "loopType == -1：可能是'全部触发循环'（未证实）"),
     ("0", "Unknown", "loopType == 0：语义未知"),
-    ("2", "NonLooping", "loopType == 2：vendor 注释推测『都不触发循环』（手动控制？），未证实"),
+    ("2", "NonLooping", "loopType == 2：可能是'都不触发循环'（未证实）"),
     ("4", "Type4", "loopType == 4：语义未知"),
 )
 
 # FrameInterpolationType（ClipSubstructs.cs:33-44）。vendor 注释坦承"这是不是插值方式本身都是
-# 猜的"，只有 Bezier（5）有强证据支持（带额外的切线数据段）。
-_CLIP_INTERP_TYPE_ITEMS = (
-    ("0", "Unknown", "type == 0：语义未知"),
-    ("1", "Type1", "vendor 注释：只在关键帧列表末尾出现过"),
-    ("2", "Type2", "vendor 注释：在首/中/末帧都出现过，也见过全 2 的列表；EfxClipFrame 的"
-                    "默认构造值"),
-    ("3", "Type3", "type == 3：语义未知"),
-    ("5", "Bezier", "大概率是贝塞尔曲线插值——带独立的切线数据段（interpolationData），是唯一"
-                     "有结构性证据支持插值方式这个猜测的取值"),
-    ("13", "Type13", "type == 13：仅在 DMC5 样本见过"),
-)
+# 猜的"，2026-09-19 语料统计+实机测试确认它和 kagenocookie/RE-Engine-Lib 独立 .clip/.tml 格式
+# 共用同一套命名枚举（Unknown/Discrete/Linear/Event/Slerp/Hermite/AutoHermite/Bezier/
+# AutoBezier/OffsetFrame/OffsetSec/PassEvent/Bezier3D/Range/...）；真实 MHWS 文件只用到
+# `{1=Discrete, 2=Linear, 3=Event, 5=Hermite}`，其余的不是没见过就是实机测出会崩/飞天/恒零。
+# 具体的映射表 + 证据链挪到了 clip_fcurve.py（`_INTERP_MHWS_TO_BLENDER`），这里不再维护
+# 一份平行的 EnumProperty items——旧的 EFXClipKeyframeItem 删除后，插值类型现在是 Blender 原生
+# fcurve 的 `interpolation` 属性，不是这份表驱动的下拉框了。
 
 # ClipValueType（ClipSubstructs.cs:14-18）。
 _CLIP_VALUE_TYPE_ITEMS = (
@@ -1529,27 +1770,6 @@ def int_bits_to_float(value: int) -> float:
     只能自己做这个位转换，写进 `FloatValue`（它的 setter 是对的：`this.value = value`）。
     `IntValue` 的 getter 本身没问题，导入时直接读没问题。"""
     return struct.unpack("<f", struct.pack("<i", value))[0]
-
-
-class EFXClipKeyframeItem(PropertyGroup):
-    """对应 `EfxClipFrame`（一个关键帧）+ 命中 `Bezier` 插值时的
-    `EfxClipInterpolationTangents`（切线，`ClipSubstructs.cs:81-89`，只在
-    `interp_type == "5"` 时才在文件里真实存在，见 `EfxClipData.ParseClip()`——按 frame 出现
-    顺序和"是不是 Bezier"筛出的并行数组，不是按下标对齐）。
-
-    `value` 统一用 `FloatProperty` 存（不管 `ClipValueType` 是 Int 还是 Float）——Int 类型时
-    存整数的浮点表示（如 `1.0`），导出时四舍五入取整再按位转换成 `FloatValue`
-    （见 `int_bits_to_float()`），没有必要为了一个大概率是小整数/布尔语义的字段单独维护一个
-    `IntProperty`。
-    """
-
-    frame_time: FloatProperty(name="Time")
-    interp_type: EnumProperty(name="Interpolation", items=_CLIP_INTERP_TYPE_ITEMS, default="2")
-    value: FloatProperty(name="Value")
-    tangent_out_x: FloatProperty(name="Out X")
-    tangent_out_y: FloatProperty(name="Out Y")
-    tangent_in_x: FloatProperty(name="In X")
-    tangent_in_y: FloatProperty(name="In Y")
 
 
 class EFXClipCurveItem(PropertyGroup):
@@ -1572,8 +1792,11 @@ class EFXClipCurveItem(PropertyGroup):
     bit_index: IntProperty(name="Bit Index", min=0)
     bit_name: StringProperty(name="Bit Name")
     value_type: EnumProperty(name="Value Type", items=_CLIP_VALUE_TYPE_ITEMS, default="5")
-    keyframes: CollectionProperty(type=EFXClipKeyframeItem)
-    keyframes_active_index: IntProperty()
+    #: `clip_fcurve.add_channel()` 分配的自定义 ID 属性 key（`obj["efx_clip_ch_<id>"]`），
+    #: 这条曲线的 fcurve data_path 就钉在这个 key 上，终身不变、删除后不回收——不用集合下标
+    #: 寻址是为了不让"删中间一条曲线，后面的下标全部位移"把别的曲线的 fcurve 挪到错误位置上
+    #: （见 model.py 顶部 EFXClipCurveItem 说明和 clip_fcurve.py 模块文档）。
+    channel_key: StringProperty(name="Channel Key")
 
 
 def _expression_node_changed(self, context) -> None:
@@ -1647,7 +1870,7 @@ def _expression_formula_changed(self, context) -> None:
     """公式文本改了（用户手打、导入、结构化编辑以外的任何来源）-> 重新解析成节点行。
 
     解析失败不清空文本、也不静默放过：记进 `formula_error`、把行清空，面板据此只显示
-    错误和原始文本框（铁律 #2：宁可让用户看见一条炸了的公式，也不给他一棵半成品的树）。
+    错误和原始文本框（铁律 #1：宁可让用户看见一条炸了的公式，也不给他一棵半成品的树）。
     """
     from . import expr_edit
     expr_edit.on_formula_edited(self)
@@ -1683,7 +1906,7 @@ def _write_formula_canonical(self, value) -> None:
     """规范记法 -> `formula`，随后由 `formula` 自己的 update 回调重建行。
 
     转换失败**不动 `formula`**，只把原因写进 `formula_error`——和 `write_formula()`
-    同一条纪律（铁律 #2：宁可让用户看见报错，也不静默写一条内容不对的公式）。
+    同一条纪律（铁律 #1：宁可让用户看见报错，也不静默写一条内容不对的公式）。
     """
     try:
         self.formula = _expr_text.canonical_to_vendor(value)
@@ -1726,7 +1949,7 @@ class EFXExpressionCurveItem(PropertyGroup):
     nodes_active_index: IntProperty(name="Active Node")
     #: `a  |  b` 第二根值的原始文本（vendor `ExpressionRootValueOption`，语义未证实）。
     #: 结构化编辑只动第一支，这一支原样存着、拼回去时原样带上——没证实语义不是丢数据的
-    #: 理由（铁律 #2）。
+    #: 理由（铁律 #1）。
     second_branch: StringProperty(name="Second Root Value")
     #: 这棵树的参数表（`EFXExpressionTree.parameters`）原样存成 JSON，**不透传就丢数据**。
     #:
@@ -1737,7 +1960,134 @@ class EFXExpressionCurveItem(PropertyGroup):
     #: 这里原来写死成空数组，后果是**导入任何用了 `PI` 的官方特效再导出，π 就变成 0**：
     #: 语料里 `PI` 一律是 `source=1, constantValue=3.1415927`（6 个文件 110 处，无一例外），
     #: 表丢了之后解析器只能按名字回退成 `source=2`（External），而引擎没有东西绑给它。
-    #: 实测确认过这条链（铁律 #2：宁可拒绝也不静默丢数据）。
+    #: 实测确认过这条链（铁律 #1：宁可拒绝也不静默丢数据）。
+    tree_parameters: StringProperty(name="Tree Parameters", default="[]")
+
+
+def _material_expr_assign_type_items(self, context):
+    """`EFXMaterialExpressionItem.assign_type` 的下拉选项——复用普通 Expression 那套
+    `ExpressionAssignType`（`attribute_types.expression_assign_type_members()`），见字段
+    定义处的说明。当前值如果不在这五个成员里（语料里没见过，防御性处理，铁律 #1：
+    宁可多出一条看不懂的选项，也不能让 EnumProperty 校验失败把这个值悄悄丢掉）就补一条
+    原样数值的兜底项。"""
+    items = attribute_types.expression_assign_type_members()
+    out = [(str(value), label, "", 0, value) for value, label in items]
+    known = {value for value, _ in items}
+    current = self.assign_type_raw
+    if current not in known:
+        out.append((str(current), str(current), "", 0, current))
+    return out
+
+
+def _read_material_expr_assign_type(self):
+    return self.assign_type_raw
+
+
+def _write_material_expr_assign_type(self, value):
+    self.assign_type_raw = value
+
+
+class EFXMaterialExpressionItem(PropertyGroup):
+    """对应 `IMaterialExpressionAttribute` 的一条公式（`MaterialExpressions.expressions` 里
+    的一个 `EFXMaterialExpression`）——结构上是 `EFXExpressionCurveItem` 的近亲（同一棵
+    `EFXExpressionObject` 树、同一套 vendor 记法/规范记法双向转换），少了 `bit_index`/
+    `bit_name`（这里没有 bits，条目就是平铺数组，导入顺序即导出顺序），多了几个字段：
+    `mdf_property_hash`/`component_index`（这条公式驱动哪个 mdf2 材质参数的哪个分量）+
+    `assign_type`/`is_color`/`struct3_count`/`is_single_param`（原 `unkn1`/`unkn2`/
+    `unkn5`——2026-09-18 全语料 720 条相关性排查后拟的名字，`struct3_count` 仍然是纯未知
+    字段，必须原样透传，见各自字段上面的说明——`is_single_param` 那条记录了一次真实踩过
+    的静默丢数据）。见
+    `model.is_material_expression_attribute_dict()` 上面关于验证范围的说明。
+
+    `formula`/`formula_error`/`formula_canonical`/`nodes`/`nodes_active_index`/
+    `second_branch`/`tree_parameters` 复用和 `EFXExpressionCurveItem` 完全相同的字段名 +
+    完全相同的模块级函数（`_expression_formula_changed`/`_read_formula_canonical`/
+    `_write_formula_canonical`）——`expr_edit.py` 的结构化编辑器（`draw_nodes()`/
+    `on_formula_edited()`/`unknown_variable_names()`）全部只按这几个字段名读写、不认
+    具体类型，两边免费共用一套。**没有复用**的只是 `expr_nodes.py` 的独立节点视口（那边
+    硬编码了 `obj.efx_expression_curves`/`efx_expression_curves_active_index`，v1 范围
+    不含增删条目、只有单条/极少条目，划不来为这一个视口再抽一层）——面板内嵌的行视图
+    （`expr_edit.draw_nodes()`）已经是完整的结构化编辑能力，只是没有独立弹窗。
+
+    增删只开放"复制/删除已有条目"这一半（`structure_ops.EFX_RE_OT_material_expression_
+    duplicate`/`_remove`）：`MaterialExpressionList.indices`（容器级，`uint[]`，语义未证实——
+    docs/TOPLEVEL_STRUCTURE.md 记过同形状的 Clip 版本 `indices` 一样没解出来）原样存成
+    `Object.efx_material_expression_indices` 的 JSON 字符串、导出原样写回。2026-09-18 拿
+    504 个真实实例 + 各自引用的 .mdf2 交叉核对过：`indices` 的**长度**几乎总是等于列表里
+    "去重后的材质参数个数"（487/498 吻合），但具体**数值**既不是 mdf2 参数表下标、也不是
+    文件级连续计数器，没解出来——复制/删除已有条目不改变"去重后的参数集合"，这个操作是
+    安全的；引入一个列表里全新的材质参数需要往 `indices` 里加一项，不知道该填什么，所以
+    "新增指向全新参数的条目"还是不支持（铁律 #1/#3）。
+    """
+
+    #: mdf2 材质参数名的 MurMur3(UTF-8) 哈希，十进制字符串存储（同 `EFXValueNode.uint_str`
+    #: 的 BIGINT 约定）——不能用裸 `IntProperty`：Blender `IntProperty` 是有符号 32 位，
+    #: 这里的真实取值（如 `2961540764`）超过 `2^31-1`，赋值会被静默截断/钳位（不是崩溃，
+    #: 是悄悄变成另一个数——比 `model.as_int32()` 文档里那个 EnumProperty 崩溃案例更隐蔽）。
+    #: 显示名靠 `semantics.lookup_name_hash()` 查（和 `panels._mdf_property_name()` 同一张表，
+    #: 已用真实语料核对：`EmissiveParam`/`EmissiveIntensityParam`/`ChromaColor` 三个哈希全部
+    #: 命中）。
+    mdf_property_hash: StringProperty(name="Mdf Property Hash", default="0")
+    #: 这条公式驱动目标属性的哪个分量（vendor 原话"e.g. 0/1/2 for the X/Y/Z of a Vector3
+    #: property"，`ExpressionData.cs:171`）——显示裸下标，不编 X/Y/Z/W 标签：`Range` 形状的
+    #: mdf 属性分量顺序另有一套约定（`_draw_mdf_property_value()` 的 Z/W 说明），没有交叉
+    #: 验证过这里是否是同一套顺序。
+    component_index: IntProperty(name="Param Index", min=0)
+    #: `EFXMaterialExpression.unkn1`（vendor 声明是裸 `uint`），2026-09-18 全语料 720 条
+    #: `IMaterialExpressionAttribute` 条目排查：取值只出现过 0/2/3/4，落在
+    #: `ExpressionAssignType`（`EfxCommon.cs`：Add=0/Subtract=1/Multiply=2/Divide=3/
+    #: Assign=4）的合法范围内，且和普通 Expression 的 `translationX` 等字段是同一个 C#
+    #: 枚举——**这是取值范围/语义家族的强相关性，不是实机确认**，仍然只是
+    #: 拟定的字段名，不是坐实的结论。真正的存储槽是 `assign_type_raw`（原始 uint，防御性
+    #: 兜底见 `_material_expr_assign_type_items()`），`assign_type` 是画下拉用的
+    #: EnumProperty 代理。
+    assign_type_raw: IntProperty(name="Assign Type (raw)", default=4)
+    assign_type: EnumProperty(
+        name="Assign Mode", description="公式结果与原属性值的合并方式",
+        items=_material_expr_assign_type_items,
+        get=_read_material_expr_assign_type, set=_write_material_expr_assign_type,
+    )
+    #: `EFXMaterialExpression.unkn2`，2026-09-18 全语料排查：取值 0/1 且和
+    #: `propertyComponentIndex==0` 完全重合，勾选（=1）的实例公式里大量出现
+    #: `GREEN`/`RED`/`WHITE`/`Aka`(赤)/`Kuro`(黒)/`Shiro`(白) 这类具名颜色常量——很像
+    #: "这条公式在算颜色"的标记，但同样**只是相关性，不是实机确认**（不把猜测当事实），字段名
+    #: 按用户 2026-09-18 拍板拟定，问号提醒这是猜测不是定论。
+    is_color: BoolProperty(name="isColor?", description="公式输出颜色值（未验证）")
+    #: `EFXExpressionObject.struct3Count`（`ExpressionData.cs:126`，vendor 自己的 TODO 是
+    #: "seems to affect the struct somehow if != 0; maybe it reads type info from the header
+    #: parameter list directly"）——原样透传，不能让它悄悄变成 0：`EfxBridge` 的
+    #: `FlattenExpressionTree()` 造的是一个全新 `EFXExpressionObject()`，默认值就是 0，不会
+    #: 自己带回原来的值。语料实测（720 条）这个字段恒为 0（不是下面 `is_single_param` 那种
+    #: 真的踩过非零值的情况），但结构上和它是同一类风险，一起补上、不单独放过。真正未知，
+    #: 不拟名字。
+    struct3_count: IntProperty(name="struct3Count", default=0)
+    #: `EFXMaterialExpression.unkn5`（`ExpressionData.cs:175`），`[RszVersion(EfxVersion.RE4)]`
+    #: ——**别被这个名字骗了**：`RszVersion(X)` 在生成器里翻译成 `Version >= X`（不是"只在
+    #: 等于 X 时"），MHWs 的版本号远大于 RE4，这个字段对 MHWs **是真实存在、会读写的**。
+    #: 已用真实样本踩过（`11_sfc_052.efx.5571972` 的 3 条 `TypeMeshExpression` 条目原始值是
+    #: 1）：第一版实现误判成"RE4 专属、MHWs 用不到"完全没处理，结果编辑任意一条公式都会把
+    #: 同一个 attribute 上其它条目的这个字段静默清成 0（逐字节门禁抓到的，铁律 #1）。
+    #: `UndeterminedFieldType` 就是一个裸 32 位值（`EfxStructInfo.cs:103`，可能是 int/uint/
+    #: float 的位模式，不确定）。2026-09-18 全语料排查：取值 0/1 且和
+    #: `propertyComponentIndex==1` 完全重合（`SandEffectRate` 那个"反例"拆开分量看之后其实
+    #: 完全符合，不是真反例，见 docs/EXPRESSION_SEMANTICS.md），猜想是"这个 mdf 参数是否
+    #: 独占寄存器、可以广播到全部分量" vs "打包共享寄存器、必须定向写某个分量"——同样只是
+    #: 相关性，`RoughnessParam` 那个标量但仍需定向写的反例已经推翻过"标量就是它"这个更早的
+    #: 简单假说，问号提醒这是猜测不是定论。
+    is_single_param: BoolProperty(
+        name="isSingleParam?", description="语料统计推测：参数独占寄存器（未验证）"
+    )
+    #: 面板展开状态，纯 UI 态，不参与导出。
+    ui_expand: BoolProperty(name="Expand", default=True)
+
+    formula: StringProperty(name="Formula", default="0", update=_expression_formula_changed)
+    formula_error: StringProperty(name="Error")
+    formula_canonical: StringProperty(
+        name="Formula", description="按真实语义读写的公式",
+        get=_read_formula_canonical, set=_write_formula_canonical)
+    nodes: CollectionProperty(type=EFXExpressionNodeItem)
+    nodes_active_index: IntProperty(name="Active Node")
+    second_branch: StringProperty(name="Second Root Value")
     tree_parameters: StringProperty(name="Tree Parameters", default="[]")
 
 
@@ -1773,10 +2123,10 @@ def load_opaque(obj) -> dict:
 
 _CLASSES = (
     EFXValueNode, EFXGroupTag, EFXBoneItem, EFXFieldParameterItem, EFXUvarGroupItem,
-    EFXExpressionParamItem, EFXClipKeyframeItem, EFXClipCurveItem,
-    # EFXExpressionNodeItem 必须排在 EFXExpressionCurveItem 前面：后者的
-    # `nodes: CollectionProperty(type=...)` 在注册时就要求前者已经注册过。
-    EFXExpressionNodeItem, EFXExpressionCurveItem,
+    EFXExpressionParamItem, EFXClipCurveItem,
+    # EFXExpressionNodeItem 必须排在 EFXExpressionCurveItem/EFXMaterialExpressionItem 前面：
+    # 两者的 `nodes: CollectionProperty(type=...)` 在注册时都要求前者已经注册过。
+    EFXExpressionNodeItem, EFXExpressionCurveItem, EFXMaterialExpressionItem,
 )
 
 
@@ -1950,7 +2300,8 @@ def register():
     Object.efx_fields = CollectionProperty(type=EFXValueNode)
 
     # EFX_ATTRIBUTE 专属，只在 is_clip_attribute_dict() 命中时有意义：IClipAttribute 的动画
-    # 曲线（对应 clipData/clipBits），见 EFXClipCurveItem/EFXClipKeyframeItem 的说明。
+    # 曲线（对应 clipData/clipBits），见 EFXClipCurveItem 的说明。关键帧数据本身活在
+    # clip_fcurve.py 建的原生 fcurve 里，不在这几个属性里。
     # efx_is_clip_attribute 是持久标记，不靠"curves 是不是空"判断——bit 全部关闭（0 条曲线）
     # 也是合法状态，导出时仍需要正确写出空的 clipData/clipBits，不能被误判成"这不是 Clip
     # attribute，直接走通用树"。
@@ -1965,6 +2316,10 @@ def register():
     )
     Object.efx_clip_curves = CollectionProperty(type=EFXClipCurveItem)
     Object.efx_clip_curves_active_index = IntProperty()
+    # `clip_fcurve.add_channel()` 分配 `EFXClipCurveItem.channel_key` 用的单调计数器——只增不减、
+    # 用过的编号即使曲线被删也不回收，保证每条曲线的 fcurve data_path 终身唯一稳定（见
+    # EFXClipCurveItem.channel_key 的说明）。
+    Object.efx_clip_next_channel_id = IntProperty()
 
     # EFX_ATTRIBUTE 专属，只在 is_expression_attribute_dict() 命中时有意义：
     # IExpressionAttribute 的公式列表（对应 Expression/ExpressionBits），见
@@ -1979,14 +2334,31 @@ def register():
     Object.efx_expression_curves_active_index = IntProperty(
         update=_active_expression_curve_changed)
 
+    # EFX_ATTRIBUTE 专属，只在 is_material_expression_attribute_dict() 命中时有意义：
+    # IMaterialExpressionAttribute 的公式列表（对应 MaterialExpressions），见
+    # EFXMaterialExpressionItem 的说明。增删只开放复制/删除已有条目那一半（见类文档字符串），
+    # efx_material_expression_indices 是容器级 `indices` 数组的原样透传（JSON 字符串，
+    # 语义未证实，见该属性说明）。
+    Object.efx_is_material_expression_attribute = BoolProperty(name="Is Material Expression Attribute")
+    Object.efx_material_expression_entries = CollectionProperty(type=EFXMaterialExpressionItem)
+    Object.efx_material_expression_indices = StringProperty(
+        name="Material Expression Indices",
+        description="MaterialExpressionList.indices 原样透传，无编辑 UI",
+        default="[]",
+    )
+
 
 def unregister():
     _INLINE_ENUM_CONTEXT.clear()
     _INLINE_ENUM_ITEMS_CACHE.clear()
+    del Object.efx_material_expression_indices
+    del Object.efx_material_expression_entries
+    del Object.efx_is_material_expression_attribute
     del Object.efx_expression_curves_active_index
     del Object.efx_expression_curves
     del Object.efx_expression_bit_count
     del Object.efx_is_expression_attribute
+    del Object.efx_clip_next_channel_id
     del Object.efx_clip_curves_active_index
     del Object.efx_clip_curves
     del Object.efx_clip_loop_type

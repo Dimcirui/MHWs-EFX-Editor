@@ -473,7 +473,12 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
         if properties_node is not None and properties_node == node:
             _draw_mdf_properties(layout, node, label_text, entry, attr_owner, material_path)
             return
-        behavior_node, behavior_string = structure_ops.resolve_ptbehavior_properties(attr_owner)
+        # 用不带候选目录门槛的解析——已经存在的每一条属性靠自己的 dataType 就能画出紧凑值
+        # 控件，不需要整个类收录进候选目录（那道闸只管"能不能从目录新增"，见
+        # structure_ops.resolve_ptbehavior_properties_node() 的说明）。没有候选目录的类，
+        # "从候选目录添加"/"全部添加"两个按钮会因为算子自己的 poll() 自动变灰，不用在这里
+        # 另外判断。
+        behavior_node, behavior_string = structure_ops.resolve_ptbehavior_properties_node(attr_owner)
         if behavior_node is not None and behavior_node == node:
             _draw_ptbehavior_properties(layout, node, label_text, entry, behavior_string)
             return
@@ -518,10 +523,20 @@ def draw_node(layout, node, attr_type: str | None = None, root_obj=None, attr_ow
     scalar_prop = "degrees_value" if node.data_type == "FLOAT" and _wants_degrees(entry) else None
     _draw_scalar_prop(value_row, node, prop_name=scalar_prop)
     _draw_hash_name(value_row, node)
+    # PtBehaviorVariable.dataType 展开时是裸整数（3/18 这种），旁边补一段灰字友好名——
+    # 和 _draw_hash_name() 同一个写法（数值右边补 enabled=False 的灰字），只是名字来源换成
+    # attribute_types.pt_behavior_prop_type_name() 那张硬编码小表，不是哈希反查表。
+    if (node.key == "dataType" and node.data_type == "INT" and attr_type == "PtBehaviorVariable"):
+        type_name = attribute_types.pt_behavior_prop_type_name(node.int_value)
+        if type_name:
+            sub = value_row.row()
+            sub.alignment = "RIGHT"
+            sub.enabled = False
+            sub.label(text=type_name, translate=False)
     # PtBehavior 的 behaviorString 是游戏原生类名，手滑打错字不会有任何报错，只会让这个
     # attribute 在游戏里静默不生效——加一个"从语料里见过的类名模糊搜索"按钮辅助输入，
     # 文本框本身仍然保留、可以手改（游戏更新后出现的新类名没道理被这张表锁死）。
-    if (node.key == "behaviorString" and node.data_type == "STRING" and attr_owner is not None
+    if (node.key == "behaviorString" and node.data_type in ("STRING", "NULL") and attr_owner is not None
             and structure_ops.resolve_behavior_string_node(attr_owner) == node):
         value_row.operator("efx_re.ptbehavior_pick_behavior_string", text="", icon="VIEWZOOM")
     # FixRandomGenerator 的种子槽位：骰子按钮一键换新种子，对齐姊妹项目 EFX-Editor 的
@@ -723,34 +738,197 @@ def _ptbehavior_property_name(child) -> str:
     return child.key
 
 
-def _draw_ptbehavior_property(box, child, index: int) -> None:
-    """一条 PtBehavior 属性一行：展开箭头 + 属性名 + 删除。
+# 一条 PtBehaviorVariable 里"不该手改"的字段：内部记账字段（`varSize` 没有
+# [RszByteSizeField]/[RszArraySizeField] 标注，不会被 vendor 自愈，见 ptbehavior_catalog.py
+# 头部说明），或者改了但没有配套联动会产生不一致文件的字段——`behaviorProperty` 改名字之后
+# `varHash`（它的 MurMur3-UTF8 哈希）不会跟着重算（vendor 侧没有自动重算逻辑，不像
+# ExpressionParameter.nameHash 那样在写出时由 vendor 重算），这个字段的身份只能通过候选目录
+# 的增删决定。展开时按只读画出来供核对，不隐藏——隐藏会让"为什么是这个值"变得不可查。
+_PTBEHAVIOR_DERIVED_KEYS = frozenset({"Version", "varSize", "dataType", "varHash", "behaviorProperty"})
+# `variable` 子对象内部的记账/填充字段：`Version`（`[RszIgnore]` 只影响 RSZ 二进制读写，
+# 不影响 JSON——落盘的 JSON 里 PtBehaviorVariable 和 variable 各有一份 Version，跟外层那份
+# 数值恒相同，同样是记账字段不是用户数据）、`unkn`/`size`/`re4_unkn0`/`re4_unkn1` 继承自
+# PtBehaviorVariableDataBase，`restData` 是各具体类自己的尾部填充字节。
+_PTBEHAVIOR_DERIVED_VALUE_KEYS = frozenset({
+    "Version", "unkn", "size", "re4_unkn0", "re4_unkn1", "restData",
+})
 
-    不像 `_draw_mdf_property` 那样在主行画紧凑值控件——PtBehavior 已知的 dataType 就有
-    8 种（Color/Int/Enum/Float/Float2/Float3/WstringName/PrefabPath），外加语料里还有一批
-    vendor 认不出的未知 dataType，形状比 MdfProperty 的 Float/Range/Texture 三种分散得多，
-    v1 先统一收进展开区用通用递归画法，不单独为每种 dataType 定制紧凑行。
+
+def _ptbehavior_data_type_value(child):
+    """一条 PtBehaviorVariable 的 `dataType` 原始整数值；找不到返回 `None`。"""
+    node = model.find_field(child.children, "dataType")
+    if node is None or node.data_type != "INT":
+        return None
+    return node.int_value
+
+
+# PtBehaviorVariable.dataType 落在 vendor 自己的 PtBehaviorPropType 枚举之外，但全语料扫描
+# （`EfxBridge ptbehaviorcatalog` 的 `byRawDataType` 统计，2026-09-19 跑过 9175/9221 个文件、
+# 10337 个 PtBehavior 实例）能稳定推出字节形状的几个数值。跟
+# `attribute_types.pt_behavior_prop_type_name()` 那张表分开放：那张是 vendor 自己承认的枚举
+# 名，这张完全是我们自己从字节反推出来的，vendor 没有登记过这些数值——数值*形状*（几个分量、
+# 整数还是浮点）有全语料证据支持，但字段*语义*（这几个分量具体代表什么）只在证据列里写实测
+# 依据，不代表已经过实机验证（不把猜测当事实）。
+#   {dataType: (Blender 属性名, 期望字节数, 取证依据)}
+_PTBEHAVIOR_UNKNOWN_DATATYPE_SHAPES = {
+    3: ("unknown_int32_value", 4,
+        "全语料 1367 个实例、30 种取值，全部是合理的小整数（Priority/Index/PartsNum 等"
+        "字段名），按 int32 处理"),
+    6: ("unknown_int16_value", 2,
+        "全语料 142 个实例（单一字段 _Priority），取值恒为 0，按 int16 处理——数据本身太"
+        "单一，没法排除其它同为 2 字节的整数读法"),
+    8: ("unknown_uint8_value", 1,
+        "全语料 114 个实例（UpdateDivisionNum），取值 3/10，按 uint8 处理"),
+    12: ("unknown_float32x4_value", 16,
+         "全语料 148 个实例（ValueVec4/ValueF4），按 float32x4 解出的数值是 1.0/0.4 这类"
+         "正常浮点，按 int32 解读则是天文数字（如 1065353216），判定 float32x4"),
+    20: ("unknown_int32x2_value", 8,
+         "全语料 720 个实例（单一字段 Period），19 种取值组合，两个分量都是 0~20 的小"
+         "整数，按 int32x2 处理；第二分量并非恒为 0（0/1/2/5 都有真实出现次数），结构上"
+         "支持它是独立的第二参数——具体是不是 Static/Random 语义未经实机验证，是用户按项目"
+         "既有 {s,r} 命名习惯做的判断，这里照这个判断画成 S/R 两列"),
+    22: ("unknown_int32_value", 4,
+         "全语料 15 个实例（ShaderType/VolumeType），取值 0/2/3，按 int32 处理"),
+}
+
+
+def _draw_ptbehavior_property_value(layout, child, data_type_value) -> bool:
+    """主行上的值控件：只画这条属性真正该编辑的那部分，其余字段留给展开区。
+
+    对齐 `_draw_mdf_property_value()` 的思路，但按 `dataType`（`PtBehaviorPropType`）分派
+    到 8 种已知形状；`variable` 是 `PropColor` 时复用 `model.is_rgba_color_node()` 已经注册
+    好的 `color_value` 颜色轮属性，不重新解码 `via.Color` 的打包 uint32。dataType 落在
+    vendor 枚举之外但语料能推出字节形状的几个数值，走 `_PTBEHAVIOR_UNKNOWN_DATATYPE_SHAPES`。
+
+    dataType 不认识、或者认识但不是这次实现紧凑控件的那几种（`PropUint`/`PropRange`/
+    `PropWstring2`——语料里样本太少，形状没有把握，先留给展开区）：返回 `False`。
     """
+    variable = model.find_field(child.children, "variable")
+    if variable is None or variable.data_type != "OBJECT":
+        return False
+
+    if data_type_value in (14, 18):  # PropInt / PropEnum
+        value_node = model.find_field(variable.children, "value")
+        if value_node is None or value_node.data_type != "INT":
+            return False
+        layout.prop(value_node, "int_value", text="")
+        return True
+
+    if data_type_value == 9:  # PropFloat
+        value_node = model.find_field(variable.children, "value")
+        if value_node is None or value_node.data_type != "FLOAT":
+            return False
+        layout.prop(value_node, "float_value", text="")
+        return True
+
+    if data_type_value == 15:  # PropColor
+        color_node = model.find_field(variable.children, "color")
+        if color_node is None or not model.is_rgba_color_node(color_node):
+            return False
+        layout.prop(color_node, "color_value", text="")
+        return True
+
+    if data_type_value == 19:  # PropFloat2：字段名 `Vec`（大写，抄 C# 字段名），子项 X/Y
+        vec_node = model.find_field(variable.children, "Vec")
+        if vec_node is None or vec_node.data_type != "OBJECT":
+            return False
+        comps = {c.key: c for c in vec_node.children}
+        if not all(comps.get(k) is not None and comps[k].data_type == "FLOAT" for k in ("X", "Y")):
+            return False
+        row = layout.row(align=True)
+        row.prop(comps["X"], "float_value", text="")
+        row.prop(comps["Y"], "float_value", text="")
+        return True
+
+    if data_type_value == 11:  # PropFloat3：字段名 `vec`（小写），子项 X/Y/Z
+        vec_node = model.find_field(variable.children, "vec")
+        if vec_node is None or vec_node.data_type != "OBJECT":
+            return False
+        comps = {c.key: c for c in vec_node.children}
+        keys = ("X", "Y", "Z")
+        if not all(comps.get(k) is not None and comps[k].data_type == "FLOAT" for k in keys):
+            return False
+        row = layout.row(align=True)
+        for key in keys:
+            row.prop(comps[key], "float_value", text="")
+        return True
+
+    if data_type_value in (16, 17):  # PropWstringName / PropPrefabpath
+        str_node = model.find_field(variable.children, "str")
+        if str_node is None or str_node.data_type not in ("STRING", "NULL"):
+            return False
+        layout.prop(str_node, "string_value", text="")
+        return True
+
+    shape = _PTBEHAVIOR_UNKNOWN_DATATYPE_SHAPES.get(data_type_value)
+    if shape is not None:
+        prop_name, expected_len, _evidence = shape
+        # 字节数对不上就不画——长度是从全语料里"这个 dataType 恒为多少字节"量出来的，
+        # 对不上说明这条实例是语料没见过的变体，宁可退回展开区也不要用错的形状硬套（铁律 #1）。
+        if model.unknown_data_byte_length(variable) != expected_len:
+            return False
+        if prop_name == "unknown_int32x2_value":
+            row = layout.row(align=True)
+            row.prop(variable, prop_name, index=0, text="S")
+            row.prop(variable, prop_name, index=1, text="R")
+        else:
+            layout.prop(variable, prop_name, text="")
+        return True
+
+    return False
+
+
+def _draw_ptbehavior_property(box, child, index: int) -> None:
+    """一条 PtBehavior 属性一行：展开箭头 + 属性名 + 紧凑值控件 + 删除。
+
+    对齐 `_draw_mdf_property()` 的结构：主行只画这条属性真正该编辑的部分，派生/记账字段
+    折进展开区且标灰只读（`_PTBEHAVIOR_DERIVED_KEYS`/`_PTBEHAVIOR_DERIVED_VALUE_KEYS`），
+    不隐藏——隐藏会让"为什么是这个值"变得不可查。
+    """
+    data_type_value = _ptbehavior_data_type_value(child)
+    type_name = attribute_types.pt_behavior_prop_type_name(data_type_value)
+
     row = box.row(align=True)
     icon = "TRIA_DOWN" if child.ui_expand else "TRIA_RIGHT"
     row.prop(child, "ui_expand", icon=icon, icon_only=True, emboss=False)
-    _draw_label(row, _ptbehavior_property_name(child))
+    split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
+    _draw_label(split, _ptbehavior_property_name(child))
+    value_row = split.row(align=True)
+    if not _draw_ptbehavior_property_value(value_row, child, data_type_value):
+        disabled = value_row.row()
+        disabled.enabled = False
+        disabled.label(text=T("ptbehavior.unknown_shape") if type_name is None
+                        else T("mdf.unknown_shape"))
     row.operator("efx_re.ptbehavior_property_remove", text="", icon="X", emboss=False).index = index
 
     if not child.ui_expand:
         return
     sub_box = box.box()
     for sub in child.children:
-        draw_node(sub_box.row(), sub, attr_type="PtBehaviorVariable")
+        if sub.key == "variable" and sub.data_type == "OBJECT":
+            value_box = sub_box.box()
+            _draw_label(value_box.row(), sub.key)
+            for comp in sub.children:
+                comp_row = value_box.row()
+                comp_row.enabled = comp.key not in _PTBEHAVIOR_DERIVED_VALUE_KEYS
+                draw_node(comp_row, comp, attr_type="PtBehaviorVariable")
+            continue
+        sub_row = sub_box.row()
+        sub_row.enabled = sub.key not in _PTBEHAVIOR_DERIVED_KEYS
+        draw_node(sub_row, sub, attr_type="PtBehaviorVariable")
 
 
 def _draw_ptbehavior_properties(layout, node, label_text, entry, behavior_string) -> None:
     """PtBehavior 的 `properties` 覆盖表专用画法：条目按属性名显示、每条带删除按钮、底下
     一个"从候选目录添加"。
 
-    候选目录是离线语料扫描固化的静态表（见 `tools/gen_ptbehavior_catalog.py`），不像
-    MdfProperty 那样需要用户先指一个参考文件——`resolve_ptbehavior_properties()` 已经确认
-    过 `behavior_string` 在目录里，这里只管画。
+    对任何结构上是 PtBehavior 的 attribute 都会画（见
+    `structure_ops.resolve_ptbehavior_properties_node()`），不要求 `behavior_string` 在候选
+    目录里收录——已经存在的每一条属性靠自己的 `dataType` 就能画出紧凑值控件（见
+    `_draw_ptbehavior_property()`）。底下"添加"/"全部添加"两个按钮对没收录候选目录的类会
+    因为算子自己的 `poll()`（内部用的是仍然带候选目录门槛的 `resolve_ptbehavior_properties()`）
+    自动变灰，不在这里另外判断——跟 `_draw_mdf_properties()` 让 `mdf_property_add` 自己的
+    `poll()` 管灰显是同一个套路。
     """
     header = layout.row(align=True)
     icon = "TRIA_DOWN" if node.ui_expand else "TRIA_RIGHT"
@@ -763,9 +941,14 @@ def _draw_ptbehavior_properties(layout, node, label_text, entry, behavior_string
     box = layout.box()
     for index, child in enumerate(node.children):
         _draw_ptbehavior_property(box, child, index)
-    box.operator(
+    add_row = box.row(align=True)
+    add_row.operator(
         "efx_re.ptbehavior_property_add", text=T("ptbehavior.add_property"), icon="ADD",
         translate=False,
+    )
+    add_row.operator(
+        "efx_re.ptbehavior_property_add_all", text=T("ptbehavior.add_all_properties"),
+        icon="DUPLICATE", translate=False,
     )
 
 
@@ -1154,11 +1337,15 @@ class EFX_RE_UL_clip_curves(UIList):
     bl_idname = "EFX_RE_UL_clip_curves"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        from . import clip_fcurve
         row = layout.row(align=True)
         row.label(text=model.bit_display_label(item.bit_index, item.bit_name), translate=False)
         sub = row.row()
         sub.alignment = "RIGHT"
-        sub.label(text=f"{len(item.keyframes)} kf", translate=False)
+        # `data` 是宿主 attribute 对象（UIList 的 draw_item 约定：`data` = 传给
+        # template_list 的集合宿主，这里就是 obj）——关键帧数量现在是 fcurve 的属性,不是
+        # `item` 自己的字段,所以要经 clip_fcurve 查询。
+        sub.label(text=f"{clip_fcurve.keyframe_count(data, item)} kf", translate=False)
 
 
 def _iter_bit_choices(bit_count, used_bits, attr_type, resolve_name):
@@ -1186,6 +1373,7 @@ class EFX_RE_OT_clip_curve_add(bpy.types.Operator):
         return obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE and obj.efx_is_clip_attribute
 
     def execute(self, context):
+        from . import clip_fcurve
         obj = getattr(context, "object", None)
         used = {c.bit_index for c in obj.efx_clip_curves}
         bit_index = self.bit_index
@@ -1194,6 +1382,8 @@ class EFX_RE_OT_clip_curve_add(bpy.types.Operator):
         curve = obj.efx_clip_curves.add()
         curve.bit_index = bit_index
         curve.bit_name = model.resolve_clip_bit_name(obj.efx_attr_type, bit_index)
+        # 分配这条曲线专属的 fcurve（空的，不插关键帧）——用户在 Dope Sheet 里自己按 I 键插入。
+        clip_fcurve.add_channel(obj, curve)
         obj.efx_clip_curves_active_index = len(obj.efx_clip_curves) - 1
         return {"FINISHED"}
 
@@ -1212,7 +1402,11 @@ class EFX_RE_OT_clip_curve_remove(bpy.types.Operator):
         )
 
     def execute(self, context):
+        from . import clip_fcurve
         obj = getattr(context, "object", None)
+        curve = obj.efx_clip_curves[obj.efx_clip_curves_active_index]
+        # 先回收这条曲线的 fcurve + 自定义 ID 属性，再删集合项——反过来做拿不到 curve 了。
+        clip_fcurve.remove_channel(obj, curve)
         obj.efx_clip_curves.remove(obj.efx_clip_curves_active_index)
         obj.efx_clip_curves_active_index = min(
             obj.efx_clip_curves_active_index, len(obj.efx_clip_curves) - 1
@@ -1241,6 +1435,31 @@ class EFX_RE_OT_clip_curve_set_bit(bpy.types.Operator):
         curve = _active_clip_curve(obj)
         curve.bit_index = self.bit_index
         curve.bit_name = model.resolve_clip_bit_name(obj.efx_attr_type, self.bit_index)
+        return {"FINISHED"}
+
+
+class EFX_RE_OT_clip_select_special_keyframes(bpy.types.Operator):
+    """选中这个 Clip attribute 全部曲线里插值类型是 Event/Hermite 的关键帧（见
+    clip_fcurve.select_special_keyframes()）——这两类曲线外观上和 Discrete/普通 Bezier
+    分不出区别，肉眼在 Dope Sheet/Graph Editor 里找不出来，这个按钮直接把它们选中，选完
+    用户自己去 Graph Editor 按 Home/View Selected 就能跳过去。"""
+    bl_idname = "efx_re.clip_select_special_keyframes"
+    bl_label = "Select Event/Hermite Keyframes"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = getattr(context, "object", None)
+        return obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE and obj.efx_is_clip_attribute
+
+    def execute(self, context):
+        from . import clip_fcurve
+        obj = getattr(context, "object", None)
+        found = clip_fcurve.select_special_keyframes(obj)
+        if found == 0:
+            self.report({"INFO"}, "没有 Event/Hermite 关键帧")
+        else:
+            self.report({"INFO"}, f"选中了 {found} 个 Event/Hermite 关键帧")
         return {"FINISHED"}
 
 
@@ -1291,58 +1510,11 @@ class EFX_RE_MT_clip_bit_picker(Menu):
             op.bit_index = index
 
 
-class EFX_RE_UL_clip_keyframes(UIList):
-    bl_idname = "EFX_RE_UL_clip_keyframes"
-
-    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        row = layout.row(align=True)
-        row.label(text=f"f{item.frame_time:g}", translate=False)
-        row.label(text=f"{item.value:g}", translate=False)
-
-
 def _active_clip_curve(obj):
     index = obj.efx_clip_curves_active_index
     if 0 <= index < len(obj.efx_clip_curves):
         return obj.efx_clip_curves[index]
     return None
-
-
-class EFX_RE_OT_clip_keyframe_add(bpy.types.Operator):
-    bl_idname = "efx_re.clip_keyframe_add"
-    bl_label = "Add Keyframe"
-    bl_options = {"REGISTER", "UNDO"}
-
-    @classmethod
-    def poll(cls, context):
-        obj = getattr(context, "object", None)
-        return obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE and _active_clip_curve(obj) is not None
-
-    def execute(self, context):
-        curve = _active_clip_curve(context.object)
-        kf = curve.keyframes.add()
-        kf.frame_time = max((k.frame_time for k in curve.keyframes), default=0.0) + 1.0
-        curve.keyframes_active_index = len(curve.keyframes) - 1
-        return {"FINISHED"}
-
-
-class EFX_RE_OT_clip_keyframe_remove(bpy.types.Operator):
-    bl_idname = "efx_re.clip_keyframe_remove"
-    bl_label = "Remove Keyframe"
-    bl_options = {"REGISTER", "UNDO"}
-
-    @classmethod
-    def poll(cls, context):
-        obj = getattr(context, "object", None)
-        if obj is None or obj.get("~TYPE") != model.TYPE_ATTRIBUTE:
-            return False
-        curve = _active_clip_curve(obj)
-        return curve is not None and len(curve.keyframes) > 0
-
-    def execute(self, context):
-        curve = _active_clip_curve(context.object)
-        curve.keyframes.remove(curve.keyframes_active_index)
-        curve.keyframes_active_index = min(curve.keyframes_active_index, len(curve.keyframes) - 1)
-        return {"FINISHED"}
 
 
 class EFX_RE_UL_expression_curves(UIList):
@@ -1773,27 +1945,23 @@ def _draw_clip_content(layout, context, obj) -> None:
         "EFX_RE_MT_clip_bit_picker",
         text=model.bit_display_label(curve.bit_index, curve.bit_name), translate=False,
     )
-    box.label(text=T("attribute.keyframes"), translate=False)
-    _draw_uilist_row(
-        box, "EFX_RE_UL_clip_keyframes", curve, "keyframes", "keyframes_active_index",
-        "efx_re.clip_keyframe_add", "efx_re.clip_keyframe_remove",
-    )
 
-    kf_index = curve.keyframes_active_index
-    if not (0 <= kf_index < len(curve.keyframes)):
-        return
-    kf = curve.keyframes[kf_index]
-    kf_box = box.box()
-    kf_box.prop(kf, "frame_time")
-    kf_box.prop(kf, "interp_type")
-    kf_box.prop(kf, "value")
-    if kf.interp_type == "5":  # Bezier
-        row = kf_box.row(align=True)
-        row.prop(kf, "tangent_out_x")
-        row.prop(kf, "tangent_out_y")
-        row = kf_box.row(align=True)
-        row.prop(kf, "tangent_in_x")
-        row.prop(kf, "tangent_in_y")
+    # 关键帧本身在 Dope Sheet / Graph Editor 里编辑（clip_fcurve.py 把它们建成原生 fcurve，
+    # Position/Scale bit 挂在父对象的 Location/Scale 上，其余挂在这个对象自己的 Action
+    # 上），这里只显示计数 + 编辑入口提示，不再手搓关键帧列表。
+    from . import clip_fcurve
+    kf_row = box.row(align=True)
+    kf_row.label(text=T("attribute.keyframes"), translate=False)
+    kf_row.label(text=f"{clip_fcurve.keyframe_count(obj, curve)}", translate=False)
+    box.operator("efx_re.clip_select_special_keyframes",
+                  text=T("attribute.clip_select_special"), icon="RESTRICT_SELECT_OFF")
+    xform_desc = clip_fcurve.describe_channel(obj, curve)
+    if xform_desc:
+        box.label(text=T("attribute.clip_xform_channel"), icon="OBJECT_ORIGIN", translate=False)
+        box.label(text=xform_desc, translate=False)
+    else:
+        box.label(text=T("attribute.clip_edit_hint"), icon="INFO", translate=False)
+    box.label(text=T("attribute.clip_interp_unverified"), icon="ERROR", translate=False)
 
 
 def _draw_expression_content(layout, context, obj) -> None:
@@ -1876,12 +2044,94 @@ def _draw_expression_content(layout, context, obj) -> None:
 
 def _expression_uses_unknown_functions(curve) -> bool:
     """这条公式里有没有语义未确认的函数（`Unary*`/`Func*`）。有就在面板上说一句——
-    用户拿这条公式调参时应该知道"这一步到底算什么"本项目还不掌握（铁律 #6）。"""
+    用户拿这条公式调参时应该知道"这一步到底算什么"本项目还不掌握（不把猜测当事实）。"""
     return any(
         node.kind == "CALL"
         and expr_edit.call_confidence(node.name) == expr_edit.CONFIDENCE_UNKNOWN
         for node in curve.nodes
     )
+
+
+def _material_expression_property_name(entry) -> str:
+    """一条 MaterialExpression 的目标材质参数名：哈希查得到就显示原名，查不到就显示裸哈希
+    （同 `_mdf_property_name()`，不编故事）——用的是同一张 `PropertyNameUTF8Hash` 哈希表，
+    见 `model.EFXMaterialExpressionItem` 的说明。"""
+    try:
+        value = int(entry.mdf_property_hash or 0)
+    except (TypeError, ValueError):
+        return entry.mdf_property_hash
+    return semantics.lookup_name_hash(value) or str(value)
+
+
+def _draw_material_expression_content(layout, context, obj) -> None:
+    """`IMaterialExpressionAttribute` 的公式列表（只有 `model.MATERIAL_EXPRESSION_VERIFIED_TYPES`
+    里这两个类型才会命中，见 `model.is_material_expression_attribute_dict()` 的说明）。
+
+    每条公式驱动一个 mdf2 材质参数的一个分量，和曲线列表（Clip/Expression 那种"选中一条再编辑"
+    的 UIList + active_index）不是同一回事——没有"活动项"这个概念，这里直接摆一条画一条，
+    每条自己的展开箭头（`entry.ui_expand`）控制显、隐。
+
+    增删只开放"复制已有条目"这一半（`efx_re.material_expression_duplicate`/`_remove`，见
+    structure_ops.py 里两个算子的说明）：引入一个列表里全新的材质参数需要知道
+    `MaterialExpressionList.indices` 该怎么变，这个还没解出来，所以"新建一条指向全新参数
+    的公式"暂不支持——只能复制一条已有公式再改内容/分量，或者删除"不是某个参数唯一代表"
+    的那条。
+
+    ⚠ **只给文本框，不接 `expr_edit.draw_nodes()` 的结构化行编辑器**——那一整套算子
+    （`_NodeOperator`/`active_curve()`）硬编码读写 `context.object.efx_expression_curves[
+    efx_expression_curves_active_index]`（`expr_edit.py:398-405`），跟 `draw_nodes()`
+    表面上接受的 `curve` 参数完全脱钩：点这里的结构化编辑按钮，改的会是同一个 attribute
+    上*另一条*（很可能不相关的）Expression 曲线，不是这条 MaterialExpression——静默改错
+    数据，比没有这个功能更危险（铁律 #1）。`formula_canonical`（get/set 都只读写
+    `self.formula`）和 `unknown_variable_names()`（纯读）这两个复用点已经验证过和具体
+    PropertyGroup 类型无关，是安全的；结构化行编辑器要复用，得先把 `active_curve()`/
+    `_curve_of_node()` 改成认多种曲线集合（v1 不做，手打文本本来就是结构化编辑器出现之前
+    Expression 面板唯一的编辑方式）。"""
+    entries = obj.efx_material_expression_entries
+    if not entries:
+        layout.label(text=T("matexpr.none"), translate=False)
+        return
+    for index, entry in enumerate(entries):
+        box = layout.box()
+        row = box.row(align=True)
+        icon = "TRIA_DOWN" if entry.ui_expand else "TRIA_RIGHT"
+        row.prop(entry, "ui_expand", icon=icon, icon_only=True, emboss=False)
+        name = _material_expression_property_name(entry)
+        _draw_label(row, f"{name}  ({T('matexpr.component')} {entry.component_index})")
+        row.operator(
+            "efx_re.material_expression_duplicate", text="", icon="DUPLICATE", emboss=False,
+        ).index = index
+        row.operator(
+            "efx_re.material_expression_remove", text="", icon="X", emboss=False,
+        ).index = index
+        if not entry.ui_expand:
+            continue
+
+        sub = box.box()
+        sub.label(text=T("expr.raw_text"), translate=False)
+        sub.prop(entry, "formula_canonical", text="")
+        if entry.formula_error:
+            sub.label(text=entry.formula_error, icon="ERROR", translate=False)
+        unknown_vars = expr_edit.unknown_variable_names(context, entry)
+        if unknown_vars:
+            sub.label(text="%s: %s" % (T("expr.unknown_var"), ", ".join(unknown_vars)),
+                      icon="ERROR", translate=False)
+        if _expression_uses_unknown_functions(entry):
+            sub.label(text=T("expr.note.unknown_func"), icon="ERROR", translate=False)
+
+        # 结构字段：component_index 语义明确（vendor 注释）；assign_type/is_color/
+        # is_single_param 是 2026-09-18 全语料相关性排查后拟的名字（不把猜测当事实：拟名不等于
+        # 坐实语义，问号提醒是猜测），struct3_count 仍然完全未知。struct3_count 尤其不能
+        # 漏改：它是 EFXExpressionObject 基类字段，编辑公式时 EfxBridge 会重新摊平这条
+        # 公式，不带上原值就会被摊平逻辑的默认值 0 悄悄覆盖
+        # （见 io_tree._export_material_expression_attribute() 的说明）。
+        sub.separator()
+        sub.prop(entry, "assign_type")
+        row = sub.row(align=True)
+        row.prop(entry, "is_color")
+        row.prop(entry, "is_single_param")
+        sub.prop(entry, "component_index")
+        sub.prop(entry, "struct3_count")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1931,6 +2181,15 @@ _AXIS_GROUPS: dict = {
         ("缩放速度", "Scale Velocity", [("X", "unkn43", "unkn44"), ("Y", "unkn47", "unkn48"), ("Z", "unkn51", "unkn52")]),
         ("缩放速度变动系数", "Scale Velocity Coefficient", [("X", "unkn45", "unkn46"), ("Y", "unkn49", "unkn50"), ("Z", "unkn53", "unkn54")]),
     ],
+    # EFXAttributeAttractor：`ForceStatic`/`ForceBiRand` 是两个独立 float（不是一个 via.Range
+    # 节点），版本可用性不同（`ForceStatic` 恒可用，`ForceBiRand` 只在 DD2+），拆分原因见
+    # vendor 源码注释和 tools/vendor-patches/README.md #0007。用单轴（空标签）的 3/4 项写法
+    # 拼成一行，副值列文案传 "BiRand" 而不是默认的 "Random"——实测是双向对称随机
+    # `[Static-x, Static+x]`，标成 Random 会让人以为是标准 `[Static, Static+Random]`，
+    # 见 docs/PITFALLS.md #29。
+    "ReeLib.Efx.Structs.Misc.EFXAttributeAttractor": [
+        ("力", "Force", [("", "ForceStatic", "ForceBiRand", "BiRand")]),
+    ],
 }
 
 
@@ -1939,15 +2198,17 @@ def _resolve_axis_groups(attr_type: str | None, node_by_key: dict):
     没有全部轴）的分组整体跳过，退回逐字段正常显示。返回 (组首字段名 -> 分组规格 字典，
     被该分组消费掉的全部字段名 set)。
 
-    每根轴是 `(轴标签, 字段名)`（单字段，常见情形）或 `(轴标签, 值字段名, 随机值字段名)`
-    （两个独立纯量字段拼一行，见 `EFXAttributeTransform3DModifier` 那批 unknN）——用
-    `axis[1:]` 取全部字段名而不是固定长度解包，两种形状都吃得下。"""
+    每根轴是 `(轴标签, 字段名)`（单字段，常见情形）或 `(轴标签, 值字段名, 随机值字段名[, 副值
+    列文案])`（两个独立纯量字段拼一行，见 `EFXAttributeTransform3DModifier` 那批 unknN；第 4
+    项是可选的纯文本列头覆盖，比如 `EFXAttributeAttractor.Force` 用 "BiRand"，**不是字段名**，
+    不能跟着 `axis[1:]` 一起当字段名找）——固定取 `axis[1:2]`（单字段）或 `axis[1:3]`
+    （双字段+可选文案），两种形状都吃得下。"""
     group_at: dict = {}
     consumed: set = set()
     if not attr_type:
         return group_at, consumed
     for label_zh, label_en, axes in _AXIS_GROUPS.get(attr_type, []):
-        names = [name for axis in axes for name in axis[1:]]
+        names = [name for axis in axes for name in (axis[1:2] if len(axis) == 2 else axis[1:3])]
         if not all(n in node_by_key for n in names):
             continue
         group_at[axes[0][1]] = (label_zh, label_en, axes)
@@ -1970,12 +2231,15 @@ def _draw_axis_group(layout, attr_type: str, label_zh: str, label_en: str, axes,
         split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
         _draw_label(split, axis_label)
         cols = split.row(align=True)
-        if len(axis) == 3:
+        if len(axis) >= 3:
             # 两个独立纯量字段（不是一个 Range 节点拆出来的 s/r）拼一行——
             # `EFXAttributeTransform3DModifier` 那批 unknN "值/随机值" 对，见
-            # `_AXIS_GROUPS` 头部说明。标签沿用 sr_pair 的 Static/Random 措辞，
-            # 用户认这套列头认惯了。
+            # `_AXIS_GROUPS` 头部说明。标签默认沿用 sr_pair 的 Static/Random 措辞；
+            # 第 4 项可选，覆盖副值列的文案（比如 EFXAttributeAttractor.Force 那对
+            # 实测是双向对称随机、不是标准 [Static,Static+Random]，标成 Random 会
+            # 误导，用 "BiRand" 区分）。
             value_key, jitter_key = axis[1], axis[2]
+            jitter_text = axis[3] if len(axis) >= 4 else "Random"
             value_node = node_by_key[value_key]
             jitter_node = node_by_key[jitter_key]
             entry = semantics.get_field_entry(attr_type, value_key)
@@ -1983,7 +2247,7 @@ def _draw_axis_group(layout, attr_type: str, label_zh: str, label_en: str, axes,
             v_prop = "degrees_value" if show_degrees and value_node.data_type == "FLOAT" else None
             j_prop = "degrees_value" if show_degrees and jitter_node.data_type == "FLOAT" else None
             _draw_scalar_prop(cols, value_node, text="Static", prop_name=v_prop)
-            _draw_scalar_prop(cols, jitter_node, text="Random", prop_name=j_prop)
+            _draw_scalar_prop(cols, jitter_node, text=jitter_text, prop_name=j_prop)
             _draw_field_help_icon(row, entry)
             continue
         base = axis[1]
@@ -2330,6 +2594,15 @@ def _poll_expression(cls, context):
     )
 
 
+@classmethod
+def _poll_material_expression(cls, context):
+    obj = getattr(context, "object", None)
+    return (
+        obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE
+        and obj.efx_is_material_expression_attribute
+    )
+
+
 # 数据面板清单。每一项生成两个 Panel 类：N 面板一份 + 属性编辑器 Object Data 标签一份，
 # 两份 draw() 调的是同一个 content 函数。
 #
@@ -2352,6 +2625,8 @@ _DATA_PANELS = (
     # 的深水区；字段树是选中一个 attribute 后最常看的东西，默认展开。
     ("clip",       "Clip",       _draw_clip_content,       _poll_clip,                       "attribute",  0, True,  "object"),
     ("expression", "Expression", _draw_expression_content, _poll_expression,                 "attribute",  0, True,  "object"),
+    ("material_expression", "Material Expression", _draw_material_expression_content,
+     _poll_material_expression,                                                              "attribute",  0, True,  "object"),
     ("fields",     "Fields",     _draw_fields_content,     _poll_type(model.TYPE_ATTRIBUTE), "attribute",  0, False, "object"),
 )
 
@@ -2416,7 +2691,6 @@ _CLASSES = (
     EFX_RE_UL_uvar_groups,
     EFX_RE_UL_expression_parameters,
     EFX_RE_UL_clip_curves,
-    EFX_RE_UL_clip_keyframes,
     EFX_RE_UL_expression_curves,
     EFX_RE_OT_field_info,
     EFX_RE_OT_group_add,
@@ -2432,10 +2706,9 @@ _CLASSES = (
     EFX_RE_OT_clip_curve_add,
     EFX_RE_OT_clip_curve_remove,
     EFX_RE_OT_clip_curve_set_bit,
+    EFX_RE_OT_clip_select_special_keyframes,
     EFX_RE_MT_clip_bit_add_picker,
     EFX_RE_MT_clip_bit_picker,
-    EFX_RE_OT_clip_keyframe_add,
-    EFX_RE_OT_clip_keyframe_remove,
     EFX_RE_OT_expression_curve_add,
     EFX_RE_OT_expression_curve_remove,
     EFX_RE_OT_expression_curve_set_bit,
