@@ -814,8 +814,9 @@ def _draw_ptbehavior_property_value(layout, child, data_type_value) -> bool:
     好的 `color_value` 颜色轮属性，不重新解码 `via.Color` 的打包 uint32。dataType 落在
     vendor 枚举之外但语料能推出字节形状的几个数值，走 `_PTBEHAVIOR_UNKNOWN_DATATYPE_SHAPES`；
     `PropUint`（4）额外按字段名分派（见 `_PTBEHAVIOR_PROP_UINT_FLOAT_FIELD_NAMES`）；
-    `PropWstring2`（21）是宽字符串，编辑要连 `variable.size`/外层 `varSize` 一起重算，
-    单独一支（见 `model._set_unknown_wstring()`）。
+    `PropWstring2`（21）是宽字符串，dataType=25/26 是同一类问题的 ASCII 版本，两者编辑都要连
+    `variable.size`/外层 `varSize` 一起重算，单独一支（见 `model._set_unknown_wstring()`/
+    `model._set_unknown_astring()`）。
 
     dataType=24（`OBB`）9 个浮点单行放不下，画成多行，不走这个单行函数——由调用方
     `_draw_ptbehavior_property()` 通过 `_ptbehavior_obb_variable()` 单独判断、
@@ -895,6 +896,14 @@ def _draw_ptbehavior_property_value(layout, child, data_type_value) -> bool:
         # 挂在 child（外层 PtBehaviorVariable）上，不是 variable——get/set 需要同时改写
         # 外层 varSize，见 model._set_unknown_wstring() 的说明。
         layout.prop(child, "unknown_wstring_value", text="")
+        return True
+
+    if data_type_value in (25, 26):  # OtherMaterialParamater/List、_RequestDatas 等：
+        # ASCII 单 \x00 结尾的类名字符串，跟 21 号同一类问题、只是编码不同，同样要连 varSize
+        # 一起重算，见 model.is_unknown_astring_shape() 的取证依据。
+        if not model.is_unknown_astring_shape(variable):
+            return False
+        layout.prop(child, "unknown_astring_value", text="")
         return True
 
     shape = _PTBEHAVIOR_UNKNOWN_DATATYPE_SHAPES.get(data_type_value)

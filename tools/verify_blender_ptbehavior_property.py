@@ -63,9 +63,14 @@ tools/verify_blender_ptbehavior_property.py —— PtBehavior 候选目录增删
     `dataType=4`（`PropUint`）同一个 wire 数值被至少 3 种语义复用（int/hash/float），按
     字段名分派——默认 int32，`DestFloat4` 这类命名例外按 float32（见
     `_PTBEHAVIOR_PROP_UINT_FLOAT_FIELD_NAMES`）；`dataType=21`（`PropWstring2`）是 UTF-16
-    宽字符串，编辑会连 `variable.size`/外层 `varSize` 一起按公式重算（变长/变短都要验证），
-    形状不合法（没有 `\x00\x00` 结尾等）时不提供紧凑编辑；字节数和期望对不上时不画紧凑
-    控件，安全回退到兜底文案，不拿越界字节瞎猜。
+    宽字符串，`dataType=25/26`（`OtherMaterialParamater`/`OtherMaterialParamList[N]`/
+    `_RequestDatas` 等字段名下）是同一类问题的 ASCII 版本（单 `\x00` 结尾，不是双
+    `\x00\x00`）——**这两个值之前判过"结构太复杂、结构性排除"，全语料逐条核对 hex 样本后
+    推翻，实际是固定的类名字符串**，见 `model.is_unknown_astring_shape()` 的取证依据。三者
+    编辑都会连 `variable.size`/外层 `varSize` 一起按公式重算（变长/变短都要验证），形状不
+    合法（没有对应的 null 结尾等）时不提供紧凑编辑，非 ASCII 输入对 25/26 直接拒绝编辑（铁律
+    #1，不静默按其它编码重新解释）；字节数和期望对不上时不画紧凑控件，安全回退到兜底文案，
+    不拿越界字节瞎猜。
 14. **dataType=24（`OBB`）9 个浮点单行放不下，画成 T/R/S 三行**：`unknown_float32x9_value`
     读写正确、round-trip；`_draw_ptbehavior_property()` 画出 3 个行标签（T/R/S）+ 9 个
     对应的 `prop`，且不受 `ui_expand` 折叠状态影响；字节数不对（不是 36 字节）时落回
@@ -213,8 +218,12 @@ def verify_panel_rendering(properties_node, report: Report) -> None:
     实现了紧凑控件**（检查项 13/14），"已知名字但没实现"这个兜底分支已经没有真实候选了，
     改用"已知名字、但这条实例的字节数不符合形状要求"（`dataType=4` 但只给 2 字节，正常应该
     是 4 字节）来测同一条兜底路径——`type_name` 认识但 `_draw_ptbehavior_property_value()`
-    因为长度不对返回 `False` 时同样会走这条"展开编辑"文案。"vendor 也没法推出形状"用
-    `dataType=25`（`OtherMaterialParamList` 那种嵌套材质参数结构，形状太复杂）。
+    因为长度不对返回 `False` 时同样会走这条"展开编辑"文案。"vendor 完全没登记这个 dataType"
+    （`attribute_types.pt_behavior_prop_type_name()` 返回 `None`）用 `dataType=25` 但故意给
+    一段不合法的形状（12 个 `\x00`，不是单个 `\x00` 结尾的 ASCII 字符串）——25 号本身现在有
+    我们自己推出的形状（见 `verify_unknown_datatype_shapes()`），这里测的是"vendor 完全不
+    认识这个数值"这条分支，跟这条探针形状合不合法无关，只要 vendor 没登记就应该走
+    「未知数据类型」文案。
     """
     from blender_efx_re import i18n, panels
 
@@ -967,6 +976,86 @@ def verify_unknown_datatype_shapes(report: Report) -> None:
         not any(e[0] == "prop" and e[2] == "unknown_wstring_value" for e in log21_bad),
         str(log21_bad),
     )
+
+    # ---- dataType=25/26：ASCII 单 \x00 结尾的类名字符串，编辑要连 varSize 一起重算 ----
+    for astring_datatype in (25, 26):
+        atext = "via.effect.script.EffectDecal2.EffectDecal_V2.cOtherMaterialParamater"
+        araw = (atext + "\x00").encode("ascii")
+        aprop_name = "OtherMaterialParamater"
+        avarsize = len(araw) + len(aprop_name.encode("utf-8")) + overhead
+        aobj = bpy.data.objects.new(f"ptbehavior_astring_probe_{astring_datatype}", None)
+        bpy.context.scene.collection.objects.link(aobj)
+        aobj["~TYPE"] = model.TYPE_ATTRIBUTE
+        model.populate_dict_as_children(aobj.efx_fields, {
+            "behaviorString": "via.effect.script.EffectDecal2.EffectDecal_V2",
+            "properties": [{
+                "Version": 5571972,
+                "varSize": avarsize,
+                "dataType": astring_datatype,
+                "variable": {
+                    "$type": "_unknown",
+                    "data": _base64.b64encode(araw).decode("ascii"),
+                    "Version": 5571972,
+                    "unkn": 1,
+                    "size": len(araw),
+                    "re4_unkn0": -1,
+                    "re4_unkn1": 0,
+                },
+                "varHash": 1,
+                "behaviorProperty": aprop_name,
+            }],
+        })
+        achild = model.find_field(aobj.efx_fields, "properties").children[0]
+        avariable = model.find_field(achild.children, "variable")
+
+        report.check(f"dataType={astring_datatype}：model.is_unknown_astring_shape() 认出这是合法的类名字符串",
+                     model.is_unknown_astring_shape(avariable))
+        report.check(f"dataType={astring_datatype}：unknown_astring_value 读出手工写进去的类名字符串",
+                     achild.unknown_astring_value == atext)
+
+        anew_text = "app.EffectSuefaceTrail.cRequestData"
+        achild.unknown_astring_value = anew_text
+        report.check(f"dataType={astring_datatype}：unknown_astring_value 写回去再读一致（round-trip）",
+                     achild.unknown_astring_value == anew_text)
+
+        anew_raw_len = len((anew_text + "\x00").encode("ascii"))
+        ainner_size_node = model.find_field(avariable.children, "size")
+        report.check(f"dataType={astring_datatype}：写入新字符串之后 variable.size 跟着更新",
+                     ainner_size_node.int_value == anew_raw_len,
+                     f"{ainner_size_node.int_value} != {anew_raw_len}")
+
+        avarsize_node = model.find_field(achild.children, "varSize")
+        aexpected_varsize = anew_raw_len + len(aprop_name.encode("utf-8")) + overhead
+        report.check(f"dataType={astring_datatype}：写入新字符串之后外层 varSize 也按公式重算",
+                     avarsize_node.int_value == aexpected_varsize,
+                     f"{avarsize_node.int_value} != {aexpected_varsize}")
+
+        achild.ui_expand = False
+        alog: list = []
+        panels._draw_ptbehavior_property(_FakeLayout(alog), achild, 0)
+        report.check(
+            f"dataType={astring_datatype} 主行画出了紧凑控件（unknown_astring_value）",
+            any(e[0] == "prop" and e[2] == "unknown_astring_value" for e in alog), str(alog),
+        )
+
+        # 非 ASCII 输入拒绝编辑，不静默改坏字节形状
+        with_prior_value = achild.unknown_astring_value
+        achild.unknown_astring_value = "中文"
+        report.check(
+            f"dataType={astring_datatype}：非 ASCII 输入被拒绝，值维持不变",
+            achild.unknown_astring_value == with_prior_value,
+        )
+
+        # 形状不合法（没有 null 结尾）时不提供紧凑编辑，安全回退
+        achild_bad = make_probe(f"astring_badshape_{astring_datatype}", astring_datatype, b"AB")
+        achild_bad.ui_expand = False
+        alog_bad: list = []
+        panels._draw_ptbehavior_property(_FakeLayout(alog_bad), achild_bad, 0)
+        report.check(
+            f"dataType={astring_datatype}：没有 null 结尾时形状不合法，不画紧凑控件，落回兜底文案",
+            not any(e[0] == "prop" and e[2] == "unknown_astring_value" for e in alog_bad),
+            str(alog_bad),
+        )
 
     # ---- dataType=24（OBB）：9 个浮点单行放不下，画成 T/R/S 三行 -----------
     obb_bytes = struct.pack("<fffffffff", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 5.0, 5.0)

@@ -5,7 +5,7 @@ type    = "add-on"
 
 name     = "MHWs EFX Editor"
 tagline  = "Import and export Monster Hunter Wilds EFX effect files"
-version  = "0.2.2"
+version  = "0.2.4"
 
 maintainer = "Dimcirui"
 
@@ -56,6 +56,7 @@ paths_exclude_pattern = [
     "tools/*.py",
     "tools/*.json",
     "tools/*.csv",
+    "tools/*.txt",
     # `efx_sim/` 的纯 Python 单测（`python -m unittest discover -s tests`），开发期文件。
     # 注意被测的 `efx_sim/` 本身**要**进包——它是预览功能的核心，不在这个黑名单里。
     "tests/",

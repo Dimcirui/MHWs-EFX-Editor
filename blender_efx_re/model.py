@@ -472,7 +472,8 @@ def _set_unknown_float32x9(self, value) -> None:
 # ——公式 `varSize = size + len(behaviorProperty 的 UTF-8 字节数) + 21` 是拿全部候选目录模板
 # （所有 behaviorString、所有字段名、所有 dataType）反过来验证过的，零例外（21 这个常数应该
 # 对应 PtBehaviorVariable 自己的固定字段开销，没有继续往下拆到具体是哪几个字段，公式本身
-# 已经用穷举验证过，不需要知道"为什么是 21"就能安全使用）。
+# 已经用穷举验证过，不需要知道"为什么是 21"就能安全使用）。这条公式与 dataType 无关，
+# dataType=25/26（下面的 ASCII 类名字符串）复用同一个常数。
 _PTBEHAVIOR_VARSIZE_FIXED_OVERHEAD = 21
 
 
@@ -499,10 +500,41 @@ def is_unknown_wstring_shape(node: "EFXValueNode") -> bool:
     return True
 
 
-def _wstring_variable_and_data(node: "EFXValueNode"):
+# dataType=25/26：全语料 12208+1895 个实例逐条核对过，`data` 全部是单个 `\x00` 结尾的纯
+# ASCII 类名字符串（如 `via.effect.script.EffectDecal2.EffectDecal_V2.cOtherMaterialParamater`），
+# 跟 21 号是同一类问题、只是字符集/结尾不同（ASCII 单 `\x00` vs UTF-16LE 双 `\x00`）。之前一版
+# 把这两个值判成"结构太复杂、结构性排除"是被字段名（`OtherMaterialParamList[N]`）和字节数
+# 波动误导——字节数波动纯粹是不同类名字符串本身长短不同，跟"数组套数组"无关，见
+# `distinctDataHex` 的取证（`tools/ptbehavior_catalog_raw.json` 的 `byRawDataType['25']`/
+# `['26']`，每个字节长度桶的实例数加总正好等于该 dataType 的总实例数，没有第三种形状）。
+def is_unknown_astring_shape(node: "EFXValueNode") -> bool:
+    """`node`（`variable` 子节点）的 `data` 解出来是不是一个合法的、以单个 `\\x00` 结尾的
+    ASCII 字符串（末尾正好一个 null 终止符、中间不含 null、能无损解码）。给 dataType=25/26
+    的紧凑编辑判断能不能画，不满足就回退到通用展开区，不硬套（铁律 #1）。
+    """
+    import base64
+
+    child = _unknown_data_child(node)
+    if child is None or child.data_type not in ("STRING", "NULL"):
+        return False
+    try:
+        raw = base64.b64decode(child.string_value or "")
+    except (ValueError, TypeError):
+        return False
+    if len(raw) < 1 or raw[-1:] != b"\x00" or raw.count(b"\x00") != 1:
+        return False
+    try:
+        raw[:-1].decode("ascii")
+    except UnicodeDecodeError:
+        return False
+    return True
+
+
+def _prefab_string_variable_and_data(node: "EFXValueNode"):
     """`node` 是 PtBehaviorVariable 本体（含 varSize/dataType/variable/varHash/
     behaviorProperty 五个直接子节点），返回 `(variable 节点, data 节点)`，形状不对返回
-    `(None, None)`。"""
+    `(None, None)`。给 `PropWstring2`（21，UTF-16LE）和 dataType=25/26（ASCII）共用——两者都是
+    "编辑会改变 data 字节数、需要连 varSize 一起重算"的字符串形状，区别只在编码。"""
     variable = find_field(node.children, "variable")
     if variable is None or variable.data_type != "OBJECT":
         return None, None
@@ -512,10 +544,27 @@ def _wstring_variable_and_data(node: "EFXValueNode"):
     return variable, data_child
 
 
+def _sync_prefab_string_varsize(self, variable: "EFXValueNode", raw: bytes) -> None:
+    """写完 `data` 新字节后同步 `variable.size` 和外层 `varSize`，`_set_unknown_wstring()`/
+    `_set_unknown_astring()` 共用（公式见 `_PTBEHAVIOR_VARSIZE_FIXED_OVERHEAD` 的说明）。"""
+    inner_size_node = find_field(variable.children, "size")
+    if inner_size_node is not None and inner_size_node.data_type == "INT":
+        inner_size_node.int_value = len(raw)
+
+    varsize_node = find_field(self.children, "varSize")
+    behavior_prop_node = find_field(self.children, "behaviorProperty")
+    if (varsize_node is not None and varsize_node.data_type == "INT"
+            and behavior_prop_node is not None):
+        prop_name = node_to_value(behavior_prop_node) or ""
+        varsize_node.int_value = (
+            len(raw) + len(prop_name.encode("utf-8")) + _PTBEHAVIOR_VARSIZE_FIXED_OVERHEAD
+        )
+
+
 def _get_unknown_wstring(self) -> str:
     import base64
 
-    _variable, data_child = _wstring_variable_and_data(self)
+    _variable, data_child = _prefab_string_variable_and_data(self)
     if data_child is None:
         return ""
     try:
@@ -532,26 +581,49 @@ def _get_unknown_wstring(self) -> str:
 def _set_unknown_wstring(self, value: str) -> None:
     import base64
 
-    variable, data_child = _wstring_variable_and_data(self)
+    variable, data_child = _prefab_string_variable_and_data(self)
     if data_child is None:
         return
     raw = (value + "\x00").encode("utf-16-le")
     if data_child.data_type == "NULL":
         data_child.data_type = "STRING"
     data_child.string_value = base64.b64encode(raw).decode("ascii")
+    _sync_prefab_string_varsize(self, variable, raw)
 
-    inner_size_node = find_field(variable.children, "size")
-    if inner_size_node is not None and inner_size_node.data_type == "INT":
-        inner_size_node.int_value = len(raw)
 
-    varsize_node = find_field(self.children, "varSize")
-    behavior_prop_node = find_field(self.children, "behaviorProperty")
-    if (varsize_node is not None and varsize_node.data_type == "INT"
-            and behavior_prop_node is not None):
-        prop_name = node_to_value(behavior_prop_node) or ""
-        varsize_node.int_value = (
-            len(raw) + len(prop_name.encode("utf-8")) + _PTBEHAVIOR_VARSIZE_FIXED_OVERHEAD
-        )
+def _get_unknown_astring(self) -> str:
+    import base64
+
+    _variable, data_child = _prefab_string_variable_and_data(self)
+    if data_child is None:
+        return ""
+    try:
+        raw = base64.b64decode(data_child.string_value or "")
+    except (ValueError, TypeError):
+        return ""
+    try:
+        text = raw.decode("ascii")
+    except UnicodeDecodeError:
+        return ""
+    return text.rstrip("\x00")
+
+
+def _set_unknown_astring(self, value: str) -> None:
+    import base64
+
+    variable, data_child = _prefab_string_variable_and_data(self)
+    if data_child is None:
+        return
+    try:
+        raw = (value + "\x00").encode("ascii")
+    except UnicodeEncodeError:
+        # 铁律 #1：这条字段全语料只见过 ASCII 类名，编不进的非 ASCII 输入拒绝这次编辑，
+        # 不静默丢字符、不换编码悄悄改变字节形状。
+        return
+    if data_child.data_type == "NULL":
+        data_child.data_type = "STRING"
+    data_child.string_value = base64.b64encode(raw).decode("ascii")
+    _sync_prefab_string_varsize(self, variable, raw)
 
 
 # `IBoneRelationAttribute` 各实现类里"内联存的那份骨骼名"字段名（`ParentOptions.BoneName` /
@@ -925,6 +997,11 @@ class EFXValueNode(PropertyGroup):
     # 同步，见 _set_unknown_wstring() 的说明。
     unknown_wstring_value: StringProperty(
         name="Value", get=_get_unknown_wstring, set=_set_unknown_wstring,
+    )
+    # dataType=25/26 专属：ASCII 单 `\x00` 结尾的类名字符串，同样挂在 PtBehaviorVariable 本体
+    # 上、同样要连外层 varSize 一起重算，见 _set_unknown_astring() 的说明。
+    unknown_astring_value: StringProperty(
+        name="Value", get=_get_unknown_astring, set=_set_unknown_astring,
     )
 
     # 只在这个节点是弧度制角度字段的标量子节点时才有意义——覆盖三种形状：Transform3D.
