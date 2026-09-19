@@ -12,6 +12,11 @@ blender_efx_re/ptbehavior_catalog.py —— PtBehavior 属性候选目录加载�
 捕获的完整 `PtBehaviorVariable` 模板：新增时整个克隆，不手工拼字段——`varSize` 等字段没有
 `[RszByteSizeField]`/`[RszArraySizeField]` 标注，不会被 vendor 自愈，猜字节布局的风险比
 克隆真实样本大得多。
+
+`defaults[behaviorString]`（`default_instance()`）是另一张表：每个类在全语料里出现次数
+最多的那一套字段组合，取自**同一个真实实例**——不是把 `behaviors[cls]` 里各字段各自
+"第一次见到"的模板拼起来的大杂烩。新建/改写 `behaviorString` 时用它当自动填充的默认字段块
+（见 `model._apply_ptbehavior_default()`），不是把候选目录全部塞进去。
 """
 
 from __future__ import annotations
@@ -30,7 +35,7 @@ def _load() -> dict:
     global _cache
     if _cache is not None:
         return _cache
-    empty = {"behaviors": {}, "_excluded": []}
+    empty = {"behaviors": {}, "defaults": {}, "_excluded": []}
     if not _CATALOG_JSON.exists():
         _cache = empty
         return _cache
@@ -44,9 +49,11 @@ def _load() -> dict:
         _cache = empty
         return _cache
     behaviors = data.get("behaviors")
+    defaults = data.get("defaults")
     excluded = data.get("_excluded")
     _cache = {
         "behaviors": behaviors if isinstance(behaviors, dict) else {},
+        "defaults": defaults if isinstance(defaults, dict) else {},
         "_excluded": excluded if isinstance(excluded, list) else [],
     }
     return _cache
@@ -60,6 +67,13 @@ def has_catalog(behavior_string: str) -> bool:
 def candidates(behavior_string: str) -> list[dict]:
     """返回 `[{"name": ..., "template": {...}}, ...]`，按规范顺序排列；没收录返回空列表。"""
     return _load()["behaviors"].get(behavior_string) or []
+
+
+def default_instance(behavior_string: str) -> list[dict]:
+    """这个类在全语料里出现次数最多的那一套字段组合，`[{"name": ..., "template": {...}}, ...]`，
+    按那个真实实例本身的字段顺序排列；没收录、或这个类的众数用法就是"什么都不覆盖"，
+    返回空列表——空列表本身就是真实结论，不代表"数据缺失"。"""
+    return _load()["defaults"].get(behavior_string) or []
 
 
 def known_behavior_strings() -> list[tuple[str, bool]]:

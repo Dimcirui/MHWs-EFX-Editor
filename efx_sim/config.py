@@ -17,15 +17,16 @@ efx_sim/config.py —— 模拟参数
 """
 
 from . import stages as _stages
-from .rng import DIST_ONESIDED
+from .rng import DIST_SYMMETRIC
 
 #: 待标定项清单：key -> (中文说明, 候选值, 当前默认)
 #: UI 可以直接拿它生成一排下拉框；标定完把 default 改掉即可。
 UNKNOWNS = {
     "random_dist": (
-        "`Range.r`（随机量）怎么参与抽取。`s` 是静态基准、`r` 是浮动量这一点已由全语料定下，"
-        "但浮动的取值分布没有实机确认。上游在 MHWI 上实测出的是单边追加，先照此默认。",
-        ("onesided", "symmetric", "gaussian"), "onesided",
+        "`Range.r`（随机量）怎么参与抽取。`s` 是静态基准、`r` 是浮动量这一点已由全语料定下。"
+        "2026-09-17 实机确认 `Velocity3D.Speed` 是对称双向 `[s-r, s+r]`（与 `Attractor.Force`"
+        "已确认的公式一致），改按此默认；其余共用这个开关的字段未逐个验证，仍可能有例外。",
+        ("onesided", "symmetric", "gaussian"), "symmetric",
     ),
     "life_model": (
         "总寿命怎么算。'sum'=AppearFrame+KeepFrame+VanishFrame；"
@@ -124,7 +125,7 @@ class SimConfig(object):
         self.fps = 60
 
         # -- 待标定项（见 UNKNOWNS）-----------------------------------------
-        self.random_dist = DIST_ONESIDED
+        self.random_dist = DIST_SYMMETRIC
         self.life_model = "sum"
         self.keep_hold_frame = "ignore"
         self.spawn_interval_source = "interval_frame"

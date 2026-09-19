@@ -789,7 +789,21 @@ _PTBEHAVIOR_UNKNOWN_DATATYPE_SHAPES = {
          "既有 {s,r} 命名习惯做的判断，这里照这个判断画成 S/R 两列"),
     22: ("unknown_int32_value", 4,
          "全语料 15 个实例（ShaderType/VolumeType），取值 0/2/3，按 int32 处理"),
+    10: ("unknown_float32x2_value", 8,
+         "全语料 10188 个实例（AlphaMaskRange/Alpha0/Alpha1/UVScale/NormalUVScale/UVOffset/"
+         "NormalUVOffset 等 7 个字段，vendor 自己起名叫 PropRange 但没有实现反序列化类），"
+         "按 float32x2 解出的数值是 (0,1)/(0,0.5)/(-1,1) 这类正常的范围/UV 值，按 int32 "
+         "解读是天文数字，判定 float32x2"),
 }
+
+# dataType=4（vendor 自己起名叫 PropUint，同样没有实现反序列化类）比上面几个特殊：字节数
+# 恒为 4，但同一个 wire 数值被至少 3 种不同语义复用——`TargetParts`/`OccludeSampleNum`/
+# `TriggerId`/`MaxParticleSounds` 是小整数、`VariableNameHash` 是哈希（本质也是无符号整数，
+# 显示成数字不会是错的）、但 `DestFloat4` 明确是浮点（按 float32 解出 1.0/0.4 这类正常值，
+# 按 uint32 解读是天文数字）。不能像上面几个纯按数值分派——分派前还要看
+# `behaviorProperty`（字段名）本身，这张表只登记"应该按 float 而不是 int 显示"的例外名单，
+# 没登记的字段名一律按 int32（哈希按整数显示不算显示错误，只是不好看）。
+_PTBEHAVIOR_PROP_UINT_FLOAT_FIELD_NAMES = frozenset({"DestFloat4"})
 
 
 def _draw_ptbehavior_property_value(layout, child, data_type_value) -> bool:
@@ -798,10 +812,15 @@ def _draw_ptbehavior_property_value(layout, child, data_type_value) -> bool:
     对齐 `_draw_mdf_property_value()` 的思路，但按 `dataType`（`PtBehaviorPropType`）分派
     到 8 种已知形状；`variable` 是 `PropColor` 时复用 `model.is_rgba_color_node()` 已经注册
     好的 `color_value` 颜色轮属性，不重新解码 `via.Color` 的打包 uint32。dataType 落在
-    vendor 枚举之外但语料能推出字节形状的几个数值，走 `_PTBEHAVIOR_UNKNOWN_DATATYPE_SHAPES`。
+    vendor 枚举之外但语料能推出字节形状的几个数值，走 `_PTBEHAVIOR_UNKNOWN_DATATYPE_SHAPES`；
+    `PropUint`（4）额外按字段名分派（见 `_PTBEHAVIOR_PROP_UINT_FLOAT_FIELD_NAMES`）；
+    `PropWstring2`（21）是宽字符串，编辑要连 `variable.size`/外层 `varSize` 一起重算，
+    单独一支（见 `model._set_unknown_wstring()`）。
 
-    dataType 不认识、或者认识但不是这次实现紧凑控件的那几种（`PropUint`/`PropRange`/
-    `PropWstring2`——语料里样本太少，形状没有把握，先留给展开区）：返回 `False`。
+    dataType=24（`OBB`）9 个浮点单行放不下，画成多行，不走这个单行函数——由调用方
+    `_draw_ptbehavior_property()` 通过 `_ptbehavior_obb_variable()` 单独判断、
+    `_draw_ptbehavior_obb_rows()` 单独画，这里对它就返回 `False`。dataType 不认识、
+    或者认识但形状没有把握的：同样返回 `False`。
     """
     variable = model.find_field(child.children, "variable")
     if variable is None or variable.data_type != "OBJECT":
@@ -860,6 +879,24 @@ def _draw_ptbehavior_property_value(layout, child, data_type_value) -> bool:
         layout.prop(str_node, "string_value", text="")
         return True
 
+    if data_type_value == 4:  # PropUint：字节数固定 4，但语义因字段名而异，见上面的说明
+        if model.unknown_data_byte_length(variable) != 4:
+            return False
+        field_name = _ptbehavior_property_name(child)
+        prop_name = ("unknown_float32_value"
+                     if field_name in _PTBEHAVIOR_PROP_UINT_FLOAT_FIELD_NAMES
+                     else "unknown_int32_value")
+        layout.prop(variable, prop_name, text="")
+        return True
+
+    if data_type_value == 21:  # PropWstring2：UTF-16 宽字符串，编辑要连 varSize 一起重算
+        if not model.is_unknown_wstring_shape(variable):
+            return False
+        # 挂在 child（外层 PtBehaviorVariable）上，不是 variable——get/set 需要同时改写
+        # 外层 varSize，见 model._set_unknown_wstring() 的说明。
+        layout.prop(child, "unknown_wstring_value", text="")
+        return True
+
     shape = _PTBEHAVIOR_UNKNOWN_DATATYPE_SHAPES.get(data_type_value)
     if shape is not None:
         prop_name, expected_len, _evidence = shape
@@ -878,6 +915,42 @@ def _draw_ptbehavior_property_value(layout, child, data_type_value) -> bool:
     return False
 
 
+#: dataType=24（`OBB`，只在 `EffectVolumetricFog` 见过，全语料只有 4 个实例）的字节数——
+#: 9 个 float32。9 个数塞不进单行紧凑控件，画成 T/R/S 三行、每行 3 个分量；T/R/S 具体是不是
+#: "平移/旋转/缩放"是用户按 9 自由度的常见 TRS 惯例做的判断——4 个真实样本里前 6 个分量全部
+#: 是 0（一个是 -0.0），没有任何证据能反证或反过来证实 T 和 R 的顺序，只有最后 3 个分量
+#: （2,2,2 / 5,5,5 / 50,50,100）真的在变、且数值量级像是包围盒的边长，这一半有较强的
+#: 结构支持；不是独立验证过的语义（铁律 #3）。以后有新证据推翻的话只用改这里的标签文字，
+#: 不用碰底层 `unknown_float32x9_value` 存储。
+_PTBEHAVIOR_OBB_DATATYPE = 24
+_PTBEHAVIOR_OBB_BYTE_LENGTH = 36
+_PTBEHAVIOR_OBB_ROW_LABELS = ("T", "R", "S")
+
+
+def _ptbehavior_obb_variable(child, data_type_value):
+    """`child` 是不是一条形状确认过的 OBB 实例，是就返回它的 `variable` 节点，否则 None。"""
+    if data_type_value != _PTBEHAVIOR_OBB_DATATYPE:
+        return None
+    variable = model.find_field(child.children, "variable")
+    if variable is None or variable.data_type != "OBJECT":
+        return None
+    if model.unknown_data_byte_length(variable) != _PTBEHAVIOR_OBB_BYTE_LENGTH:
+        return None
+    return variable
+
+
+def _draw_ptbehavior_obb_rows(box, variable) -> None:
+    """OBB 的 9 个浮点单行放不下，拆成 T/R/S 三行、每行 3 个分量（见
+    `_PTBEHAVIOR_OBB_DATATYPE` 处的取证说明）。跟主行的紧凑控件一样，不受 `ui_expand`
+    折叠状态影响——不需要展开就能看到、能编辑。
+    """
+    for row_index, row_label in enumerate(_PTBEHAVIOR_OBB_ROW_LABELS):
+        row = box.row(align=True)
+        row.label(text=row_label)
+        for col in range(3):
+            row.prop(variable, "unknown_float32x9_value", index=row_index * 3 + col, text="")
+
+
 def _draw_ptbehavior_property(box, child, index: int) -> None:
     """一条 PtBehavior 属性一行：展开箭头 + 属性名 + 紧凑值控件 + 删除。
 
@@ -887,6 +960,7 @@ def _draw_ptbehavior_property(box, child, index: int) -> None:
     """
     data_type_value = _ptbehavior_data_type_value(child)
     type_name = attribute_types.pt_behavior_prop_type_name(data_type_value)
+    obb_variable = _ptbehavior_obb_variable(child, data_type_value)
 
     row = box.row(align=True)
     icon = "TRIA_DOWN" if child.ui_expand else "TRIA_RIGHT"
@@ -894,12 +968,19 @@ def _draw_ptbehavior_property(box, child, index: int) -> None:
     split = row.split(factor=_FIELD_SPLIT_FACTOR, align=True)
     _draw_label(split, _ptbehavior_property_name(child))
     value_row = split.row(align=True)
-    if not _draw_ptbehavior_property_value(value_row, child, data_type_value):
+    if obb_variable is not None:
+        disabled = value_row.row()
+        disabled.enabled = False
+        disabled.label(text=T("ptbehavior.obb_hint"))
+    elif not _draw_ptbehavior_property_value(value_row, child, data_type_value):
         disabled = value_row.row()
         disabled.enabled = False
         disabled.label(text=T("ptbehavior.unknown_shape") if type_name is None
                         else T("mdf.unknown_shape"))
     row.operator("efx_re.ptbehavior_property_remove", text="", icon="X", emboss=False).index = index
+
+    if obb_variable is not None:
+        _draw_ptbehavior_obb_rows(box, obb_variable)
 
     if not child.ui_expand:
         return

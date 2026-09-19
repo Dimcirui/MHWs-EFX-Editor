@@ -2044,3 +2044,140 @@ class TestPtLife(unittest.TestCase):
             status=0, action_index=1)], SimConfig(seed=1))
         sim.step()
         self.assertFalse(any("不会召唤 Action" in n for n in sim.em.notes), sim.em.notes)
+
+
+def attractor_block(flags=0, pos_world=(0.0, 0.0, 0.0), pos_local=(0.0, 0.0, 0.0),
+                    force_static=0.0, force_birand=0.0, resist=0.0, max_dist=-1.0,
+                    zone_radius=0.0, zone_mult=(1.0, 0.0)):
+    return ("Attractor", {
+        "Flags": flags,
+        "AttractPositionWorld": {"X": pos_world[0], "Y": pos_world[1], "Z": pos_world[2]},
+        "AttractPositionLocal": {"X": pos_local[0], "Y": pos_local[1], "Z": pos_local[2]},
+        "ForceStatic": force_static, "ForceBiRand": force_birand,
+        "ForceResistWilds": resist, "MaxAttractDistance": max_dist,
+        "MultZoneRadius": zone_radius, "ZoneVelocityMultiplier": _range(*zone_mult),
+        "AttractAxisBias": 0.0, "SpawnDelay": _range(0.0, 0.0), "unkn1": 0.0,
+    })
+
+
+class TestAttractor(unittest.TestCase):
+
+    def test_local_offset_pulls_toward_target_by_default(self):
+        """模式=0（默认）：只有 AttractPositionLocal 生效，正的 ForceStatic 把粒子拉向它。
+
+        `Attractor` 只写 `p.vel`（FORCE 阶段），位置积分靠 `Velocity3D`（INTEGRATE 阶段）
+        ——测试必须搭一个 `speed=0` 的 Velocity3D 兜底，否则 `p.vel` 再怎么变化，`p.pos`
+        永远是 (0,0,0)（真出过这个坑：第一版测试忘了搭，全部按"没生效"误报）。
+        """
+        sim = Simulator([spawn_block(loops=1), life_block(keep=1000), vel_block(speed=0.0),
+                         attractor_block(pos_local=(5.0, 0.0, 0.0), force_static=2.0,
+                                         resist=1.0)],
+                        SimConfig(seed=1))
+        sim.run(60)
+        p = sim.em.particles[0]
+        self.assertGreater(p.pos.x, 0.5, "正 ForceStatic 应该把粒子往 +X 的目标点拉")
+
+    def test_world_component_only_active_in_world_mode(self):
+        """`AttractPositionWorld` 只在 Flags 低 2 位=2 时生效，模式=0 下改它必须无效果。"""
+        still = Simulator([spawn_block(loops=1), life_block(keep=1000), vel_block(speed=0.0),
+                           attractor_block(flags=0, pos_world=(5.0, 0.0, 0.0),
+                                           force_static=2.0, resist=1.0)],
+                          SimConfig(seed=1))
+        still.run(30)
+        self.assertEqual(still.em.particles[0].pos.as_tuple(), (0.0, 0.0, 0.0),
+                         "模式=0 时 AttractPositionWorld 不该生效")
+
+        moved = Simulator([spawn_block(loops=1), life_block(keep=1000), vel_block(speed=0.0),
+                           attractor_block(flags=2, pos_world=(5.0, 0.0, 0.0),
+                                           force_static=2.0, resist=1.0)],
+                          SimConfig(seed=1))
+        moved.run(30)
+        self.assertGreater(moved.em.particles[0].pos.x, 0.5,
+                           "模式=2 时 AttractPositionWorld 应该生效")
+
+    def test_mode_three_targets_each_particles_own_spawn_point(self):
+        """模式=3：目标点是粒子自己的出生点，不是共享的一个点——不同出生位置的粒子
+        应该各自停在（或围绕）自己的出生点附近，不会互相靠拢到同一处。"""
+        sim = Simulator([spawn_block(num=20, loops=1), life_block(keep=1000), vel_block(speed=0.0),
+                         shape_block(0, rx=(-5.0, 5.0), ry=(0.0, 0.0), rz=(0.0, 0.0)),
+                         attractor_block(flags=3, force_static=3.0, resist=2.0)],
+                        SimConfig(seed=1))
+        sim.run(60)
+        self.assertTrue(sim.em.particles)
+        for p in sim.em.particles:
+            self.assertLess((p.pos - p.spawn_pos).length(), 1.0,
+                            "模式=3 应该让粒子留在自己的出生点附近，而不是漂去共享目标点")
+
+    def test_negative_force_static_repels(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=1000), vel_block(speed=0.0),
+                         attractor_block(pos_local=(5.0, 0.0, 0.0), force_static=-2.0,
+                                         resist=1.0)],
+                        SimConfig(seed=1))
+        sim.run(30)
+        self.assertLess(sim.em.particles[0].pos.x, -0.1,
+                        "负 ForceStatic 应该把粒子推离目标点，不是拉过去")
+
+    def test_beyond_max_distance_gets_no_force_at_all(self):
+        """实机原话是"超出距离完全不受力"——不是弹簧力减弱，是彻底不计算。"""
+        far = Simulator([spawn_block(loops=1), life_block(keep=1000),
+                         attractor_block(pos_local=(100.0, 0.0, 0.0), force_static=5.0,
+                                         resist=1.0, max_dist=1.0)],
+                        SimConfig(seed=1))
+        far.run(30)
+        self.assertEqual(far.em.particles[0].vel.as_tuple(), (0.0, 0.0, 0.0),
+                         "超出 MaxAttractDistance 应该完全不受力")
+
+        unlimited = Simulator([spawn_block(loops=1), life_block(keep=1000),
+                              attractor_block(pos_local=(100.0, 0.0, 0.0), force_static=5.0,
+                                              resist=1.0, max_dist=-1.0)],
+                             SimConfig(seed=1))
+        unlimited.run(30)
+        self.assertGreater(unlimited.em.particles[0].vel.x, 0.0,
+                           "-1 是无限制哨兵值，不该被当成距离阈值 -1")
+
+    def test_zone_multiplies_velocity_instead_of_applying_spring_force(self):
+        """死区内是逐帧速度乘数，弹簧力完全不参与——不能两者都算。
+
+        目标点故意放在跟初速度不同的轴（X）上：如果弹簧力偷偷跟乘数一起算，
+        `vel.x` 会因为被拉向目标点而偏离 0（初速度在 X 轴上是 0），单看 `vel.z`
+        （初速度所在轴）测不出这个泄漏——之前的第一版就是因为轴选得不对，
+        注入这个 bug 都不会 FAIL。
+        """
+        sim = Simulator([spawn_block(loops=1), life_block(keep=1000),
+                         vel_block(speed=2.0, direction=(0.0, 0.0, 1.0)),
+                         attractor_block(pos_local=(3.0, 0.0, 0.0), force_static=50.0,
+                                         resist=0.0, zone_radius=10.0, zone_mult=(0.5, 0.0))],
+                        SimConfig(seed=1))
+        sim.step()
+        p = sim.em.particles[0]
+        # 粒子出生在死区内（离目标点 3 远，半径 10）：Z 轴速度应该恰好被乘了 0.5，
+        # X 轴速度应该仍是 0——如果弹簧力偷偷参与了计算，X 轴会因为被拉向目标点而非零。
+        self.assertAlmostEqual(p.vel.z, 1.0, places=6)
+        self.assertAlmostEqual(p.vel.x, 0.0, places=6,
+                               msg="弹簧力不该在死区内生效，X 轴速度不该偏离 0")
+
+    def test_damping_is_a_continuous_drag_not_a_per_frame_multiply(self):
+        """阻尼是 `accel -= damping * vel` 累进积分，不是 `vel *= (1 - damping)` 直接乘。
+
+        两者只有 `dt == 1` 时才会重合；`per_second`（默认单位）下 `dt = 1/fps != 1`，
+        用错公式这条断言就会假：错误实现在 60fps 下 1 帧后是 `2.0*(1-0.5)=1.0`，
+        正确实现是 `2.0*(1-0.5*dt)≈1.983`。
+        """
+        sim = Simulator([spawn_block(loops=1), life_block(keep=1000),
+                         vel_block(speed=2.0, direction=(1.0, 0.0, 0.0)),
+                         attractor_block(force_static=0.0, resist=0.5)],
+                        SimConfig(seed=1, fps=60))
+        sim.step()
+        dt = sim.config.dt()
+        expected = 2.0 * (1.0 - 0.5 * dt)
+        self.assertAlmostEqual(sim.em.particles[0].vel.x, expected, places=5)
+
+    def test_unknown_mode_falls_back_to_default_and_notes(self):
+        sim = Simulator([spawn_block(loops=1), life_block(keep=100), vel_block(speed=0.0),
+                         attractor_block(flags=1, pos_local=(5.0, 0.0, 0.0),
+                                         force_static=2.0, resist=1.0)],
+                        SimConfig(seed=1))
+        sim.run(10)
+        self.assertGreater(sim.em.particles[0].pos.x, 0.0,
+                           "模式=1 未知，应该退回默认（仅局部偏移）行为，而不是不动")
+        self.assertTrue(any("unknMode" in n for n in sim.em.notes), sim.em.notes)

@@ -1,8 +1,8 @@
 # vendor-patches
 
-`vendor/RE-Engine-Lib` 默认铁律是不改源码（CLAUDE.md #4）——发现的缺陷记 `KNOWN_UPSTREAM_ISSUES.md`，
+`vendor/RE-Engine-Lib` 默认铁律是不改源码（铁律 #2）——发现的缺陷记 `KNOWN_UPSTREAM_ISSUES.md`，
 能绕就在 `tools/EfxBridge/Program.cs` 里绕。这个目录放的是**例外**：绕不开、又足够小、足够有
-把握的补丁，才收在这里。别把这当成绕开铁律 #4 的旁路——新增前先确认真的够小、够有把握。
+把握的补丁，才收在这里。别把这当成绕开铁律 #2 的旁路——新增前先确认真的够小、够有把握。
 
 ⚠ **第一步永远是先证明这真是 vendor 的错**，不是我们喂错了。判据：跑一条完全不经我们
 代码的路径复现（`roundtrip` 是二进制→对象图→二进制，不过 JSON；`dump`/`load` 过 JSON，
@@ -110,7 +110,7 @@ dump->load: 01 00 00 00 00 00 00 00   = (type=1, value=0)  运算符 Pow
 补丁把**操作码 0** 改名成 `PowOp`（用户看不到这个字面量，界面显示中缀 `**`），文本因此
 无歧义。修补后同一文件 `dump`->`load` **逐字节相同**。
 
-⚠ 这条符合铁律 #4 的三条判据：① 拿完全不经我们代码的路径复现（字节对照），②
+⚠ 这条符合铁律 #2 的三条判据：① 拿完全不经我们代码的路径复现（字节对照），②
 改动是一个枚举成员改名 + 三处引用，③ 文本是 vendor 解析器自己产/自己吃的，
 `Program.cs` 没有干净挂钩点。
 
@@ -143,6 +143,87 @@ dump->load: 01 00 00 00 00 00 00 00   = (type=1, value=0)  运算符 Pow
 逐一对应验证过是同一批位模式；全语料 `roundtrip` 稳定/异常分布（9175 稳定 / 0 不稳定 / 46 异常）
 和改动前完全一致，无回归。
 
+**追记（2026-09-17，用户实机测试）**：`unknWild1` 已确认是阻尼/阻力系数——给 0.5 粒子运动明显
+变慢，给 1.0 粒子看不出运动。同一轮测试里，老字段 `ForceResist` 全语料 1104/1105 恒为 0.0（唯一
+例外 0.2），改任意值实机也测不出效果，判定 MHWilds 下已废弃，语义被这个字段接管，故重命名为
+`ForceResistWilds`。`unknWild10` 语义仍未知，字段名不动。改名不影响二进制布局（`RszAutoReadWrite`
+按声明顺序/类型生成读写代码，不看字段名字符串），已重新跑过 `roundtrip` 确认无回归。
+
+**追记 2（2026-09-17，用户实机测试，规模远超前两次，改动性质也变了）**：这轮不再是"类型精化"，
+是**字段边界重新划分**——vendor 把 `AttractPosition`/`ForceScale`/`ReversalForceScale`/
+`ReversalDistance`/`ForceResist` 以及 `unknWild3`~`unknWild6` 这几个 `via.Range`/`Vector3` 的
+分界线全部画错了位置，实际的 Vector3/via.Range 边界比声明的边界晚半个字段到一整个字段不等。
+证据链（全部来自实机、不是语料统计）：
+
+- vendor 的 `AttractPosition`（首个 `Vector3`）改任意值实机测不出效果；`ForceScale.s/.r` +
+  `ReversalForceScale.s`（本该是两个 `via.Range` 的前 3 个 float）单独改一维，能让粒子群精确
+  朝 +X/+Y/+Z 偏移吸引目标点、且和 `AttractPosition` 效果相同可叠加——说明真正的局部偏移
+  Vector3 在这三个字段上，vendor 声明的 `AttractPosition` 只有配合 `Flags` bit1(数值 1) 才会
+  作为**另一个**、世界/固定参考系目标点分量生效，两者分别改名 `AttractPositionLocal`（恒开）
+  / `AttractPositionWorld`（bit1 门控）。
+- `ReversalForceScale.r`（实机振荡周期测试确认是弹簧力常数）+ `ReversalDistance.s`（实机确认
+  双向对称随机 `[Static-x, Static+x]`，取 x/-x 效果相同，见 docs/PITFALLS.md #29）是真正的一对，
+  但两者版本可用性不同（前者恒可用，后者 DD2+ 专属），**不能**合并成一个 `via.Range`（会在
+  RE7RT/RE4 文件上错误读写字节），改成两个独立 float `ForceStatic`/`ForceBiRand`，各自保留
+  原本的版本条件。`ReversalDistance.r` 语义未知，占位 `unkn1`。
+- `unknWild3.s`/`.r` 是两个互不相关的独立量（不是一对），拆成两个 float：`.r` 实机确认是
+  吸引力最大作用距离阈值（`-1`=无限制哨兵值），改名 `MaxAttractDistance`；`.s` 有明确效果
+  （粒子群从球壳收缩成正八面体再收缩成十字）但模型未定，先占位 `unkn2` 不强行命名。
+- `unknWild4`/`unknWild5`/`unknWild6` 三个 `via.Range`（6 个 float）的真实分组同样错位了半个
+  `via.Range`：`unknWild4.s` 是独立的"死区半径"，改名 `MultZoneRadius`；`unknWild4.r`+
+  `unknWild5.s` 是真正一对（区域内逐帧速度乘数），新声明 `via.Range ZoneVelocityMultiplier`；
+  `unknWild5.r`+`unknWild6.s` 是另一对（疑似生成延迟），新声明 `via.Range SpawnDelay`；
+  `unknWild6.r` 语义未知，占位 `unkn3`。这两对是否遵守标准 Static+Random 公式（`[s,s+r]`）
+  还是像 `ForceBiRand` 那样是双向对称，尚未验证，别照搬。
+
+**声明顺序即字节顺序，拆分时踩过一次坑**：`via.Range` 自身是 `{float s; float r;}`，`s` 在前、
+`r` 在后——第一版把 `unknWild3.s`（未命名）和 `unknWild3.r`（`MaxAttractDistance`）的声明顺序
+写反了，导致 `MaxAttractDistance` 实际读到的是 `.s` 的字节。靠 `fieldstats` 重新跑一遍、比对
+"是否还有 -1 哨兵值"这个已知指纹发现的，改完顺序后指纹对上了才确认修好。**这类拆分改动光凭
+"编译通过 + roundtrip 绿"不够**，必须拿改动前的字段级取值分布当基线，逐字段核对指纹没有错位。
+
+**实测确认**：改动前后 `fieldstats` 扫到的实例数、文件数、失败数完全一致（1105 / 9175 / 46），
+拆分后每个新字段的取值分布逐一比对旧字段名下的历史指纹（含上面提到的顺序 bug 修复前后两版）；
+全语料 `roundtrip` 稳定/异常分布（9175 稳定 / 0 不稳定 / 46 异常）全程保持不变，无回归。
+
+**追记 3（2026-09-17，用户实机测试）**：`unkn3`~`unknWild9` 这段实机测试显示是 `MultZoneRadius`
+定义的胶囊形区域在做三轴延伸，`unknWild9.r`/`unknWild10` 都已确认是转角（`unknWild10` 绕全局
+Y），用户怀疑三转角里的第三个可能藏在 `endwilds` 里——`endwilds` 全语料 1105/1105 恒为 0，之前
+当成死字段占位用 `UndeterminedFieldType`。类型订正为 `float`（跟 `unknWild1`/`unknWild10` 那次
+同样的位模式论证——两者都是 4 字节原样读写，改哪个类型都不丢字节），**但这次没有非零语料样本
+能验证位模式是否真是干净小数**，纯粹是"结构位置紧挨着两个已确认的转角"这个旁证撑住的，比前两次
+的证据弱，语义和数据类型的置信度不能混为一谈——字段名暂不改，等实机测出它是不是真的转角再定。
+`unkn3`~`unknWild9` 那几对的分组/公式仍未验证，本次不动。已重新跑 `roundtrip` 确认无回归。
+
+**追记 4（2026-09-17，用户实机测试，`endwilds` 确认+结构定型）**：`endwilds` 实机测试确认
+就是角度，`unknWild9.r`/`unknWild10`/`endwilds` 三个连续 float 是一组角度（欧拉角）。原
+`unknWild6.r`~`endwilds`（1 个独立 float + 3 个 via.Range + 1 个独立 float，共 8 个 float）
+整体重新分组、按 `EFXAttributeEmitterShape3D` 的 `RangeX/Y/Z` + `Vector3 LocalRotation` 惯例
+命名（加 `Shape` 前缀区分，这里不是 ES3D 本身）：
+
+```
+原 unknWild6.r + unknWild7.s  -> ShapeRangeX (via.Range)
+原 unknWild7.r + unknWild8.s  -> ShapeRangeY (via.Range)
+原 unknWild8.r + unknWild9.s  -> ShapeRangeZ (via.Range)
+原 unknWild9.r/unknWild10/endwilds -> ShapeRotation (Vector3)
+```
+
+⚠ **命名对齐的是结构，不是已确认的语义**——实机测试发现给 `ShapeRangeX/Y/Z.s` 各设 1、
+`Flags=8` 时，看到的是一个**始终正对摄像机**的正方形边框，角色自转不会带着它转，这不是
+典型的世界/局部空间几何体该有的行为，这组参数到底是不是"定义一个物理空间形状"还没有最终
+结论。语料里 `Flags=8` 从不单独出现（只见于 8/24/26，均带数值 16 那一位），疑似 16 是这套
+参数自己的形状类型开关（类似 `EmitterShape3D.ShapeType`），待验证。三对 Range 各自的公式
+（Static+Random/min-max/`ForceBiRand` 那种双向对称）、`ShapeRotation` 三轴的旋转顺序都还
+没验证，只是先把结构定下来，方便继续测——跟前几次一样，**声明顺序必须和原本 s 在前、r 在后
+的字节序对齐**，这次改完立刻用 `fieldstats` 逐字段核对了历史指纹，全部一次对上，没有再犯
+`MaxAttractDistance` 那次的顺序错误。已重新跑 `roundtrip` 确认无回归。
+
+**追记 5（2026-09-18）**：`unknWild3.s`（球壳收缩成正八面体/十字那个形状偏置字段，之前占位
+`unkn2`）改名 `AttractAxisBias`。单粒子追踪确认轨迹是直线段，排除了之前怀疑的旋转/切向力
+分量；具体是不是"XYZ 分量独立收缩、负值让粒子高速沿轴飞出"这个模型是用户推导出来的，不是
+逐条单独实机验证过，命名先按这个推导定，语义置信度按"guess"记。至此 `EFXAttributeAttractor`
+只剩 `unkn1`（原 `ReversalDistance.r`）没有名字。已重新跑 `roundtrip` 确认无回归。
+
 ## 怎么用
 
 **vendor 是 submodule，工作区改动不会随 `git submodule update` 保留**——每次重新 checkout /
@@ -155,6 +236,7 @@ git apply tools/vendor-patches/0003-efx-opaque-unknown-attribute-types.patch --d
 git apply tools/vendor-patches/0004-efx-bonerelation-strainribbon-fluidsim.patch --directory=vendor/RE-Engine-Lib
 git apply tools/vendor-patches/0005-efx-inline-wstring-bytesize-fields.patch --directory=vendor/RE-Engine-Lib
 git apply tools/vendor-patches/0006-efx-attractor-unknwild-float-fields.patch --directory=vendor/RE-Engine-Lib
+git apply tools/vendor-patches/0007-efx-powop-name-collision.patch --directory=vendor/RE-Engine-Lib
 ```
 
 （`git apply` 认不出就说明补丁跟当前 vendor commit 对不上下文了，去对应源文件里手动照着补丁
@@ -186,6 +268,7 @@ git apply tools/vendor-patches/0006-efx-attractor-unknwild-float-fields.patch --
 逐字节比），如果不打补丁受影响文件已经是 0，说明上游自己修好了，删掉这个文件、撤掉那 18 个
 字段上的 `ByteSize = true`、`KNOWN_UPSTREAM_ISSUES.md` #11 标一下已解决即可。
 
-**0006**：这个不是"上游修不修"的问题（本来就没错），只在上游自己给 `Attractor` 的 MHWilds
-专属字段配了正式类型/名字时才需要处理——那时大概率连字段名都不一样，直接对照上游的类型定义，
-删掉这个文件、把 `unknWild1`/`unknWild10` 换成上游版本即可，不需要"先确认没打补丁也一样"这一步。
+**0006**：这个不是"上游修不修"的问题（本来就没错），只在上游自己把 `EFXAttributeAttractor`
+的字段边界重新划分对、配了正式名字时才需要处理——那时大概率连字段数量和分组都不一样（不只是
+改名），直接对照上游的类型定义重写整个字段列表，删掉这个文件，不需要"先确认没打补丁也一样"
+这一步。

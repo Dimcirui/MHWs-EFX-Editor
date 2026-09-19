@@ -270,7 +270,7 @@ def config_from_scene(scene):
     return _sim().SimConfig(
         seed=int(getattr(scene, "efx_re_sim_seed", 0)),
         fps=int(getattr(scene, "efx_re_sim_fps", 60)),
-        random_dist=getattr(scene, "efx_re_sim_random_dist", "onesided"),
+        random_dist=getattr(scene, "efx_re_sim_random_dist", "symmetric"),
         life_model=getattr(scene, "efx_re_sim_life_model", "sum"),
         keep_hold_frame=getattr(scene, "efx_re_sim_keep_hold", "ignore"),
         velocity_unit=getattr(scene, "efx_re_sim_velocity_unit", "per_second"),
@@ -1536,7 +1536,7 @@ def register():
         name="Random Spread",
         items=[("onesided", "s + [0, r]", ""), ("symmetric", "s + [-r, r]", ""),
                ("gaussian", "s + N(0, r/2)", "")],
-        default="onesided", update=_on_knob_changed,
+        default="symmetric", update=_on_knob_changed,
         description="随机量怎么叠加到静态值上")
     bpy.types.Scene.efx_re_sim_life_model = EnumProperty(
         name="Lifetime",

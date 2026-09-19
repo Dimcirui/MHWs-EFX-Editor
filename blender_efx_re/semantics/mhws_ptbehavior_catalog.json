@@ -1,7 +1,1134 @@
 {
  "_generated_by": "tools/gen_ptbehavior_catalog.py",
- "_note": "PtBehavior 属性候选目录：只收录属性顺序在全语料里全局一致的 behaviorString。每条候选的 template 是语料里真实出现过的完整 PtBehaviorVariable，新增时整个克隆，不手工拼字段（varSize 等记账字段没有自愈标注）。",
+ "_note": "PtBehavior 属性候选目录：只收录属性顺序在全语料里全局一致的 behaviorString。`behaviors[cls]` 每条候选的 template 是语料里真实出现过的完整 PtBehaviorVariable，新增时整个克隆，不手工拼字段（varSize 等记账字段没有自愈标注）。`defaults[cls]` 是这个类在全语料里出现次数最多的那一套字段组合，取自同一个真实实例（不是把各字段各自「第一次见到」的模板拼起来）——新建/改写 behaviorString 时用它当默认字段块，不是把 behaviors[cls] 全部塞进去。",
  "behaviors": {
+  "via.effect.script.EffectDecal2.EffectDecal_V2": [
+   {
+    "name": "DecalPrefab",
+    "template": {
+     "Version": 5571972,
+     "varSize": 118,
+     "dataType": 17,
+     "variable": {
+      "$type": "PropPrefabpath",
+      "str": "Art/VFX/Decal/Common/Burnt/11_burn_004.pfb",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 86,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 765838034,
+     "behaviorProperty": "DecalPrefab"
+    }
+   },
+   {
+    "name": "DisableCullingMaterialUpdate",
+    "template": {
+     "Version": 5571972,
+     "varSize": 53,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 646582833,
+     "behaviorProperty": "DisableCullingMaterialUpdate"
+    }
+   },
+   {
+    "name": "OverridePriority",
+    "template": {
+     "Version": 5571972,
+     "varSize": 41,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 2701729174,
+     "behaviorProperty": "OverridePriority"
+    }
+   },
+   {
+    "name": "Priority",
+    "template": {
+     "Version": 5571972,
+     "varSize": 33,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 3,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 4237659754,
+     "behaviorProperty": "Priority"
+    }
+   },
+   {
+    "name": "DecalDirection",
+    "template": {
+     "Version": 5571972,
+     "varSize": 39,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 3,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 2453166048,
+     "behaviorProperty": "DecalDirection"
+    }
+   },
+   {
+    "name": "DecalUpDirection",
+    "template": {
+     "Version": 5571972,
+     "varSize": 41,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 4,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 2240336407,
+     "behaviorProperty": "DecalUpDirection"
+    }
+   },
+   {
+    "name": "ProjectionShape",
+    "template": {
+     "Version": 5571972,
+     "varSize": 40,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 3454384157,
+     "behaviorProperty": "ProjectionShape"
+    }
+   },
+   {
+    "name": "Extent",
+    "template": {
+     "Version": 5571972,
+     "varSize": 39,
+     "dataType": 11,
+     "variable": {
+      "$type": "PropFloat3",
+      "vec": {
+       "X": 1.0,
+       "Y": 0.75,
+       "Z": 1.0
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 12,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 3492208806,
+     "behaviorProperty": "Extent"
+    }
+   },
+   {
+    "name": "ScaleXYZ",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 19,
+     "variable": {
+      "$type": "PropFloat2",
+      "Vec": {
+       "X": 1.45,
+       "Y": 0.14999998
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 162060680,
+     "behaviorProperty": "ScaleXYZ"
+    }
+   },
+   {
+    "name": "NoUseSearchTerrain",
+    "template": {
+     "Version": 5571972,
+     "varSize": 43,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 6
+     },
+     "varHash": 1453561883,
+     "behaviorProperty": "NoUseSearchTerrain"
+    }
+   },
+   {
+    "name": "SearchTerrainDistance",
+    "template": {
+     "Version": 5571972,
+     "varSize": 46,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.2,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 7
+     },
+     "varHash": 1818605199,
+     "behaviorProperty": "SearchTerrainDistance"
+    }
+   },
+   {
+    "name": "BaseColorMod",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 15,
+     "variable": {
+      "$type": "PropColor",
+      "color": {
+       "rgba": 838861909
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 5
+     },
+     "varHash": 3768413404,
+     "behaviorProperty": "BaseColorMod"
+    }
+   },
+   {
+    "name": "BaseColorModExternName",
+    "template": {
+     "Version": 5571972,
+     "varSize": 65,
+     "dataType": 16,
+     "variable": {
+      "$type": "PropWstringName",
+      "str": "SmokeColor",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 22,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 1258596629,
+     "behaviorProperty": "BaseColorModExternName"
+    }
+   },
+   {
+    "name": "EmissiveMod",
+    "template": {
+     "Version": 5571972,
+     "varSize": 36,
+     "dataType": 15,
+     "variable": {
+      "$type": "PropColor",
+      "color": {
+       "rgba": 4278200831
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 6
+     },
+     "varHash": 3282933538,
+     "behaviorProperty": "EmissiveMod"
+    }
+   },
+   {
+    "name": "EmissiveModExternName",
+    "template": {
+     "Version": 5571972,
+     "varSize": 44,
+     "dataType": 16,
+     "variable": {
+      "$type": "PropWstringName",
+      "str": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 2,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 2315088320,
+     "behaviorProperty": "EmissiveModExternName"
+    }
+   },
+   {
+    "name": "EmissiveIntensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 42,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 15.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 7
+     },
+     "varHash": 3856540929,
+     "behaviorProperty": "EmissiveIntensity"
+    }
+   },
+   {
+    "name": "EmissiveIntensityExternName",
+    "template": {
+     "Version": 5571972,
+     "varSize": 50,
+     "dataType": 16,
+     "variable": {
+      "$type": "PropWstringName",
+      "str": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 2,
+      "re4_unkn0": -1,
+      "re4_unkn1": 11
+     },
+     "varHash": 1067847942,
+     "behaviorProperty": "EmissiveIntensityExternName"
+    }
+   },
+   {
+    "name": "MultiplyParticleColor",
+    "template": {
+     "Version": 5571972,
+     "varSize": 46,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 2,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 2787779381,
+     "behaviorProperty": "MultiplyParticleColor"
+    }
+   },
+   {
+    "name": "NormalMod",
+    "template": {
+     "Version": 5571972,
+     "varSize": 34,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 1.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 7
+     },
+     "varHash": 3331949441,
+     "behaviorProperty": "NormalMod"
+    }
+   },
+   {
+    "name": "AlphaMaskRangeAnimType",
+    "template": {
+     "Version": 5571972,
+     "varSize": 47,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 5,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 8
+     },
+     "varHash": 2975008470,
+     "behaviorProperty": "AlphaMaskRangeAnimType"
+    }
+   },
+   {
+    "name": "AlphaMaskRange",
+    "template": {
+     "Version": 5571972,
+     "varSize": 43,
+     "dataType": 10,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AAAAAAAAgD8=",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 9
+     },
+     "varHash": 408068889,
+     "behaviorProperty": "AlphaMaskRange"
+    }
+   },
+   {
+    "name": "Alpha0",
+    "template": {
+     "Version": 5571972,
+     "varSize": 35,
+     "dataType": 10,
+     "variable": {
+      "$type": "_unknown",
+      "data": "zcxMPwAAgD8=",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 10
+     },
+     "varHash": 851610760,
+     "behaviorProperty": "Alpha0"
+    }
+   },
+   {
+    "name": "Alpha1",
+    "template": {
+     "Version": 5571972,
+     "varSize": 35,
+     "dataType": 10,
+     "variable": {
+      "$type": "_unknown",
+      "data": "zcxMPgAAgD8=",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 11
+     },
+     "varHash": 758480415,
+     "behaviorProperty": "Alpha1"
+    }
+   },
+   {
+    "name": "PyramidAngle",
+    "template": {
+     "Version": 5571972,
+     "varSize": 41,
+     "dataType": 19,
+     "variable": {
+      "$type": "PropFloat2",
+      "Vec": {
+       "X": 45.0,
+       "Y": 315.0
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 10
+     },
+     "varHash": 237500687,
+     "behaviorProperty": "PyramidAngle"
+    }
+   },
+   {
+    "name": "PyramidNearClip",
+    "template": {
+     "Version": 5571972,
+     "varSize": 40,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.001,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 14
+     },
+     "varHash": 1249249889,
+     "behaviorProperty": "PyramidNearClip"
+    }
+   },
+   {
+    "name": "PyramidFarClip",
+    "template": {
+     "Version": 5571972,
+     "varSize": 39,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 10.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 15
+     },
+     "varHash": 3579884503,
+     "behaviorProperty": "PyramidFarClip"
+    }
+   },
+   {
+    "name": "EnableUVRect",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 12
+     },
+     "varHash": 1671841141,
+     "behaviorProperty": "EnableUVRect"
+    }
+   },
+   {
+    "name": "UVOffset",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 10,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AAAAAAAAAAA=",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 18
+     },
+     "varHash": 2022789550,
+     "behaviorProperty": "UVOffset"
+    }
+   },
+   {
+    "name": "UVScale",
+    "template": {
+     "Version": 5571972,
+     "varSize": 36,
+     "dataType": 10,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AACAvwAAgD8=",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 16
+     },
+     "varHash": 1927126322,
+     "behaviorProperty": "UVScale"
+    }
+   },
+   {
+    "name": "NormalUVOffset",
+    "template": {
+     "Version": 5571972,
+     "varSize": 43,
+     "dataType": 10,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AAAAAAAAAAA=",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 17
+     },
+     "varHash": 2062225460,
+     "behaviorProperty": "NormalUVOffset"
+    }
+   },
+   {
+    "name": "NormalUVScale",
+    "template": {
+     "Version": 5571972,
+     "varSize": 42,
+     "dataType": 10,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AACAvwAAgD8=",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 17
+     },
+     "varHash": 2154136378,
+     "behaviorProperty": "NormalUVScale"
+    }
+   },
+   {
+    "name": "SetParticleTransform",
+    "template": {
+     "Version": 5571972,
+     "varSize": 45,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 13
+     },
+     "varHash": 1736435068,
+     "behaviorProperty": "SetParticleTransform"
+    }
+   },
+   {
+    "name": "FollowEffect",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 14
+     },
+     "varHash": 3014071382,
+     "behaviorProperty": "FollowEffect"
+    }
+   },
+   {
+    "name": "ShaderType",
+    "template": {
+     "Version": 5571972,
+     "varSize": 35,
+     "dataType": 22,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AwAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 10
+     },
+     "varHash": 2516419045,
+     "behaviorProperty": "ShaderType"
+    }
+   },
+   {
+    "name": "OtherMaterialParamater",
+    "template": {
+     "Version": 5571972,
+     "varSize": 113,
+     "dataType": 25,
+     "variable": {
+      "$type": "_unknown",
+      "data": "dmlhLmVmZmVjdC5zY3JpcHQuRWZmZWN0RGVjYWwyLkVmZmVjdERlY2FsX1YyLmNPdGhlck1hdGVyaWFsUGFyYW1hdGVyAA==",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 70,
+      "re4_unkn0": -1,
+      "re4_unkn1": 15
+     },
+     "varHash": 3636352411,
+     "behaviorProperty": "OtherMaterialParamater"
+    }
+   },
+   {
+    "name": "MaterialPath",
+    "template": {
+     "Version": 5571972,
+     "varSize": 121,
+     "dataType": 16,
+     "variable": {
+      "$type": "PropWstringName",
+      "str": "Art/VFX/Decal/Common/Burnt/11_burn_004.mdf2",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 88,
+      "re4_unkn0": 15,
+      "re4_unkn1": 0
+     },
+     "varHash": 2452586454,
+     "behaviorProperty": "MaterialPath"
+    }
+   },
+   {
+    "name": "RedChAlphaToBAnimAppear",
+    "template": {
+     "Version": 5571972,
+     "varSize": 52,
+     "dataType": 19,
+     "variable": {
+      "$type": "PropFloat2",
+      "Vec": {
+       "X": 50.0,
+       "Y": 0.0
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 21
+     },
+     "varHash": 2502113263,
+     "behaviorProperty": "RedChAlphaToBAnimAppear"
+    }
+   },
+   {
+    "name": "SpecularColor",
+    "template": {
+     "Version": 5571972,
+     "varSize": 38,
+     "dataType": 15,
+     "variable": {
+      "$type": "PropColor",
+      "color": {
+       "rgba": 4286743295
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 19
+     },
+     "varHash": 326481738,
+     "behaviorProperty": "SpecularColor"
+    }
+   },
+   {
+    "name": "SpecularIntensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 42,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 1000000.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 20
+     },
+     "varHash": 2782176894,
+     "behaviorProperty": "SpecularIntensity"
+    }
+   },
+   {
+    "name": "SheetColor",
+    "template": {
+     "Version": 5571972,
+     "varSize": 35,
+     "dataType": 15,
+     "variable": {
+      "$type": "PropColor",
+      "color": {
+       "rgba": 4283387901
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 21
+     },
+     "varHash": 4252945449,
+     "behaviorProperty": "SheetColor"
+    }
+   },
+   {
+    "name": "SheetIntensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 39,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 10000.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 22
+     },
+     "varHash": 2297125903,
+     "behaviorProperty": "SheetIntensity"
+    }
+   },
+   {
+    "name": "UseFlowMap",
+    "template": {
+     "Version": 5571972,
+     "varSize": 35,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 19
+     },
+     "varHash": 2949927164,
+     "behaviorProperty": "UseFlowMap"
+    }
+   },
+   {
+    "name": "OBBScalarAdd",
+    "template": {
+     "Version": 5571972,
+     "varSize": 41,
+     "dataType": 19,
+     "variable": {
+      "$type": "PropFloat2",
+      "Vec": {
+       "X": 0.08,
+       "Y": 0.0
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 11
+     },
+     "varHash": 1888511992,
+     "behaviorProperty": "OBBScalarAdd"
+    }
+   },
+   {
+    "name": "OBBScalarCoef",
+    "template": {
+     "Version": 5571972,
+     "varSize": 42,
+     "dataType": 19,
+     "variable": {
+      "$type": "PropFloat2",
+      "Vec": {
+       "X": 0.95,
+       "Y": 0.0
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 12
+     },
+     "varHash": 1805259998,
+     "behaviorProperty": "OBBScalarCoef"
+    }
+   },
+   {
+    "name": "OBBScalarXAdd",
+    "template": {
+     "Version": 5571972,
+     "varSize": 42,
+     "dataType": 19,
+     "variable": {
+      "$type": "PropFloat2",
+      "Vec": {
+       "X": 0.005,
+       "Y": 0.0
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 20
+     },
+     "varHash": 3366747452,
+     "behaviorProperty": "OBBScalarXAdd"
+    }
+   },
+   {
+    "name": "OBBScalarXCoef",
+    "template": {
+     "Version": 5571972,
+     "varSize": 43,
+     "dataType": 19,
+     "variable": {
+      "$type": "PropFloat2",
+      "Vec": {
+       "X": 0.99,
+       "Y": 0.0
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 21
+     },
+     "varHash": 1334452507,
+     "behaviorProperty": "OBBScalarXCoef"
+    }
+   },
+   {
+    "name": "OBBScalarZAdd",
+    "template": {
+     "Version": 5571972,
+     "varSize": 42,
+     "dataType": 19,
+     "variable": {
+      "$type": "PropFloat2",
+      "Vec": {
+       "X": -0.005,
+       "Y": 0.0
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 20
+     },
+     "varHash": 3756619902,
+     "behaviorProperty": "OBBScalarZAdd"
+    }
+   },
+   {
+    "name": "OBBScalarZCoef",
+    "template": {
+     "Version": 5571972,
+     "varSize": 43,
+     "dataType": 19,
+     "variable": {
+      "$type": "PropFloat2",
+      "Vec": {
+       "X": 0.95,
+       "Y": 0.0
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 21
+     },
+     "varHash": 1700232766,
+     "behaviorProperty": "OBBScalarZCoef"
+    }
+   },
+   {
+    "name": "WaterAlpha",
+    "template": {
+     "Version": 5571972,
+     "varSize": 35,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 1.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 23
+     },
+     "varHash": 2273247977,
+     "behaviorProperty": "WaterAlpha"
+    }
+   },
+   {
+    "name": "SpecularLifeAnimType",
+    "template": {
+     "Version": 5571972,
+     "varSize": 45,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 24
+     },
+     "varHash": 3184005102,
+     "behaviorProperty": "SpecularLifeAnimType"
+    }
+   },
+   {
+    "name": "SheetLifeAnimType",
+    "template": {
+     "Version": 5571972,
+     "varSize": 42,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 25
+     },
+     "varHash": 1159368323,
+     "behaviorProperty": "SheetLifeAnimType"
+    }
+   },
+   {
+    "name": "GtoBLife",
+    "template": {
+     "Version": 5571972,
+     "varSize": 33,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 1.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 26
+     },
+     "varHash": 1479995482,
+     "behaviorProperty": "GtoBLife"
+    }
+   },
+   {
+    "name": "GtoBLifeAnimType",
+    "template": {
+     "Version": 5571972,
+     "varSize": 41,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 27
+     },
+     "varHash": 2397777453,
+     "behaviorProperty": "GtoBLifeAnimType"
+    }
+   },
+   {
+    "name": "Influence",
+    "template": {
+     "Version": 5571972,
+     "varSize": 34,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 10.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 28
+     },
+     "varHash": 2709782380,
+     "behaviorProperty": "Influence"
+    }
+   },
+   {
+    "name": "Ratio",
+    "template": {
+     "Version": 5571972,
+     "varSize": 30,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 100.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 29
+     },
+     "varHash": 397525866,
+     "behaviorProperty": "Ratio"
+    }
+   }
+  ],
   "via.effect.script.EffectLight5000lm": [
    {
     "name": "Intensity",
@@ -2861,6 +3988,51 @@
     }
    }
   ],
+  "app.EffectSuefaceTrail": [
+   {
+    "name": "TextureIndex",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 3,
+     "variable": {
+      "$type": "_unknown",
+      "data": "BwAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": 1,
+      "re4_unkn1": 0
+     },
+     "varHash": 261968581,
+     "behaviorProperty": "TextureIndex"
+    }
+   },
+   {
+    "name": "Scale",
+    "template": {
+     "Version": 5571972,
+     "varSize": 38,
+     "dataType": 11,
+     "variable": {
+      "$type": "PropFloat3",
+      "vec": {
+       "X": 0.5,
+       "Y": 0.2,
+       "Z": 0.5
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 12,
+      "re4_unkn0": 1,
+      "re4_unkn1": 1
+     },
+     "varHash": 824050869,
+     "behaviorProperty": "Scale"
+    }
+   }
+  ],
   "app.EffectMeshClusterMotoin": [
    {
     "name": "Mesh",
@@ -3942,6 +5114,288 @@
     }
    }
   ],
+  "via.effect.script.EffectColorCorrect": [
+   {
+    "name": "Cube2BlendRateMax",
+    "template": {
+     "Version": 5571972,
+     "varSize": 42,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 30.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 2329437234,
+     "behaviorProperty": "Cube2BlendRateMax"
+    }
+   },
+   {
+    "name": "Priority",
+    "template": {
+     "Version": 5571972,
+     "varSize": 33,
+     "dataType": 3,
+     "variable": {
+      "$type": "_unknown",
+      "data": "/v///w==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 4237659754,
+     "behaviorProperty": "Priority"
+    }
+   },
+   {
+    "name": "PriorityType",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 155988684,
+     "behaviorProperty": "PriorityType"
+    }
+   },
+   {
+    "name": "UseDistanceAttenuation",
+    "template": {
+     "Version": 5571972,
+     "varSize": 47,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 2228660667,
+     "behaviorProperty": "UseDistanceAttenuation"
+    }
+   },
+   {
+    "name": "DistanceAttenuationStart",
+    "template": {
+     "Version": 5571972,
+     "varSize": 49,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 670022115,
+     "behaviorProperty": "DistanceAttenuationStart"
+    }
+   },
+   {
+    "name": "DistanceAttenuationEnd",
+    "template": {
+     "Version": 5571972,
+     "varSize": 47,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 200.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 2038767801,
+     "behaviorProperty": "DistanceAttenuationEnd"
+    }
+   },
+   {
+    "name": "RelationUnitCulling",
+    "template": {
+     "Version": 5571972,
+     "varSize": 44,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 5
+     },
+     "varHash": 14039838,
+     "behaviorProperty": "RelationUnitCulling"
+    }
+   },
+   {
+    "name": "UseAngleAttenuation",
+    "template": {
+     "Version": 5571972,
+     "varSize": 44,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 152994391,
+     "behaviorProperty": "UseAngleAttenuation"
+    }
+   },
+   {
+    "name": "AngleAttenuationConeOffset",
+    "template": {
+     "Version": 5571972,
+     "varSize": 51,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 1296052720,
+     "behaviorProperty": "AngleAttenuationConeOffset"
+    }
+   },
+   {
+    "name": "AngleAttenuationSpread",
+    "template": {
+     "Version": 5571972,
+     "varSize": 47,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 5
+     },
+     "varHash": 2750293671,
+     "behaviorProperty": "AngleAttenuationSpread"
+    }
+   },
+   {
+    "name": "Index",
+    "template": {
+     "Version": 5571972,
+     "varSize": 30,
+     "dataType": 3,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AAAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": 3,
+      "re4_unkn1": 0
+     },
+     "varHash": 3772137624,
+     "behaviorProperty": "Index"
+    }
+   },
+   {
+    "name": "LinearFactor",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 15,
+     "variable": {
+      "$type": "PropColor",
+      "color": {
+       "rgba": 4283256141
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": 3,
+      "re4_unkn1": 1
+     },
+     "varHash": 964565698,
+     "behaviorProperty": "LinearFactor"
+    }
+   },
+   {
+    "name": "LinearCorrectorType",
+    "template": {
+     "Version": 5571972,
+     "varSize": 44,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 3,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": 3,
+      "re4_unkn1": 2
+     },
+     "varHash": 1605790617,
+     "behaviorProperty": "LinearCorrectorType"
+    }
+   },
+   {
+    "name": "EndType",
+    "template": {
+     "Version": 5571972,
+     "varSize": 32,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": 3,
+      "re4_unkn1": 3
+     },
+     "varHash": 3135050062,
+     "behaviorProperty": "EndType"
+    }
+   }
+  ],
   "app.EffectWp10_InsectEmissiveControl": [
    {
     "name": "TargetParts",
@@ -4744,6 +6198,4345 @@
     }
    }
   ],
+  "via.effect.script.EffectVolumetricFog": [
+   {
+    "name": "VolumetricFogPrefab",
+    "template": {
+     "Version": 5571972,
+     "varSize": 150,
+     "dataType": 17,
+     "variable": {
+      "$type": "PropPrefabpath",
+      "str": "Art/VFX/Mesh/Enemy/em0163/11_0163_00_VolumetricFog.pfb",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 110,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 1611027993,
+     "behaviorProperty": "VolumetricFogPrefab"
+    }
+   },
+   {
+    "name": "FollowEffect",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 3014071382,
+     "behaviorProperty": "FollowEffect"
+    }
+   },
+   {
+    "name": "VolumeType",
+    "template": {
+     "Version": 5571972,
+     "varSize": 35,
+     "dataType": 22,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AgAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 4254480257,
+     "behaviorProperty": "VolumeType"
+    }
+   },
+   {
+    "name": "OBB",
+    "template": {
+     "Version": 5571972,
+     "varSize": 60,
+     "dataType": 24,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAEAAAABA",
+      "Version": 5571972,
+      "unkn": 9,
+      "size": 36,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 1478977174,
+     "behaviorProperty": "OBB"
+    }
+   },
+   {
+    "name": "OBBEnabled",
+    "template": {
+     "Version": 5571972,
+     "varSize": 35,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 1125247549,
+     "behaviorProperty": "OBBEnabled"
+    }
+   },
+   {
+    "name": "Color",
+    "template": {
+     "Version": 5571972,
+     "varSize": 30,
+     "dataType": 15,
+     "variable": {
+      "$type": "PropColor",
+      "color": {
+       "rgba": 4294967295
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 5
+     },
+     "varHash": 1124845316,
+     "behaviorProperty": "Color"
+    }
+   },
+   {
+    "name": "Density",
+    "template": {
+     "Version": 5571972,
+     "varSize": 32,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 1.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 6
+     },
+     "varHash": 3058303909,
+     "behaviorProperty": "Density"
+    }
+   },
+   {
+    "name": "EmissionEnabled",
+    "template": {
+     "Version": 5571972,
+     "varSize": 40,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 7
+     },
+     "varHash": 2486957868,
+     "behaviorProperty": "EmissionEnabled"
+    }
+   },
+   {
+    "name": "CustomMaterialResource",
+    "template": {
+     "Version": 5571972,
+     "varSize": 155,
+     "dataType": 21,
+     "variable": {
+      "$type": "_unknown",
+      "data": "QQByAHQALwBWAEYAWAAvAE0AZQBzAGgALwBFAG4AZQBtAHkALwBlAG0AMAAxADYAMwAvADEAMQBfADAAMQA2ADMAXwAwADAAXwBWAG8AbAB1AG0AZQB0AHIAaQBjAEYAbwBnAC4AbQBkAGYAMgAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 112,
+      "re4_unkn0": -1,
+      "re4_unkn1": 8
+     },
+     "varHash": 2009472812,
+     "behaviorProperty": "CustomMaterialResource"
+    }
+   }
+  ],
+  "app.EffectMeshClusterMaterialAnim": [
+   {
+    "name": "Mesh",
+    "template": {
+     "Version": 5571972,
+     "varSize": 151,
+     "dataType": 21,
+     "variable": {
+      "$type": "_unknown",
+      "data": "QQByAHQALwBWAEYAWAAvAE0AZQBzAGgALwBFAHYAZQBuAHQALwBmAG8AbwBkAC8AdAB5AHAAZQAxAC8AdgBlAGcALwAxADEAXwBlAHYAYwAyADAAMAAzAF8ANQAwAF8AdAB5AHAAZQAxAF8AMAAxADMALgBtAGUAcwBoAAAA",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 126,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 3607772563,
+     "behaviorProperty": "Mesh"
+    }
+   },
+   {
+    "name": "Material",
+    "template": {
+     "Version": 5571972,
+     "varSize": 153,
+     "dataType": 21,
+     "variable": {
+      "$type": "_unknown",
+      "data": "QQByAHQALwBWAEYAWAAvAE0AZQBzAGgALwBFAHYAZQBuAHQALwBmAG8AbwBkAC8AbQBhAHQAZQByAGkAYQBsAC8AMQAxAF8AZQB2AGMAMgAwADAAMwBfADUAMABfAHQAeQBwAGUAMQBfADAAMAAzAC4AbQBkAGYAMgAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 124,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 2003450741,
+     "behaviorProperty": "Material"
+    }
+   },
+   {
+    "name": "Loop",
+    "template": {
+     "Version": 5571972,
+     "varSize": 29,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 817569939,
+     "behaviorProperty": "Loop"
+    }
+   },
+   {
+    "name": "MeshSettingParam",
+    "template": {
+     "Version": 5571972,
+     "varSize": 92,
+     "dataType": 25,
+     "variable": {
+      "$type": "_unknown",
+      "data": "YXBwLkVmZmVjdE1lc2hDbHVzdGVyTWF0ZXJpYWxVdGlsbGl0eS5NZXNoU2V0dGluZ1BhcmFtAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 55,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 2636998288,
+     "behaviorProperty": "MeshSettingParam"
+    }
+   },
+   {
+    "name": "UnenablePassThrough",
+    "template": {
+     "Version": 5571972,
+     "varSize": 44,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": 3,
+      "re4_unkn1": 0
+     },
+     "varHash": 730882798,
+     "behaviorProperty": "UnenablePassThrough"
+    }
+   }
+  ],
+  "app.EffectNPCEmissiveControl": [
+   {
+    "name": "TargetParts",
+    "template": {
+     "Version": 5571972,
+     "varSize": 36,
+     "dataType": 4,
+     "variable": {
+      "$type": "_unknown",
+      "data": "HwAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 3161220898,
+     "behaviorProperty": "TargetParts"
+    }
+   },
+   {
+    "name": "RimWidthAnimStart",
+    "template": {
+     "Version": 5571972,
+     "varSize": 42,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 2510430791,
+     "behaviorProperty": "RimWidthAnimStart"
+    }
+   },
+   {
+    "name": "RimWidthAnimVanish",
+    "template": {
+     "Version": 5571972,
+     "varSize": 43,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.58,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 3464781329,
+     "behaviorProperty": "RimWidthAnimVanish"
+    }
+   },
+   {
+    "name": "RimIntensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 7.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 4282920575,
+     "behaviorProperty": "RimIntensity"
+    }
+   },
+   {
+    "name": "DetailWidthAnimStart",
+    "template": {
+     "Version": 5571972,
+     "varSize": 45,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 2637337191,
+     "behaviorProperty": "DetailWidthAnimStart"
+    }
+   },
+   {
+    "name": "DetailWidthAnimVanish",
+    "template": {
+     "Version": 5571972,
+     "varSize": 46,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.9,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 5
+     },
+     "varHash": 272080313,
+     "behaviorProperty": "DetailWidthAnimVanish"
+    }
+   },
+   {
+    "name": "DetailIntensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 40,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 2.5,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 6
+     },
+     "varHash": 1576812587,
+     "behaviorProperty": "DetailIntensity"
+    }
+   },
+   {
+    "name": "Priority",
+    "template": {
+     "Version": 5571972,
+     "varSize": 33,
+     "dataType": 3,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AAAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 7
+     },
+     "varHash": 4237659754,
+     "behaviorProperty": "Priority"
+    }
+   }
+  ]
+ },
+ "defaults": {
+  "via.effect.script.EffectDecal2.EffectDecal_V2": [
+   {
+    "name": "DecalPrefab",
+    "template": {
+     "Version": 5571972,
+     "varSize": 118,
+     "dataType": 17,
+     "variable": {
+      "$type": "PropPrefabpath",
+      "str": "Art/VFX/Decal/Common/Burnt/11_burn_000.pfb",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 86,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 765838034,
+     "behaviorProperty": "DecalPrefab"
+    }
+   },
+   {
+    "name": "OverridePriority",
+    "template": {
+     "Version": 5571972,
+     "varSize": 41,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 2701729174,
+     "behaviorProperty": "OverridePriority"
+    }
+   },
+   {
+    "name": "Priority",
+    "template": {
+     "Version": 5571972,
+     "varSize": 33,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 2,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 4237659754,
+     "behaviorProperty": "Priority"
+    }
+   },
+   {
+    "name": "DecalDirection",
+    "template": {
+     "Version": 5571972,
+     "varSize": 39,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 3,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 2453166048,
+     "behaviorProperty": "DecalDirection"
+    }
+   },
+   {
+    "name": "DecalUpDirection",
+    "template": {
+     "Version": 5571972,
+     "varSize": 41,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 4,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 2240336407,
+     "behaviorProperty": "DecalUpDirection"
+    }
+   },
+   {
+    "name": "Extent",
+    "template": {
+     "Version": 5571972,
+     "varSize": 39,
+     "dataType": 11,
+     "variable": {
+      "$type": "PropFloat3",
+      "vec": {
+       "X": 1.0,
+       "Y": 1.0,
+       "Z": 1.0
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 12,
+      "re4_unkn0": -1,
+      "re4_unkn1": 5
+     },
+     "varHash": 3492208806,
+     "behaviorProperty": "Extent"
+    }
+   },
+   {
+    "name": "ScaleXYZ",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 19,
+     "variable": {
+      "$type": "PropFloat2",
+      "Vec": {
+       "X": 6.0,
+       "Y": 0.0
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 6
+     },
+     "varHash": 162060680,
+     "behaviorProperty": "ScaleXYZ"
+    }
+   },
+   {
+    "name": "NoUseSearchTerrain",
+    "template": {
+     "Version": 5571972,
+     "varSize": 43,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 7
+     },
+     "varHash": 1453561883,
+     "behaviorProperty": "NoUseSearchTerrain"
+    }
+   },
+   {
+    "name": "BaseColorMod",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 15,
+     "variable": {
+      "$type": "PropColor",
+      "color": {
+       "rgba": 3355443200
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 8
+     },
+     "varHash": 3768413404,
+     "behaviorProperty": "BaseColorMod"
+    }
+   },
+   {
+    "name": "EmissiveMod",
+    "template": {
+     "Version": 5571972,
+     "varSize": 36,
+     "dataType": 15,
+     "variable": {
+      "$type": "PropColor",
+      "color": {
+       "rgba": 4278593535
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 9
+     },
+     "varHash": 3282933538,
+     "behaviorProperty": "EmissiveMod"
+    }
+   },
+   {
+    "name": "EmissiveIntensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 42,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 50.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 10
+     },
+     "varHash": 3856540929,
+     "behaviorProperty": "EmissiveIntensity"
+    }
+   },
+   {
+    "name": "MultiplyParticleColor",
+    "template": {
+     "Version": 5571972,
+     "varSize": 46,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 11
+     },
+     "varHash": 2787779381,
+     "behaviorProperty": "MultiplyParticleColor"
+    }
+   },
+   {
+    "name": "NormalMod",
+    "template": {
+     "Version": 5571972,
+     "varSize": 34,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 12
+     },
+     "varHash": 3331949441,
+     "behaviorProperty": "NormalMod"
+    }
+   },
+   {
+    "name": "AlphaMaskRangeAnimType",
+    "template": {
+     "Version": 5571972,
+     "varSize": 47,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 13
+     },
+     "varHash": 2975008470,
+     "behaviorProperty": "AlphaMaskRangeAnimType"
+    }
+   },
+   {
+    "name": "AlphaMaskRange",
+    "template": {
+     "Version": 5571972,
+     "varSize": 43,
+     "dataType": 10,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AAAAAAAAgD8=",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 14
+     },
+     "varHash": 408068889,
+     "behaviorProperty": "AlphaMaskRange"
+    }
+   },
+   {
+    "name": "Alpha0",
+    "template": {
+     "Version": 5571972,
+     "varSize": 35,
+     "dataType": 10,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AACAPwAAgD8=",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 15
+     },
+     "varHash": 851610760,
+     "behaviorProperty": "Alpha0"
+    }
+   },
+   {
+    "name": "Alpha1",
+    "template": {
+     "Version": 5571972,
+     "varSize": 35,
+     "dataType": 10,
+     "variable": {
+      "$type": "_unknown",
+      "data": "mpkZPmZmZj8=",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 16
+     },
+     "varHash": 758480415,
+     "behaviorProperty": "Alpha1"
+    }
+   },
+   {
+    "name": "SetParticleTransform",
+    "template": {
+     "Version": 5571972,
+     "varSize": 45,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 17
+     },
+     "varHash": 1736435068,
+     "behaviorProperty": "SetParticleTransform"
+    }
+   },
+   {
+    "name": "FollowEffect",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 18
+     },
+     "varHash": 3014071382,
+     "behaviorProperty": "FollowEffect"
+    }
+   },
+   {
+    "name": "OtherMaterialParamater",
+    "template": {
+     "Version": 5571972,
+     "varSize": 113,
+     "dataType": 25,
+     "variable": {
+      "$type": "_unknown",
+      "data": "dmlhLmVmZmVjdC5zY3JpcHQuRWZmZWN0RGVjYWwyLkVmZmVjdERlY2FsX1YyLmNPdGhlck1hdGVyaWFsUGFyYW1hdGVyAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 70,
+      "re4_unkn0": -1,
+      "re4_unkn1": 19
+     },
+     "varHash": 3636352411,
+     "behaviorProperty": "OtherMaterialParamater"
+    }
+   },
+   {
+    "name": "MaterialPath",
+    "template": {
+     "Version": 5571972,
+     "varSize": 35,
+     "dataType": 16,
+     "variable": {
+      "$type": "PropWstringName",
+      "str": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 2,
+      "re4_unkn0": 19,
+      "re4_unkn1": 0
+     },
+     "varHash": 2452586454,
+     "behaviorProperty": "MaterialPath"
+    }
+   },
+   {
+    "name": "UseFlowMap",
+    "template": {
+     "Version": 5571972,
+     "varSize": 35,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 20
+     },
+     "varHash": 2949927164,
+     "behaviorProperty": "UseFlowMap"
+    }
+   }
+  ],
+  "via.effect.script.EffectLight5000lm": [
+   {
+    "name": "Intensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 34,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 10.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 3369874502,
+     "behaviorProperty": "Intensity"
+    }
+   },
+   {
+    "name": "EnableIntensityScale",
+    "template": {
+     "Version": 5571972,
+     "varSize": 45,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 282536672,
+     "behaviorProperty": "EnableIntensityScale"
+    }
+   },
+   {
+    "name": "Unit",
+    "template": {
+     "Version": 5571972,
+     "varSize": 29,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 4294450319,
+     "behaviorProperty": "Unit"
+    }
+   },
+   {
+    "name": "Radius",
+    "template": {
+     "Version": 5571972,
+     "varSize": 31,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.01,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 4174320478,
+     "behaviorProperty": "Radius"
+    }
+   },
+   {
+    "name": "ReferenceEffectiveRange",
+    "template": {
+     "Version": 5571972,
+     "varSize": 48,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 3.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 2616384971,
+     "behaviorProperty": "ReferenceEffectiveRange"
+    }
+   },
+   {
+    "name": "UseCustomAttenuation",
+    "template": {
+     "Version": 5571972,
+     "varSize": 45,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 5
+     },
+     "varHash": 2016828902,
+     "behaviorProperty": "UseCustomAttenuation"
+    }
+   },
+   {
+    "name": "AttenuationStartDistance",
+    "template": {
+     "Version": 5571972,
+     "varSize": 49,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 6
+     },
+     "varHash": 186333557,
+     "behaviorProperty": "AttenuationStartDistance"
+    }
+   },
+   {
+    "name": "MinRoughness",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.9,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 7
+     },
+     "varHash": 3195988228,
+     "behaviorProperty": "MinRoughness"
+    }
+   },
+   {
+    "name": "_TranslucencyEnable",
+    "template": {
+     "Version": 5571972,
+     "varSize": 44,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 8
+     },
+     "varHash": 48960370,
+     "behaviorProperty": "_TranslucencyEnable"
+    }
+   }
+  ],
+  "app.EffectShakeCameraCustom": [
+   {
+    "name": "Period",
+    "template": {
+     "Version": 5571972,
+     "varSize": 35,
+     "dataType": 20,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AQAAAAAAAAA=",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 3368271307,
+     "behaviorProperty": "Period"
+    }
+   },
+   {
+    "name": "TranslationYRange",
+    "template": {
+     "Version": 5571972,
+     "varSize": 46,
+     "dataType": 19,
+     "variable": {
+      "$type": "PropFloat2",
+      "Vec": {
+       "X": -0.25,
+       "Y": 0.5
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 1069010576,
+     "behaviorProperty": "TranslationYRange"
+    }
+   },
+   {
+    "name": "RotationZRange",
+    "template": {
+     "Version": 5571972,
+     "varSize": 43,
+     "dataType": 19,
+     "variable": {
+      "$type": "PropFloat2",
+      "Vec": {
+       "X": 0.0,
+       "Y": 0.0
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 2404032874,
+     "behaviorProperty": "RotationZRange"
+    }
+   },
+   {
+    "name": "UseDistanceAttenuation",
+    "template": {
+     "Version": 5571972,
+     "varSize": 47,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 2228660667,
+     "behaviorProperty": "UseDistanceAttenuation"
+    }
+   },
+   {
+    "name": "DistanceAttenuationStart",
+    "template": {
+     "Version": 5571972,
+     "varSize": 49,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 8.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 670022115,
+     "behaviorProperty": "DistanceAttenuationStart"
+    }
+   },
+   {
+    "name": "DistanceAttenuationEnd",
+    "template": {
+     "Version": 5571972,
+     "varSize": 47,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 12.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 5
+     },
+     "varHash": 2038767801,
+     "behaviorProperty": "DistanceAttenuationEnd"
+    }
+   }
+  ],
+  "app.EffectMeshClusterMaterial": [
+   {
+    "name": "Mesh",
+    "template": {
+     "Version": 5571972,
+     "varSize": 137,
+     "dataType": 21,
+     "variable": {
+      "$type": "_unknown",
+      "data": "QQByAHQALwBWAEYAWAAvAE0AZQBzAGgALwBQAHIAbwBwAHMALwBnAG0ANgAwADEALwBnAG0ANgAwADEAXwAwADAAMAAvADEAMQBfAGcAbQA2ADAAMQBfADAAMAAwAF8AMAAwAC4AbQBlAHMAaAAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 112,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 3607772563,
+     "behaviorProperty": "Mesh"
+    }
+   },
+   {
+    "name": "Material",
+    "template": {
+     "Version": 5571972,
+     "varSize": 141,
+     "dataType": 21,
+     "variable": {
+      "$type": "_unknown",
+      "data": "QQByAHQALwBWAEYAWAAvAE0AZQBzAGgALwBQAHIAbwBwAHMALwBnAG0ANgAwADEALwBnAG0ANgAwADEAXwAwADAAMAAvADEAMQBfAGcAbQA2ADAAMQBfADAAMAAwAF8AMAAwAC4AbQBkAGYAMgAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 112,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 2003450741,
+     "behaviorProperty": "Material"
+    }
+   },
+   {
+    "name": "Parts",
+    "template": {
+     "Version": 5571972,
+     "varSize": 34,
+     "dataType": 19,
+     "variable": {
+      "$type": "PropFloat2",
+      "Vec": {
+       "X": 26.0,
+       "Y": 74.0
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 3171637227,
+     "behaviorProperty": "Parts"
+    }
+   },
+   {
+    "name": "PartsInOrder",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 419711333,
+     "behaviorProperty": "PartsInOrder"
+    }
+   }
+  ],
+  "via.effect.script.EffectMaterialController": [
+   {
+    "name": "Priority",
+    "template": {
+     "Version": 5571972,
+     "varSize": 33,
+     "dataType": 3,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AAAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 4237659754,
+     "behaviorProperty": "Priority"
+    }
+   },
+   {
+    "name": "PriorityType",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 155988684,
+     "behaviorProperty": "PriorityType"
+    }
+   },
+   {
+    "name": "MaterialName",
+    "template": {
+     "Version": 5571972,
+     "varSize": 97,
+     "dataType": 16,
+     "variable": {
+      "$type": "PropWstringName",
+      "str": "ch90_160_0000_L_L_Tentacles_ADD",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 64,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 664459806,
+     "behaviorProperty": "MaterialName"
+    }
+   },
+   {
+    "name": "VariableName",
+    "template": {
+     "Version": 5571972,
+     "varSize": 71,
+     "dataType": 16,
+     "variable": {
+      "$type": "PropWstringName",
+      "str": "Emissive_Intensity",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 38,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 2212650044,
+     "behaviorProperty": "VariableName"
+    }
+   },
+   {
+    "name": "StartRate",
+    "template": {
+     "Version": 5571972,
+     "varSize": 34,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 1.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 1867200464,
+     "behaviorProperty": "StartRate"
+    }
+   },
+   {
+    "name": "EndRate",
+    "template": {
+     "Version": 5571972,
+     "varSize": 32,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 4.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 5
+     },
+     "varHash": 2196007765,
+     "behaviorProperty": "EndRate"
+    }
+   }
+  ],
+  "app.EffectPlEmissiveControl": [
+   {
+    "name": "TargetParts",
+    "template": {
+     "Version": 5571972,
+     "varSize": 36,
+     "dataType": 4,
+     "variable": {
+      "$type": "_unknown",
+      "data": "HwAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 3161220898,
+     "behaviorProperty": "TargetParts"
+    }
+   },
+   {
+    "name": "RimWidthAnimStart",
+    "template": {
+     "Version": 5571972,
+     "varSize": 42,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.2,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 2510430791,
+     "behaviorProperty": "RimWidthAnimStart"
+    }
+   },
+   {
+    "name": "RimWidthAnimVanish",
+    "template": {
+     "Version": 5571972,
+     "varSize": 43,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.4,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 3464781329,
+     "behaviorProperty": "RimWidthAnimVanish"
+    }
+   },
+   {
+    "name": "RimIntensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 20.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 4282920575,
+     "behaviorProperty": "RimIntensity"
+    }
+   },
+   {
+    "name": "DetailWidthAnimStart",
+    "template": {
+     "Version": 5571972,
+     "varSize": 45,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.4,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 2637337191,
+     "behaviorProperty": "DetailWidthAnimStart"
+    }
+   },
+   {
+    "name": "DetailWidthAnimVanish",
+    "template": {
+     "Version": 5571972,
+     "varSize": 46,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.8,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 5
+     },
+     "varHash": 272080313,
+     "behaviorProperty": "DetailWidthAnimVanish"
+    }
+   },
+   {
+    "name": "DetailIntensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 40,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 5.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 6
+     },
+     "varHash": 1576812587,
+     "behaviorProperty": "DetailIntensity"
+    }
+   },
+   {
+    "name": "Priority",
+    "template": {
+     "Version": 5571972,
+     "varSize": 33,
+     "dataType": 3,
+     "variable": {
+      "$type": "_unknown",
+      "data": "BgAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 7
+     },
+     "varHash": 4237659754,
+     "behaviorProperty": "Priority"
+    }
+   }
+  ],
+  "via.effect.script.EffectRadialBlur": [
+   {
+    "name": "Priority",
+    "template": {
+     "Version": 5571972,
+     "varSize": 33,
+     "dataType": 3,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AAAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 4237659754,
+     "behaviorProperty": "Priority"
+    }
+   },
+   {
+    "name": "PriorityType",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 155988684,
+     "behaviorProperty": "PriorityType"
+    }
+   },
+   {
+    "name": "SharpMode",
+    "template": {
+     "Version": 5571972,
+     "varSize": 34,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 1818754214,
+     "behaviorProperty": "SharpMode"
+    }
+   },
+   {
+    "name": "SharpRange",
+    "template": {
+     "Version": 5571972,
+     "varSize": 35,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 100.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 3631520702,
+     "behaviorProperty": "SharpRange"
+    }
+   },
+   {
+    "name": "ColorAlpha",
+    "template": {
+     "Version": 5571972,
+     "varSize": 39,
+     "dataType": 19,
+     "variable": {
+      "$type": "PropFloat2",
+      "Vec": {
+       "X": 0.0,
+       "Y": 255.0
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 2307178177,
+     "behaviorProperty": "ColorAlpha"
+    }
+   },
+   {
+    "name": "ColorRate",
+    "template": {
+     "Version": 5571972,
+     "varSize": 34,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 1.5,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 5
+     },
+     "varHash": 716469843,
+     "behaviorProperty": "ColorRate"
+    }
+   },
+   {
+    "name": "BlurPower",
+    "template": {
+     "Version": 5571972,
+     "varSize": 34,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 12.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 6
+     },
+     "varHash": 3999855132,
+     "behaviorProperty": "BlurPower"
+    }
+   },
+   {
+    "name": "CalcInitalizationBlurPower",
+    "template": {
+     "Version": 5571972,
+     "varSize": 51,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 7
+     },
+     "varHash": 1713157381,
+     "behaviorProperty": "CalcInitalizationBlurPower"
+    }
+   },
+   {
+    "name": "MaskRate",
+    "template": {
+     "Version": 5571972,
+     "varSize": 33,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 8
+     },
+     "varHash": 3003197465,
+     "behaviorProperty": "MaskRate"
+    }
+   },
+   {
+    "name": "OccludeScale",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 9
+     },
+     "varHash": 2907529749,
+     "behaviorProperty": "OccludeScale"
+    }
+   },
+   {
+    "name": "OccludeSampleNum",
+    "template": {
+     "Version": 5571972,
+     "varSize": 41,
+     "dataType": 4,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AAAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 10
+     },
+     "varHash": 2691469863,
+     "behaviorProperty": "OccludeSampleNum"
+    }
+   },
+   {
+    "name": "EnableFadeDistance",
+    "template": {
+     "Version": 5571972,
+     "varSize": 43,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 11
+     },
+     "varHash": 1668616506,
+     "behaviorProperty": "EnableFadeDistance"
+    }
+   },
+   {
+    "name": "EnableFadeDistanceColorAlpha",
+    "template": {
+     "Version": 5571972,
+     "varSize": 53,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 12
+     },
+     "varHash": 2540316756,
+     "behaviorProperty": "EnableFadeDistanceColorAlpha"
+    }
+   },
+   {
+    "name": "FadeStartDistance",
+    "template": {
+     "Version": 5571972,
+     "varSize": 42,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 20.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 13
+     },
+     "varHash": 4134454743,
+     "behaviorProperty": "FadeStartDistance"
+    }
+   },
+   {
+    "name": "FadeEndDistance",
+    "template": {
+     "Version": 5571972,
+     "varSize": 40,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 30.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 14
+     },
+     "varHash": 3959398416,
+     "behaviorProperty": "FadeEndDistance"
+    }
+   },
+   {
+    "name": "FadeDistanceMinRate",
+    "template": {
+     "Version": 5571972,
+     "varSize": 44,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 15
+     },
+     "varHash": 3189494170,
+     "behaviorProperty": "FadeDistanceMinRate"
+    }
+   },
+   {
+    "name": "RelationUnitCulling",
+    "template": {
+     "Version": 5571972,
+     "varSize": 44,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 16
+     },
+     "varHash": 14039838,
+     "behaviorProperty": "RelationUnitCulling"
+    }
+   }
+  ],
+  "via.effect.script.EffectLight1500lm": [
+   {
+    "name": "Intensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 34,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 10.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 3369874502,
+     "behaviorProperty": "Intensity"
+    }
+   },
+   {
+    "name": "EnableIntensityScale",
+    "template": {
+     "Version": 5571972,
+     "varSize": 45,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 282536672,
+     "behaviorProperty": "EnableIntensityScale"
+    }
+   },
+   {
+    "name": "IntensityAmplitudeMin",
+    "template": {
+     "Version": 5571972,
+     "varSize": 46,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 1497458376,
+     "behaviorProperty": "IntensityAmplitudeMin"
+    }
+   },
+   {
+    "name": "IntensityAmplitudeMax",
+    "template": {
+     "Version": 5571972,
+     "varSize": 46,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.5,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 3110516939,
+     "behaviorProperty": "IntensityAmplitudeMax"
+    }
+   },
+   {
+    "name": "IntensityAmplitudeChangeFrameMin",
+    "template": {
+     "Version": 5571972,
+     "varSize": 57,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 6.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 1130552320,
+     "behaviorProperty": "IntensityAmplitudeChangeFrameMin"
+    }
+   },
+   {
+    "name": "IntensityAmplitudeChangeFrameMax",
+    "template": {
+     "Version": 5571972,
+     "varSize": 57,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 10.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 5
+     },
+     "varHash": 3088419969,
+     "behaviorProperty": "IntensityAmplitudeChangeFrameMax"
+    }
+   },
+   {
+    "name": "UsingSameIntensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 43,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 6
+     },
+     "varHash": 1798716282,
+     "behaviorProperty": "UsingSameIntensity"
+    }
+   },
+   {
+    "name": "VolumetricScatteringIntensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 54,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 7
+     },
+     "varHash": 183639765,
+     "behaviorProperty": "VolumetricScatteringIntensity"
+    }
+   },
+   {
+    "name": "ReferenceEffectiveRange",
+    "template": {
+     "Version": 5571972,
+     "varSize": 48,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.8,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 8
+     },
+     "varHash": 2616384971,
+     "behaviorProperty": "ReferenceEffectiveRange"
+    }
+   },
+   {
+    "name": "UseCustomAttenuation",
+    "template": {
+     "Version": 5571972,
+     "varSize": 45,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 9
+     },
+     "varHash": 2016828902,
+     "behaviorProperty": "UseCustomAttenuation"
+    }
+   },
+   {
+    "name": "AttenuationCurve",
+    "template": {
+     "Version": 5571972,
+     "varSize": 53,
+     "dataType": 16,
+     "variable": {
+      "$type": "PropWstringName",
+      "str": "Default",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 16,
+      "re4_unkn0": -1,
+      "re4_unkn1": 10
+     },
+     "varHash": 987360361,
+     "behaviorProperty": "AttenuationCurve"
+    }
+   },
+   {
+    "name": "AttenuationStartDistance",
+    "template": {
+     "Version": 5571972,
+     "varSize": 49,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.2,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 11
+     },
+     "varHash": 186333557,
+     "behaviorProperty": "AttenuationStartDistance"
+    }
+   },
+   {
+    "name": "_TranslucencyEnable",
+    "template": {
+     "Version": 5571972,
+     "varSize": 44,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 12
+     },
+     "varHash": 48960370,
+     "behaviorProperty": "_TranslucencyEnable"
+    }
+   }
+  ],
+  "app.EffectHeatSourceCreate": [
+   {
+    "name": "_Category",
+    "template": {
+     "Version": 5571972,
+     "varSize": 34,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 448770141,
+     "behaviorProperty": "_Category"
+    }
+   },
+   {
+    "name": "_Type",
+    "template": {
+     "Version": 5571972,
+     "varSize": 30,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 1946647497,
+     "behaviorProperty": "_Type"
+    }
+   },
+   {
+    "name": "_Radius",
+    "template": {
+     "Version": 5571972,
+     "varSize": 32,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.5,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 3617250736,
+     "behaviorProperty": "_Radius"
+    }
+   },
+   {
+    "name": "_Priority",
+    "template": {
+     "Version": 5571972,
+     "varSize": 32,
+     "dataType": 6,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AAA=",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 2,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 2778329392,
+     "behaviorProperty": "_Priority"
+    }
+   }
+  ],
+  "via.effect.script.SoundEffectEvent": [
+   {
+    "name": "TriggerId",
+    "template": {
+     "Version": 5571972,
+     "varSize": 34,
+     "dataType": 4,
+     "variable": {
+      "$type": "_unknown",
+      "data": "Uwy5sQ==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 2183609428,
+     "behaviorProperty": "TriggerId"
+    }
+   },
+   {
+    "name": "MaxDistance",
+    "template": {
+     "Version": 5571972,
+     "varSize": 36,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 30.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 3418676557,
+     "behaviorProperty": "MaxDistance"
+    }
+   },
+   {
+    "name": "MaxParticleSounds",
+    "template": {
+     "Version": 5571972,
+     "varSize": 42,
+     "dataType": 4,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AwAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 87924377,
+     "behaviorProperty": "MaxParticleSounds"
+    }
+   },
+   {
+    "name": "FixedPosition",
+    "template": {
+     "Version": 5571972,
+     "varSize": 38,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 4227720338,
+     "behaviorProperty": "FixedPosition"
+    }
+   }
+  ],
+  "app.EffectSuefaceTrail": [
+   {
+    "name": "_RequestDatas",
+    "template": {
+     "Version": 5571972,
+     "varSize": 70,
+     "dataType": 26,
+     "variable": {
+      "$type": "_unknown",
+      "data": "YXBwLkVmZmVjdFN1ZWZhY2VUcmFpbC5jUmVxdWVzdERhdGEA",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 36,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 3065611354,
+     "behaviorProperty": "_RequestDatas"
+    }
+   },
+   {
+    "name": "_RequestDatas[0]",
+    "template": {
+     "Version": 5571972,
+     "varSize": 73,
+     "dataType": 25,
+     "variable": {
+      "$type": "_unknown",
+      "data": "YXBwLkVmZmVjdFN1ZWZhY2VUcmFpbC5jUmVxdWVzdERhdGEA",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 36,
+      "re4_unkn0": 0,
+      "re4_unkn1": 0
+     },
+     "varHash": 2671142439,
+     "behaviorProperty": "_RequestDatas[0]"
+    }
+   },
+   {
+    "name": "TextureIndex",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 3,
+     "variable": {
+      "$type": "_unknown",
+      "data": "BwAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": 1,
+      "re4_unkn1": 0
+     },
+     "varHash": 261968581,
+     "behaviorProperty": "TextureIndex"
+    }
+   },
+   {
+    "name": "Scale",
+    "template": {
+     "Version": 5571972,
+     "varSize": 38,
+     "dataType": 11,
+     "variable": {
+      "$type": "PropFloat3",
+      "vec": {
+       "X": 0.5,
+       "Y": 0.2,
+       "Z": 0.5
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 12,
+      "re4_unkn0": 1,
+      "re4_unkn1": 1
+     },
+     "varHash": 824050869,
+     "behaviorProperty": "Scale"
+    }
+   }
+  ],
+  "app.EffectMeshClusterMotoin": [
+   {
+    "name": "Mesh",
+    "template": {
+     "Version": 5571972,
+     "varSize": 147,
+     "dataType": 21,
+     "variable": {
+      "$type": "_unknown",
+      "data": "QQByAHQALwBWAEYAWAAvAE0AZQBzAGgALwBFAG4AdgBDAHIAZQBhAHQAdQByAGUALwBlAG0ANQAyADAAMgAvAGUAbQA1ADIAMAAyAF8AMQAwAC8AMQAxAF8AZQBtADUAMgAwADIAXwAwADAAMAAuAG0AZQBzAGgAAAA=",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 122,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 3607772563,
+     "behaviorProperty": "Mesh"
+    }
+   },
+   {
+    "name": "Material",
+    "template": {
+     "Version": 5571972,
+     "varSize": 163,
+     "dataType": 21,
+     "variable": {
+      "$type": "_unknown",
+      "data": "QQByAHQALwBWAEYAWAAvAEUAZgBmAGUAYwB0AEUAZABpAHQAbwByAC8ARQB2AGUAbgB0AC8AZQB2AGMAMAAwADMAMwAvAGUAdgBjADAAMAAzADMAXwA1ADAALwAxADEAXwBlAG0ANQAyADAAMgBfADAAMAAwAF8AMgAuAG0AZABmADIAAAA=",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 134,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 2003450741,
+     "behaviorProperty": "Material"
+    }
+   },
+   {
+    "name": "Motion",
+    "template": {
+     "Version": 5571972,
+     "varSize": 147,
+     "dataType": 21,
+     "variable": {
+      "$type": "_unknown",
+      "data": "QQByAHQALwBWAEYAWAAvAE0AZQBzAGgALwBFAG4AdgBDAHIAZQBhAHQAdQByAGUALwBlAG0ANQAyADAAMgAvAGUAbQA1ADIAMAAyAF8AMQAwAC8AMQAxAF8AZQBtADUAMgAwADIAXwAwADAAMAAuAG0AbwB0AAAA",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 120,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 2271404686,
+     "behaviorProperty": "Motion"
+    }
+   },
+   {
+    "name": "Loop",
+    "template": {
+     "Version": 5571972,
+     "varSize": 29,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 817569939,
+     "behaviorProperty": "Loop"
+    }
+   },
+   {
+    "name": "StartFrame",
+    "template": {
+     "Version": 5571972,
+     "varSize": 39,
+     "dataType": 19,
+     "variable": {
+      "$type": "PropFloat2",
+      "Vec": {
+       "X": 0.0,
+       "Y": 300.0
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 4032024313,
+     "behaviorProperty": "StartFrame"
+    }
+   }
+  ],
+  "app.EffectGrassCollision": [
+   {
+    "name": "Radius",
+    "template": {
+     "Version": 5571972,
+     "varSize": 31,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 4.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 4174320478,
+     "behaviorProperty": "Radius"
+    }
+   },
+   {
+    "name": "RelationLifeRadius",
+    "template": {
+     "Version": 5571972,
+     "varSize": 43,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 1884652586,
+     "behaviorProperty": "RelationLifeRadius"
+    }
+   },
+   {
+    "name": "Power",
+    "template": {
+     "Version": 5571972,
+     "varSize": 30,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 1.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 2433512695,
+     "behaviorProperty": "Power"
+    }
+   },
+   {
+    "name": "RelationLifePower",
+    "template": {
+     "Version": 5571972,
+     "varSize": 42,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 3589081904,
+     "behaviorProperty": "RelationLifePower"
+    }
+   },
+   {
+    "name": "FollowEffect",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 3014071382,
+     "behaviorProperty": "FollowEffect"
+    }
+   }
+  ],
+  "via.effect.script.EffectChain2MeshAnim": [
+   {
+    "name": "MeshPrefab",
+    "template": {
+     "Version": 5571972,
+     "varSize": 151,
+     "dataType": 17,
+     "variable": {
+      "$type": "PropPrefabpath",
+      "str": "Art/VFX/Mesh/EnvCreature/em5221/em5221_00/11_em5221_001.pfb",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 120,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 268412460,
+     "behaviorProperty": "MeshPrefab"
+    }
+   },
+   {
+    "name": "PlayType",
+    "template": {
+     "Version": 5571972,
+     "varSize": 33,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 2,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 905454512,
+     "behaviorProperty": "PlayType"
+    }
+   },
+   {
+    "name": "Scale",
+    "template": {
+     "Version": 5571972,
+     "varSize": 34,
+     "dataType": 19,
+     "variable": {
+      "$type": "PropFloat2",
+      "Vec": {
+       "X": 0.5,
+       "Y": 0.0
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 8,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 824050869,
+     "behaviorProperty": "Scale"
+    }
+   }
+  ],
+  "via.effect.script.EffectAlembicMesh": [
+   {
+    "name": "AlembicMesh",
+    "template": {
+     "Version": 5571972,
+     "varSize": 166,
+     "dataType": 21,
+     "variable": {
+      "$type": "_unknown",
+      "data": "QQByAHQALwBWAEYAWAAvAE0AZQBzAGgALwBFAHYAZQBuAHQALwBmAG8AbwBkAC8AdAB5AHAAZQAyAC8AbQBlAGEAdAAvADEAMQBfAGUAdgBjADIAMAAwADMAXwA1ADAAXwB0AHkAcABlADIAXwAwADAANAAuAGEAYgBjAG0AZQBzAGgAAAA=",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 134,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 3614559352,
+     "behaviorProperty": "AlembicMesh"
+    }
+   },
+   {
+    "name": "Material",
+    "template": {
+     "Version": 5571972,
+     "varSize": 153,
+     "dataType": 21,
+     "variable": {
+      "$type": "_unknown",
+      "data": "QQByAHQALwBWAEYAWAAvAE0AZQBzAGgALwBFAHYAZQBuAHQALwBmAG8AbwBkAC8AbQBhAHQAZQByAGkAYQBsAC8AMQAxAF8AZQB2AGMAMgAwADAAMwBfADUAMABfAHQAeQBwAGUAMgBfADAAMAA0AC4AbQBkAGYAMgAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 124,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 2003450741,
+     "behaviorProperty": "Material"
+    }
+   }
+  ],
+  "via.effect.script.EffectSpotLight": [
+   {
+    "name": "Intensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 34,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.2,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 3369874502,
+     "behaviorProperty": "Intensity"
+    }
+   },
+   {
+    "name": "EnableIntensityScale",
+    "template": {
+     "Version": 5571972,
+     "varSize": 45,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 282536672,
+     "behaviorProperty": "EnableIntensityScale"
+    }
+   },
+   {
+    "name": "IntensityAmplitudeMin",
+    "template": {
+     "Version": 5571972,
+     "varSize": 46,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 1497458376,
+     "behaviorProperty": "IntensityAmplitudeMin"
+    }
+   },
+   {
+    "name": "IntensityAmplitudeMax",
+    "template": {
+     "Version": 5571972,
+     "varSize": 46,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.002,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 3110516939,
+     "behaviorProperty": "IntensityAmplitudeMax"
+    }
+   },
+   {
+    "name": "IntensityAmplitudeChangeFrameMin",
+    "template": {
+     "Version": 5571972,
+     "varSize": 57,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 3.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 1130552320,
+     "behaviorProperty": "IntensityAmplitudeChangeFrameMin"
+    }
+   },
+   {
+    "name": "IntensityAmplitudeChangeFrameMax",
+    "template": {
+     "Version": 5571972,
+     "varSize": 57,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 10.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 5
+     },
+     "varHash": 3088419969,
+     "behaviorProperty": "IntensityAmplitudeChangeFrameMax"
+    }
+   },
+   {
+    "name": "UsingSameIntensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 43,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 6
+     },
+     "varHash": 1798716282,
+     "behaviorProperty": "UsingSameIntensity"
+    }
+   },
+   {
+    "name": "VolumetricScatteringIntensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 54,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 7
+     },
+     "varHash": 183639765,
+     "behaviorProperty": "VolumetricScatteringIntensity"
+    }
+   },
+   {
+    "name": "Unit",
+    "template": {
+     "Version": 5571972,
+     "varSize": 29,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 8
+     },
+     "varHash": 4294450319,
+     "behaviorProperty": "Unit"
+    }
+   },
+   {
+    "name": "Radius",
+    "template": {
+     "Version": 5571972,
+     "varSize": 31,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 1.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 9
+     },
+     "varHash": 4174320478,
+     "behaviorProperty": "Radius"
+    }
+   },
+   {
+    "name": "ReferenceEffectiveRange",
+    "template": {
+     "Version": 5571972,
+     "varSize": 48,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 6.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 10
+     },
+     "varHash": 2616384971,
+     "behaviorProperty": "ReferenceEffectiveRange"
+    }
+   },
+   {
+    "name": "UseCustomAttenuation",
+    "template": {
+     "Version": 5571972,
+     "varSize": 45,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 11
+     },
+     "varHash": 2016828902,
+     "behaviorProperty": "UseCustomAttenuation"
+    }
+   },
+   {
+    "name": "AttenuationStartDistance",
+    "template": {
+     "Version": 5571972,
+     "varSize": 49,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 5.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 12
+     },
+     "varHash": 186333557,
+     "behaviorProperty": "AttenuationStartDistance"
+    }
+   },
+   {
+    "name": "_TranslucencyEnable",
+    "template": {
+     "Version": 5571972,
+     "varSize": 44,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 13
+     },
+     "varHash": 48960370,
+     "behaviorProperty": "_TranslucencyEnable"
+    }
+   },
+   {
+    "name": "Spread",
+    "template": {
+     "Version": 5571972,
+     "varSize": 31,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 30.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 14
+     },
+     "varHash": 3800103642,
+     "behaviorProperty": "Spread"
+    }
+   },
+   {
+    "name": "Cone",
+    "template": {
+     "Version": 5571972,
+     "varSize": 29,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 30.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 15
+     },
+     "varHash": 2165872812,
+     "behaviorProperty": "Cone"
+    }
+   }
+  ],
+  "via.effect.script.EffectColorCorrect": [
+   {
+    "name": "UseDistanceAttenuation",
+    "template": {
+     "Version": 5571972,
+     "varSize": 47,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 2228660667,
+     "behaviorProperty": "UseDistanceAttenuation"
+    }
+   },
+   {
+    "name": "DistanceAttenuationStart",
+    "template": {
+     "Version": 5571972,
+     "varSize": 49,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 670022115,
+     "behaviorProperty": "DistanceAttenuationStart"
+    }
+   },
+   {
+    "name": "DistanceAttenuationEnd",
+    "template": {
+     "Version": 5571972,
+     "varSize": 47,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 200.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 2038767801,
+     "behaviorProperty": "DistanceAttenuationEnd"
+    }
+   },
+   {
+    "name": "LinearParamsAt",
+    "template": {
+     "Version": 5571972,
+     "varSize": 85,
+     "dataType": 26,
+     "variable": {
+      "$type": "_unknown",
+      "data": "dmlhLmVmZmVjdC5zY3JpcHQuRWZmZWN0Q29sb3JDb3JyZWN0LkxpbmVhclBhcmFtcwA=",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 50,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 283263257,
+     "behaviorProperty": "LinearParamsAt"
+    }
+   },
+   {
+    "name": "LinearParamsAt[0]",
+    "template": {
+     "Version": 5571972,
+     "varSize": 88,
+     "dataType": 25,
+     "variable": {
+      "$type": "_unknown",
+      "data": "dmlhLmVmZmVjdC5zY3JpcHQuRWZmZWN0Q29sb3JDb3JyZWN0LkxpbmVhclBhcmFtcwA=",
+      "Version": 5571972,
+      "unkn": 4,
+      "size": 50,
+      "re4_unkn0": 3,
+      "re4_unkn1": 0
+     },
+     "varHash": 4163561224,
+     "behaviorProperty": "LinearParamsAt[0]"
+    }
+   },
+   {
+    "name": "Index",
+    "template": {
+     "Version": 5571972,
+     "varSize": 30,
+     "dataType": 3,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AgAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": 4,
+      "re4_unkn1": 0
+     },
+     "varHash": 3772137624,
+     "behaviorProperty": "Index"
+    }
+   },
+   {
+    "name": "LinearFactor",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 15,
+     "variable": {
+      "$type": "PropColor",
+      "color": {
+       "rgba": 860902505
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": 4,
+      "re4_unkn1": 1
+     },
+     "varHash": 964565698,
+     "behaviorProperty": "LinearFactor"
+    }
+   },
+   {
+    "name": "LinearCorrectorType",
+    "template": {
+     "Version": 5571972,
+     "varSize": 44,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 5,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": 4,
+      "re4_unkn1": 2
+     },
+     "varHash": 1605790617,
+     "behaviorProperty": "LinearCorrectorType"
+    }
+   },
+   {
+    "name": "EndType",
+    "template": {
+     "Version": 5571972,
+     "varSize": 32,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": 4,
+      "re4_unkn1": 3
+     },
+     "varHash": 3135050062,
+     "behaviorProperty": "EndType"
+    }
+   }
+  ],
+  "app.EffectWp10_InsectEmissiveControl": [
+   {
+    "name": "TargetParts",
+    "template": {
+     "Version": 5571972,
+     "varSize": 36,
+     "dataType": 4,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AQAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 3161220898,
+     "behaviorProperty": "TargetParts"
+    }
+   },
+   {
+    "name": "RimWidthAnimStart",
+    "template": {
+     "Version": 5571972,
+     "varSize": 42,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.4,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 2510430791,
+     "behaviorProperty": "RimWidthAnimStart"
+    }
+   },
+   {
+    "name": "RimWidthAnimVanish",
+    "template": {
+     "Version": 5571972,
+     "varSize": 43,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.8,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 3464781329,
+     "behaviorProperty": "RimWidthAnimVanish"
+    }
+   },
+   {
+    "name": "RimIntensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 5.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 4282920575,
+     "behaviorProperty": "RimIntensity"
+    }
+   },
+   {
+    "name": "DetailWidthAnimStart",
+    "template": {
+     "Version": 5571972,
+     "varSize": 45,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.4,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 2637337191,
+     "behaviorProperty": "DetailWidthAnimStart"
+    }
+   },
+   {
+    "name": "DetailWidthAnimVanish",
+    "template": {
+     "Version": 5571972,
+     "varSize": 46,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.85,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 5
+     },
+     "varHash": 272080313,
+     "behaviorProperty": "DetailWidthAnimVanish"
+    }
+   },
+   {
+    "name": "DetailIntensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 40,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 5.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 6
+     },
+     "varHash": 1576812587,
+     "behaviorProperty": "DetailIntensity"
+    }
+   },
+   {
+    "name": "Priority",
+    "template": {
+     "Version": 5571972,
+     "varSize": 33,
+     "dataType": 3,
+     "variable": {
+      "$type": "_unknown",
+      "data": "GgAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 7
+     },
+     "varHash": 4237659754,
+     "behaviorProperty": "Priority"
+    }
+   },
+   {
+    "name": "UpdateDivisionNum",
+    "template": {
+     "Version": 5571972,
+     "varSize": 39,
+     "dataType": 8,
+     "variable": {
+      "$type": "_unknown",
+      "data": "Aw==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 1,
+      "re4_unkn0": -1,
+      "re4_unkn1": 8
+     },
+     "varHash": 2704366909,
+     "behaviorProperty": "UpdateDivisionNum"
+    }
+   }
+  ],
+  "app.EffectOtomoEmissiveControl": [
+   {
+    "name": "TargetParts",
+    "template": {
+     "Version": 5571972,
+     "varSize": 36,
+     "dataType": 4,
+     "variable": {
+      "$type": "_unknown",
+      "data": "BAAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 3161220898,
+     "behaviorProperty": "TargetParts"
+    }
+   },
+   {
+    "name": "RimWidthAnimStart",
+    "template": {
+     "Version": 5571972,
+     "varSize": 42,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.7,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 2510430791,
+     "behaviorProperty": "RimWidthAnimStart"
+    }
+   },
+   {
+    "name": "RimWidthAnimVanish",
+    "template": {
+     "Version": 5571972,
+     "varSize": 43,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.7,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 3464781329,
+     "behaviorProperty": "RimWidthAnimVanish"
+    }
+   },
+   {
+    "name": "RimIntensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 3.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 4282920575,
+     "behaviorProperty": "RimIntensity"
+    }
+   },
+   {
+    "name": "DetailWidthAnimStart",
+    "template": {
+     "Version": 5571972,
+     "varSize": 45,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 2637337191,
+     "behaviorProperty": "DetailWidthAnimStart"
+    }
+   },
+   {
+    "name": "DetailWidthAnimVanish",
+    "template": {
+     "Version": 5571972,
+     "varSize": 46,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 5
+     },
+     "varHash": 272080313,
+     "behaviorProperty": "DetailWidthAnimVanish"
+    }
+   },
+   {
+    "name": "DetailIntensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 40,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 6
+     },
+     "varHash": 1576812587,
+     "behaviorProperty": "DetailIntensity"
+    }
+   },
+   {
+    "name": "Priority",
+    "template": {
+     "Version": 5571972,
+     "varSize": 33,
+     "dataType": 3,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AAAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 7
+     },
+     "varHash": 4237659754,
+     "behaviorProperty": "Priority"
+    }
+   }
+  ],
+  "via.effect.script.EffectProjectionSpotLight": [
+   {
+    "name": "Intensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 34,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 1500.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 3369874502,
+     "behaviorProperty": "Intensity"
+    }
+   },
+   {
+    "name": "EnableIntensityScale",
+    "template": {
+     "Version": 5571972,
+     "varSize": 45,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 282536672,
+     "behaviorProperty": "EnableIntensityScale"
+    }
+   },
+   {
+    "name": "BounceIntensity",
+    "template": {
+     "Version": 5571972,
+     "varSize": 40,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 1.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 2843685423,
+     "behaviorProperty": "BounceIntensity"
+    }
+   },
+   {
+    "name": "Unit",
+    "template": {
+     "Version": 5571972,
+     "varSize": 29,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 4294450319,
+     "behaviorProperty": "Unit"
+    }
+   },
+   {
+    "name": "ReferenceEffectiveRange",
+    "template": {
+     "Version": 5571972,
+     "varSize": 48,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 20.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 2616384971,
+     "behaviorProperty": "ReferenceEffectiveRange"
+    }
+   },
+   {
+    "name": "AttenuationStartDistance",
+    "template": {
+     "Version": 5571972,
+     "varSize": 49,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 1.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 5
+     },
+     "varHash": 186333557,
+     "behaviorProperty": "AttenuationStartDistance"
+    }
+   },
+   {
+    "name": "MinRoughness",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 1.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 6
+     },
+     "varHash": 3195988228,
+     "behaviorProperty": "MinRoughness"
+    }
+   },
+   {
+    "name": "Spread",
+    "template": {
+     "Version": 5571972,
+     "varSize": 31,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 10.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 7
+     },
+     "varHash": 3800103642,
+     "behaviorProperty": "Spread"
+    }
+   },
+   {
+    "name": "Cone",
+    "template": {
+     "Version": 5571972,
+     "varSize": 29,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 30.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 8
+     },
+     "varHash": 2165872812,
+     "behaviorProperty": "Cone"
+    }
+   },
+   {
+    "name": "Texture",
+    "template": {
+     "Version": 5571972,
+     "varSize": 92,
+     "dataType": 21,
+     "variable": {
+      "$type": "_unknown",
+      "data": "cwB5AHMAdABlAG0AcwAvAHIAZQBuAGQAZQByAGkAbgBnAC8ATgB1AGwAbABXAGgAaQB0AGUALgB0AGUAeAAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 64,
+      "re4_unkn0": -1,
+      "re4_unkn1": 9
+     },
+     "varHash": 4164178902,
+     "behaviorProperty": "Texture"
+    }
+   },
+   {
+    "name": "SelectedLighting",
+    "template": {
+     "Version": 5571972,
+     "varSize": 41,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 10
+     },
+     "varHash": 1285057790,
+     "behaviorProperty": "SelectedLighting"
+    }
+   }
+  ],
+  "via.effect.script.EffectVolumetricFog": [
+   {
+    "name": "VolumetricFogPrefab",
+    "template": {
+     "Version": 5571972,
+     "varSize": 150,
+     "dataType": 17,
+     "variable": {
+      "$type": "PropPrefabpath",
+      "str": "Art/VFX/EffectEditor/Stage/St402/11_st402_vfog_000.pfb",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 110,
+      "re4_unkn0": -1,
+      "re4_unkn1": 0
+     },
+     "varHash": 1611027993,
+     "behaviorProperty": "VolumetricFogPrefab"
+    }
+   },
+   {
+    "name": "FollowEffect",
+    "template": {
+     "Version": 5571972,
+     "varSize": 37,
+     "dataType": 18,
+     "variable": {
+      "$type": "PropEnum",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 1
+     },
+     "varHash": 3014071382,
+     "behaviorProperty": "FollowEffect"
+    }
+   },
+   {
+    "name": "VolumeType",
+    "template": {
+     "Version": 5571972,
+     "varSize": 35,
+     "dataType": 22,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AgAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 2
+     },
+     "varHash": 4254480257,
+     "behaviorProperty": "VolumeType"
+    }
+   },
+   {
+    "name": "OBB",
+    "template": {
+     "Version": 5571972,
+     "varSize": 60,
+     "dataType": 24,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAABIQgAASEIAAMhC",
+      "Version": 5571972,
+      "unkn": 9,
+      "size": 36,
+      "re4_unkn0": -1,
+      "re4_unkn1": 3
+     },
+     "varHash": 1478977174,
+     "behaviorProperty": "OBB"
+    }
+   },
+   {
+    "name": "OBBEnabled",
+    "template": {
+     "Version": 5571972,
+     "varSize": 35,
+     "dataType": 14,
+     "variable": {
+      "$type": "PropInt",
+      "value": 1,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 4
+     },
+     "varHash": 1125247549,
+     "behaviorProperty": "OBBEnabled"
+    }
+   },
+   {
+    "name": "Color",
+    "template": {
+     "Version": 5571972,
+     "varSize": 30,
+     "dataType": 15,
+     "variable": {
+      "$type": "PropColor",
+      "color": {
+       "rgba": 4294967295
+      },
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 5
+     },
+     "varHash": 1124845316,
+     "behaviorProperty": "Color"
+    }
+   },
+   {
+    "name": "Density",
+    "template": {
+     "Version": 5571972,
+     "varSize": 32,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.03,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": -1,
+      "re4_unkn1": 6
+     },
+     "varHash": 3058303909,
+     "behaviorProperty": "Density"
+    }
+   },
+   {
+    "name": "CustomMaterialResource",
+    "template": {
+     "Version": 5571972,
+     "varSize": 155,
+     "dataType": 21,
+     "variable": {
+      "$type": "_unknown",
+      "data": "QQByAHQALwBWAEYAWAAvAEUAZgBmAGUAYwB0AEUAZABpAHQAbwByAC8AUwB0AGEAZwBlAC8AUwB0ADQAMAAyAC8AMQAxAF8AcwB0ADQAMAAyAF8AdgBmAG8AZwBfADAAMAAwAC4AbQBkAGYAMgAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 112,
+      "re4_unkn0": -1,
+      "re4_unkn1": 7
+     },
+     "varHash": 2009472812,
+     "behaviorProperty": "CustomMaterialResource"
+    }
+   },
+   {
+    "name": "MaterialParamWrapperList",
+    "template": {
+     "Version": 5571972,
+     "varSize": 110,
+     "dataType": 26,
+     "variable": {
+      "$type": "_unknown",
+      "data": "dmlhLmVmZmVjdC5zY3JpcHQuRWZmZWN0Vm9sdW1ldHJpY0ZvZy5Wb2x1bWV0cmljRm9nTWF0ZXJpYWxQYXJhbQA=",
+      "Version": 5571972,
+      "unkn": 6,
+      "size": 65,
+      "re4_unkn0": -1,
+      "re4_unkn1": 8
+     },
+     "varHash": 3164093593,
+     "behaviorProperty": "MaterialParamWrapperList"
+    }
+   },
+   {
+    "name": "MaterialParamWrapperList[0]",
+    "template": {
+     "Version": 5571972,
+     "varSize": 113,
+     "dataType": 25,
+     "variable": {
+      "$type": "_unknown",
+      "data": "dmlhLmVmZmVjdC5zY3JpcHQuRWZmZWN0Vm9sdW1ldHJpY0ZvZy5Wb2x1bWV0cmljRm9nTWF0ZXJpYWxQYXJhbQA=",
+      "Version": 5571972,
+      "unkn": 3,
+      "size": 65,
+      "re4_unkn0": 8,
+      "re4_unkn1": 0
+     },
+     "varHash": 410236622,
+     "behaviorProperty": "MaterialParamWrapperList[0]"
+    }
+   },
+   {
+    "name": "VariableName",
+    "template": {
+     "Version": 5571972,
+     "varSize": 59,
+     "dataType": 16,
+     "variable": {
+      "$type": "PropWstringName",
+      "str": "NRMD_Tilling",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 26,
+      "re4_unkn0": 9,
+      "re4_unkn1": 0
+     },
+     "varHash": 2212650044,
+     "behaviorProperty": "VariableName"
+    }
+   },
+   {
+    "name": "ValueF4",
+    "template": {
+     "Version": 5571972,
+     "varSize": 44,
+     "dataType": 12,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AACAPwAAgD8AAIA/AAAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 16,
+      "re4_unkn0": 9,
+      "re4_unkn1": 1
+     },
+     "varHash": 2659471725,
+     "behaviorProperty": "ValueF4"
+    }
+   },
+   {
+    "name": "ValueF",
+    "template": {
+     "Version": 5571972,
+     "varSize": 31,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 1.0,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": 9,
+      "re4_unkn1": 2
+     },
+     "varHash": 1692590329,
+     "behaviorProperty": "ValueF"
+    }
+   },
+   {
+    "name": "MaterialParamWrapperList[1]",
+    "template": {
+     "Version": 5571972,
+     "varSize": 113,
+     "dataType": 25,
+     "variable": {
+      "$type": "_unknown",
+      "data": "dmlhLmVmZmVjdC5zY3JpcHQuRWZmZWN0Vm9sdW1ldHJpY0ZvZy5Wb2x1bWV0cmljRm9nTWF0ZXJpYWxQYXJhbQA=",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 65,
+      "re4_unkn0": 8,
+      "re4_unkn1": 1
+     },
+     "varHash": 2864876317,
+     "behaviorProperty": "MaterialParamWrapperList[1]"
+    }
+   },
+   {
+    "name": "VariableName",
+    "template": {
+     "Version": 5571972,
+     "varSize": 57,
+     "dataType": 16,
+     "variable": {
+      "$type": "PropWstringName",
+      "str": "Vector_Rate",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 24,
+      "re4_unkn0": 13,
+      "re4_unkn1": 0
+     },
+     "varHash": 2212650044,
+     "behaviorProperty": "VariableName"
+    }
+   },
+   {
+    "name": "ValueF4",
+    "template": {
+     "Version": 5571972,
+     "varSize": 44,
+     "dataType": 12,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AAAAADMzsz7NzMw9zczMPQ==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 16,
+      "re4_unkn0": 13,
+      "re4_unkn1": 1
+     },
+     "varHash": 2659471725,
+     "behaviorProperty": "ValueF4"
+    }
+   },
+   {
+    "name": "MaterialParamWrapperList[2]",
+    "template": {
+     "Version": 5571972,
+     "varSize": 113,
+     "dataType": 25,
+     "variable": {
+      "$type": "_unknown",
+      "data": "dmlhLmVmZmVjdC5zY3JpcHQuRWZmZWN0Vm9sdW1ldHJpY0ZvZy5Wb2x1bWV0cmljRm9nTWF0ZXJpYWxQYXJhbQA=",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 65,
+      "re4_unkn0": 8,
+      "re4_unkn1": 2
+     },
+     "varHash": 3008559696,
+     "behaviorProperty": "MaterialParamWrapperList[2]"
+    }
+   },
+   {
+    "name": "VariableName",
+    "template": {
+     "Version": 5571972,
+     "varSize": 67,
+     "dataType": 16,
+     "variable": {
+      "$type": "PropWstringName",
+      "str": "NRMD_ScrollSpeed",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 34,
+      "re4_unkn0": 16,
+      "re4_unkn1": 0
+     },
+     "varHash": 2212650044,
+     "behaviorProperty": "VariableName"
+    }
+   },
+   {
+    "name": "ValueF4",
+    "template": {
+     "Version": 5571972,
+     "varSize": 44,
+     "dataType": 12,
+     "variable": {
+      "$type": "_unknown",
+      "data": "j8L1PArXI7wK1yO8CtcjPA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 16,
+      "re4_unkn0": 16,
+      "re4_unkn1": 1
+     },
+     "varHash": 2659471725,
+     "behaviorProperty": "ValueF4"
+    }
+   },
+   {
+    "name": "MaterialParamWrapperList[3]",
+    "template": {
+     "Version": 5571972,
+     "varSize": 113,
+     "dataType": 25,
+     "variable": {
+      "$type": "_unknown",
+      "data": "dmlhLmVmZmVjdC5zY3JpcHQuRWZmZWN0Vm9sdW1ldHJpY0ZvZy5Wb2x1bWV0cmljRm9nTWF0ZXJpYWxQYXJhbQA=",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 65,
+      "re4_unkn0": 8,
+      "re4_unkn1": 3
+     },
+     "varHash": 3648758173,
+     "behaviorProperty": "MaterialParamWrapperList[3]"
+    }
+   },
+   {
+    "name": "VariableName",
+    "template": {
+     "Version": 5571972,
+     "varSize": 57,
+     "dataType": 16,
+     "variable": {
+      "$type": "PropWstringName",
+      "str": "OBBMask_Max",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 24,
+      "re4_unkn0": 19,
+      "re4_unkn1": 0
+     },
+     "varHash": 2212650044,
+     "behaviorProperty": "VariableName"
+    }
+   },
+   {
+    "name": "ValueF4",
+    "template": {
+     "Version": 5571972,
+     "varSize": 44,
+     "dataType": 12,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AACAPwAAgD+amRk/mpkZPw==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 16,
+      "re4_unkn0": 19,
+      "re4_unkn1": 1
+     },
+     "varHash": 2659471725,
+     "behaviorProperty": "ValueF4"
+    }
+   },
+   {
+    "name": "MaterialParamWrapperList[4]",
+    "template": {
+     "Version": 5571972,
+     "varSize": 113,
+     "dataType": 25,
+     "variable": {
+      "$type": "_unknown",
+      "data": "dmlhLmVmZmVjdC5zY3JpcHQuRWZmZWN0Vm9sdW1ldHJpY0ZvZy5Wb2x1bWV0cmljRm9nTWF0ZXJpYWxQYXJhbQA=",
+      "Version": 5571972,
+      "unkn": 3,
+      "size": 65,
+      "re4_unkn0": 8,
+      "re4_unkn1": 4
+     },
+     "varHash": 1111852616,
+     "behaviorProperty": "MaterialParamWrapperList[4]"
+    }
+   },
+   {
+    "name": "VariableName",
+    "template": {
+     "Version": 5571972,
+     "varSize": 63,
+     "dataType": 16,
+     "variable": {
+      "$type": "PropWstringName",
+      "str": "FakeShadow_Add",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 30,
+      "re4_unkn0": 22,
+      "re4_unkn1": 0
+     },
+     "varHash": 2212650044,
+     "behaviorProperty": "VariableName"
+    }
+   },
+   {
+    "name": "ValueF4",
+    "template": {
+     "Version": 5571972,
+     "varSize": 44,
+     "dataType": 12,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AAAAAAAAAAAAAAAAAAAAAA==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 16,
+      "re4_unkn0": 22,
+      "re4_unkn1": 1
+     },
+     "varHash": 2659471725,
+     "behaviorProperty": "ValueF4"
+    }
+   },
+   {
+    "name": "ValueF",
+    "template": {
+     "Version": 5571972,
+     "varSize": 31,
+     "dataType": 9,
+     "variable": {
+      "$type": "PropFloat",
+      "value": 0.6,
+      "restData": "",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 4,
+      "re4_unkn0": 22,
+      "re4_unkn1": 2
+     },
+     "varHash": 1692590329,
+     "behaviorProperty": "ValueF"
+    }
+   },
+   {
+    "name": "MaterialParamWrapperList[5]",
+    "template": {
+     "Version": 5571972,
+     "varSize": 113,
+     "dataType": 25,
+     "variable": {
+      "$type": "_unknown",
+      "data": "dmlhLmVmZmVjdC5zY3JpcHQuRWZmZWN0Vm9sdW1ldHJpY0ZvZy5Wb2x1bWV0cmljRm9nTWF0ZXJpYWxQYXJhbQA=",
+      "Version": 5571972,
+      "unkn": 2,
+      "size": 65,
+      "re4_unkn0": 8,
+      "re4_unkn1": 5
+     },
+     "varHash": 3492441355,
+     "behaviorProperty": "MaterialParamWrapperList[5]"
+    }
+   },
+   {
+    "name": "VariableName",
+    "template": {
+     "Version": 5571972,
+     "varSize": 45,
+     "dataType": 16,
+     "variable": {
+      "$type": "PropWstringName",
+      "str": "Color",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 12,
+      "re4_unkn0": 26,
+      "re4_unkn1": 0
+     },
+     "varHash": 2212650044,
+     "behaviorProperty": "VariableName"
+    }
+   },
+   {
+    "name": "ValueF4",
+    "template": {
+     "Version": 5571972,
+     "varSize": 44,
+     "dataType": 12,
+     "variable": {
+      "$type": "_unknown",
+      "data": "AACAPwAAgD8AAIA/AACAPw==",
+      "Version": 5571972,
+      "unkn": 1,
+      "size": 16,
+      "re4_unkn0": 26,
+      "re4_unkn1": 1
+     },
+     "varHash": 2659471725,
+     "behaviorProperty": "ValueF4"
+    }
+   }
+  ],
   "app.EffectMeshClusterMaterialAnim": [
    {
     "name": "Mesh",
@@ -5006,24 +10799,8 @@
  },
  "_excluded": [
   {
-   "behaviorString": "via.effect.script.EffectDecal2.EffectDecal_V2",
-   "reason": "属性名里有 Xxx[N] 这种带下标的分组头——是嵌套子结构的数组被拍平进了同一张表，不是扁平覆盖表（详见 _has_array_group_names 的说明）"
-  },
-  {
-   "behaviorString": "app.EffectSuefaceTrail",
-   "reason": "属性名里有 Xxx[N] 这种带下标的分组头——是嵌套子结构的数组被拍平进了同一张表，不是扁平覆盖表（详见 _has_array_group_names 的说明）"
-  },
-  {
    "behaviorString": "app.EffectGroundDeforme",
    "reason": "属性顺序在语料里自相矛盾（数组套数组/同key合法重复/多套互斥schema）"
-  },
-  {
-   "behaviorString": "via.effect.script.EffectColorCorrect",
-   "reason": "属性名里有 Xxx[N] 这种带下标的分组头——是嵌套子结构的数组被拍平进了同一张表，不是扁平覆盖表（详见 _has_array_group_names 的说明）"
-  },
-  {
-   "behaviorString": "via.effect.script.EffectVolumetricFog",
-   "reason": "属性名里有 Xxx[N] 这种带下标的分组头——是嵌套子结构的数组被拍平进了同一张表，不是扁平覆盖表（详见 _has_array_group_names 的说明）"
   },
   {
    "behaviorString": "app.EffectRasterizeVortexelGeometry",

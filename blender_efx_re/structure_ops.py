@@ -117,11 +117,14 @@ def _activate(context, obj: Object) -> None:
 
 
 def _merge_suggested_defaults(base: dict, overlay: dict) -> None:
-    """把语料众数默认值（overlay）原地合并进 `bridge.new_attribute()` 吐出来的零值结构（base）。
+    """把 `semantics.get_attribute_defaults()` 查到的默认值（overlay）原地合并进
+    `bridge.new_attribute()` 吐出来的零值结构（base）。
 
-    只覆盖 overlay 里实际出现的叶子字段——overlay 本来就已经把置信度不够的字段剔掉了
-    （见 tools/build_attr_defaults.py），没出现的字段照样保留 vendor 的零值，不是这份表
-    没考虑到，是统计上没有把握替 Capcom 猜。
+    overlay 通常是"语料里挑出来的一份真实实例"（见 tools/build_instance_defaults.py），
+    结构跟 base 基本同形，一次合并就能把整份实例套上；旧版逐字段众数表
+    （tools/build_attr_defaults.py）作为退化路径时才会出现只填了部分叶子字段的情况。
+    不管哪种，都只覆盖 overlay 里实际出现的叶子字段——没出现的字段（vendor schema 比这份
+    默认值样本更新之后新增的字段）照样保留 vendor 的零值。
     """
     for key, value in overlay.items():
         if isinstance(value, dict) and isinstance(base.get(key), dict):
@@ -383,7 +386,7 @@ def reference_mismatches(properties_node, entries: list) -> list[tuple[int, str]
     文件名没用（用户从 pak 里捞出来的文件想叫什么叫什么），比对真实数据才有意义。
 
     覆盖表是空的（一条都还没有）时返回空列表：这时候没有任何可核对的证据，不能因此就声称
-    材质是对的，但也没有理由拦——直接放行，别编造结论（铁律 #6）。
+    材质是对的，但也没有理由拦——直接放行，别编造结论（不把猜测当事实）。
     """
     by_hash = {e["utf8Hash"]: e for e in entries}
     issues: list[tuple[int, str]] = []
@@ -640,6 +643,104 @@ class EFX_RE_OT_mdf_property_remove(Operator):
         return {"FINISHED"}
 
 
+class EFX_RE_OT_material_expression_duplicate(Operator):
+    """复制 `efx_material_expression_entries` 里的一条公式——只支持"同一个材质参数在列表里
+    再配一条公式/分量"这种新增路径。
+
+    引入一个列表里完全没出现过的全新材质参数，需要往 `MaterialExpressionList.indices`
+    （容器级 `uint[]`，语义未证实）里加一项——2026-09-18 全语料 + 引用的 .mdf2 交叉核对过：
+    这个数组的长度几乎总是等于列表里"去重后的材质参数个数"（498 个样本 487 个吻合），但
+    具体数值不是 mdf2 参数表里的下标（对不上的有 400/498），也不是文件级的连续计数器，
+    没解出规则——瞎填等于铁律 #1 说的"字节合法但游戏语义错"。复制已有条目不改变这个去重
+    集合，不受这个限制。"""
+
+    bl_idname = "efx_re.material_expression_duplicate"
+    bl_label = "Duplicate Material Expression"
+    bl_description = "复制这条公式（同一个材质参数），用于给它再配一条公式或分量"
+    bl_options = {"REGISTER", "UNDO"}
+
+    index: IntProperty(name="Index", default=-1, options={"HIDDEN"})
+
+    @classmethod
+    def poll(cls, context):
+        obj = getattr(context, "object", None)
+        entries = getattr(obj, "efx_material_expression_entries", None)
+        return bool(entries)
+
+    def execute(self, context):
+        obj = context.object
+        entries = obj.efx_material_expression_entries
+        if not (0 <= self.index < len(entries)):
+            self.report({"ERROR"}, f"下标越界：{self.index}")
+            return {"CANCELLED"}
+
+        source = entries[self.index]
+        new_item = entries.add()
+        new_item.mdf_property_hash = source.mdf_property_hash
+        new_item.component_index = source.component_index
+        new_item.assign_type_raw = source.assign_type_raw
+        new_item.is_color = source.is_color
+        new_item.struct3_count = source.struct3_count
+        new_item.is_single_param = source.is_single_param
+        new_item.formula = source.formula
+        new_item.tree_parameters = source.tree_parameters
+        new_item.ui_expand = True
+
+        # 挪到源条目紧后面，不留在集合末尾——同一属性的几条公式排在一起，面板上才看得出关联。
+        target_pos = self.index + 1
+        last_index = len(entries) - 1
+        if target_pos != last_index:
+            entries.move(last_index, target_pos)
+
+        from . import expr_edit
+        expr_edit.rebuild_rows(entries[target_pos])
+
+        self.report({"INFO"}, "已复制这条公式，记得改公式内容/分量下标")
+        return {"FINISHED"}
+
+
+class EFX_RE_OT_material_expression_remove(Operator):
+    """删除 `efx_material_expression_entries` 里的一条公式——只有"同一个材质参数在列表里
+    还有别的条目"时才允许删，删完之后这个参数在"去重后的参数集合"里依然有代表，不影响
+    `indices` 记录的那个集合（具体语义仍未解出，见
+    `EFX_RE_OT_material_expression_duplicate` 的说明）。删掉一个参数的**最后一条**公式会
+    让它从这个集合里消失，但没解出 `indices` 该怎么跟着变，所以暂不支持——想去掉效果，把
+    公式改成 `0`（等于没有效果）比真的删掉这一条更安全。"""
+
+    bl_idname = "efx_re.material_expression_remove"
+    bl_label = "Remove Material Expression"
+    bl_description = "删除这条公式（仅当同一个材质参数在列表里还有别的条目时可用）"
+    bl_options = {"REGISTER", "UNDO"}
+
+    index: IntProperty(name="Index", default=-1, options={"HIDDEN"})
+
+    @classmethod
+    def poll(cls, context):
+        obj = getattr(context, "object", None)
+        entries = getattr(obj, "efx_material_expression_entries", None)
+        return bool(entries)
+
+    def execute(self, context):
+        obj = context.object
+        entries = obj.efx_material_expression_entries
+        if not (0 <= self.index < len(entries)):
+            self.report({"ERROR"}, f"下标越界：{self.index}")
+            return {"CANCELLED"}
+
+        target_hash = entries[self.index].mdf_property_hash
+        same_hash_count = sum(1 for e in entries if e.mdf_property_hash == target_hash)
+        if same_hash_count <= 1:
+            self.report({"ERROR"}, (
+                "这是这个材质参数在列表里唯一的一条，删除会改变 indices 覆盖的参数集合"
+                "（语义未解出，暂不支持）——可以把公式改成 0 代替删除"
+            ))
+            return {"CANCELLED"}
+
+        entries.remove(self.index)
+        self.report({"INFO"}, "已删除这条公式")
+        return {"FINISHED"}
+
+
 def resolve_behavior_string_node(obj: Object):
     """一个 attribute 对象如果是 PtBehavior（结构判据：同时有 `properties` 数组字段和
     `behaviorString` 字符串字段），返回它的 `behaviorString` 节点，否则 `None`。
@@ -653,7 +754,10 @@ def resolve_behavior_string_node(obj: Object):
     if node is None or node.data_type != "ARRAY":
         return None
     behavior_node = model.find_field(obj.efx_fields, "behaviorString")
-    if behavior_node is None or behavior_node.data_type != "STRING":
+    # NULL 也算：新建的空白 attribute 里 behaviorString 还没被打字转正
+    # （见 model._promote_null_to_string()），此时同样该有搜索按钮可用，不该等用户
+    # 先手打一个字符转正、面板刷新一轮之后才出现。
+    if behavior_node is None or behavior_node.data_type not in ("STRING", "NULL"):
         return None
     return behavior_node
 
@@ -665,8 +769,10 @@ def resolve_ptbehavior_properties(obj: Object):
     判据照抄 `resolve_mdf_properties` 的思路（不按 `$type` 精确匹配），但多一道闸：
     mdf 那边任何 Mesh 系材质都能配参考文件，PtBehavior 这边只有语料扫描确认过"属性顺序
     全局一致"的类才收进了静态目录（见 `tools/gen_ptbehavior_catalog.py`）——没收录的类
-    （结构混杂的那几个，如 `EffectDecal2` 的嵌套分组、`EffectMeshClusterMotoin` 的同 key
-    合法重复）继续走通用树透传，不提供增删入口。
+    （结构混杂到剔掉数组分组之后顶层顺序仍然冲突，或者混了两套互斥 schema，如
+    `EffectGroundDeforme` 的 `_Manual`/`_Preset` 两条分支）继续走通用树透传，不提供增删
+    入口。`EffectDecal2` 这种带 `Xxx[N]` 数组分组的类不在此列——分组头和分组内部字段被
+    剔除后，顶层字段照样收进了目录，只是分组那部分字段本身不提供增删入口。
     """
     behavior_node = resolve_behavior_string_node(obj)
     if behavior_node is None:
@@ -676,6 +782,27 @@ def resolve_ptbehavior_properties(obj: Object):
         return None, None
     node = model.find_field(obj.efx_fields, "properties")
     return node, behavior_string
+
+
+def resolve_ptbehavior_properties_node(obj: Object):
+    """一个 attribute 对象如果是 PtBehavior（结构判据同 `resolve_behavior_string_node`），
+    返回 `(properties 节点, behaviorString)`，否则 `(None, None)`——**不要求**这个类收进了
+    候选目录。
+
+    这是 `resolve_ptbehavior_properties()` 去掉 `has_catalog()` 这道闸的版本，给"画面板"用：
+    每一条 `PtBehaviorVariable` 的紧凑值控件（`panels._draw_ptbehavior_property()`）只读
+    这一条自己的 `dataType`，不需要知道整个类还有哪些候选字段——候选目录只影响"能不能从目录
+    新增/看到候选列表"，不影响"已经存在的这一条能不能显示成紧凑值控件"。没收录候选目录的类
+    （结构混杂的那几个）一样能显示每一条现有属性；`efx_re.ptbehavior_property_add`/`_add_all`
+    仍然调用 `resolve_ptbehavior_properties()`（保留 `has_catalog()` 那道闸），所以增删入口
+    继续只对收录了候选目录的类开放——这条函数只解决"看不到内容"，不改变"能不能增删"的既有
+    范围决定。
+    """
+    behavior_node = resolve_behavior_string_node(obj)
+    if behavior_node is None:
+        return None, None
+    node = model.find_field(obj.efx_fields, "properties")
+    return node, behavior_node.string_value
 
 
 def _present_ptbehavior_names(properties_node) -> set:
@@ -710,6 +837,38 @@ def _ptbehavior_candidate_enum_items(self, context):
         items = [("", "（这个类的候选属性已经全部加过了）", "")]
     _ptbehavior_candidate_items_cache[behavior_string] = items
     return items
+
+
+def _insert_ptbehavior_property(properties_node, catalog_entries, entry) -> None:
+    """把候选目录里的一条 `entry` 克隆进 `properties_node`，按目录规范顺序插入
+    （不是简单追加到末尾）——单条添加和"全部添加"共用这份逻辑。
+
+    调用方负责确认 `entry["name"]` 不在 `properties_node` 里已经出现过。
+    """
+    # 按候选目录里的规范顺序算插入位置：插到第一个规范序号比新条目大的现有条目之前
+    # （逻辑对齐姊妹项目 EFX-Editor `ptbehavior/edit.py::add_override()` 的插入算法）。
+    order = [e["name"] for e in catalog_entries]
+    new_rank = order.index(entry["name"])
+    insert_pos = len(properties_node.children)
+    for i, child in enumerate(properties_node.children):
+        existing_name = next(
+            (sub.string_value for sub in child.children if sub.key == "behaviorProperty"),
+            None)
+        existing_rank = order.index(existing_name) if existing_name in order else len(order)
+        if existing_rank > new_rank:
+            insert_pos = i
+            break
+
+    child = properties_node.children.add()
+    model.populate_node(child, str(len(properties_node.children) - 1), entry["template"])
+    # `EFXValueNode.ui_expand` 全局默认展开，但这张表每条都已经有紧凑主行了（见
+    # panels._draw_ptbehavior_property），新增的这条跟着默认折起来，不去挤爆已有的那些
+    # 已经被 io_tree.collapse_mdf_properties() 折过的同类条目（同一份表里有的展开有的
+    # 不展开会很奇怪）。
+    child.ui_expand = False
+    last_index = len(properties_node.children) - 1
+    if insert_pos != last_index:
+        properties_node.children.move(last_index, insert_pos)
 
 
 class EFX_RE_OT_ptbehavior_property_add(Operator):
@@ -762,29 +921,55 @@ class EFX_RE_OT_ptbehavior_property_add(Operator):
             self.report({"ERROR"}, f"'{self.candidate}' 已经在覆盖表里了")
             return {"CANCELLED"}
 
-        # 按候选目录里的规范顺序算插入位置：插到第一个规范序号比新条目大的现有条目之前
-        # （逻辑对齐姊妹项目 EFX-Editor `ptbehavior/edit.py::add_override()` 的插入算法）。
-        order = [e["name"] for e in catalog_entries]
-        new_rank = order.index(self.candidate)
-        insert_pos = len(properties_node.children)
-        for i, child in enumerate(properties_node.children):
-            existing_name = next(
-                (sub.string_value for sub in child.children if sub.key == "behaviorProperty"),
-                None)
-            existing_rank = order.index(existing_name) if existing_name in order else len(order)
-            if existing_rank > new_rank:
-                insert_pos = i
-                break
-
-        child = properties_node.children.add()
-        model.populate_node(child, str(len(properties_node.children) - 1), entry["template"])
-        last_index = len(properties_node.children) - 1
-        if insert_pos != last_index:
-            properties_node.children.move(last_index, insert_pos)
+        _insert_ptbehavior_property(properties_node, catalog_entries, entry)
         _renumber_array_keys(properties_node)
         properties_node.ui_expand = True
 
         self.report({"INFO"}, f"已新增行为属性 '{self.candidate}'")
+        return {"FINISHED"}
+
+
+class EFX_RE_OT_ptbehavior_property_add_all(Operator):
+    """把当前 behaviorString 在候选目录里的全部属性一次性加进 `properties`——语料扫描出的
+    这份候选列表本身就是"这个类见过的完整属性集"，一条条点太慢，这里一次补齐所有缺的。
+
+    已经在覆盖表里的属性会被跳过，不会重复添加或覆盖已有值。
+    """
+
+    bl_idname = "efx_re.ptbehavior_property_add_all"
+    bl_label = "Add All Behavior Properties"
+    bl_description = "把候选目录里还没加过的属性全部加进覆盖表"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        properties_node, behavior_string = resolve_ptbehavior_properties(
+            getattr(context, "object", None))
+        if properties_node is None:
+            return False
+        present = _present_ptbehavior_names(properties_node)
+        return any(
+            e["name"] not in present for e in ptbehavior_catalog.candidates(behavior_string))
+
+    def execute(self, context):
+        properties_node, behavior_string = resolve_ptbehavior_properties(context.object)
+        if properties_node is None:
+            self.report({"ERROR"}, "当前 attribute 没有 PtBehavior 候选目录")
+            return {"CANCELLED"}
+
+        catalog_entries = ptbehavior_catalog.candidates(behavior_string)
+        present = _present_ptbehavior_names(properties_node)
+        missing = [e for e in catalog_entries if e["name"] not in present]
+        if not missing:
+            self.report({"INFO"}, "这个类的候选属性已经全部加过了")
+            return {"CANCELLED"}
+
+        for entry in missing:
+            _insert_ptbehavior_property(properties_node, catalog_entries, entry)
+        _renumber_array_keys(properties_node)
+        properties_node.ui_expand = True
+
+        self.report({"INFO"}, f"已新增 {len(missing)} 条行为属性")
         return {"FINISHED"}
 
 
@@ -953,7 +1138,10 @@ _CLASSES = (
     EFX_RE_OT_mdf_reference_clear,
     EFX_RE_OT_mdf_property_add,
     EFX_RE_OT_mdf_property_remove,
+    EFX_RE_OT_material_expression_duplicate,
+    EFX_RE_OT_material_expression_remove,
     EFX_RE_OT_ptbehavior_property_add,
+    EFX_RE_OT_ptbehavior_property_add_all,
     EFX_RE_OT_ptbehavior_property_remove,
     EFX_RE_OT_ptbehavior_pick_behavior_string,
     EFX_RE_OT_delete,

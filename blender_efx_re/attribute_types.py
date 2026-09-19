@@ -154,6 +154,19 @@ def pt_behavior_prop_type_name(value: int) -> Optional[str]:
     return _PT_BEHAVIOR_PROP_TYPE_NAMES.get(value)
 
 
+def expression_assign_type_members() -> list:
+    """`ExpressionAssignType` 的成员表（`[[值, 显示名], ...]`），供不是走通用树、而是自己
+    定义 PropertyGroup 字段的场景复用（`model.EFXMaterialExpressionItem.assign_type`）——
+    那边的字段在 vendor 里声明成裸 `uint`（`EFXMaterialExpression.unkn1`），不会被反射进
+    `field_enums` 表，所以不能直接用 `enum_members()` 按字段查，改成随便找一个真正声明成
+    `ExpressionAssignType` 的字段（`EFXAttributeTransform3DExpression.translationX`）借用
+    同一张成员表——两边取值范围/含义是同一个 C# 枚举，见 docs/EXPRESSION_SEMANTICS.md 里
+    `unkn1` 分布调查（全语料只出现过 0/2/3/4，没有超出这五个成员的值）。"""
+    return enum_members(
+        "ReeLib.Efx.Structs.Transforms.EFXAttributeTransform3DExpression", "translationX"
+    ) or []
+
+
 def by_name(name: str) -> Optional[dict]:
     return _catalogue()["by_name"].get(name)
 

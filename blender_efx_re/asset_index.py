@@ -6,6 +6,11 @@ blender_efx_re/asset_index.py —— "attribute 类型 -> 出现过它的语料�
 直接导入。只做文件级命中，不记录具体是哪个 entry——找一个"带这个 attr 的参考文件"就够用，
 不需要精确定位。
 
+同一份索引文件里还有第二张表 `behaviors`：`{PtBehavior.behaviorString: [相对路径, ...]}`。
+"PtBehavior" 作为 attribute 类型太粗——挂着它的文件成百上千，但具体是游戏里哪个行为类完全
+不同；behaviorString 是直接写在文件里的类名（`RszInlineString`，见 EfxPtBehavior.cs），
+`attrindex` 顺手在同一趟遍历里也记一遍，不用为它另开一次全语料扫描。
+
 索引文件和语料路径设置都存在 Blender 用户配置目录下（`bpy.utils.user_resource("CONFIG")`），
 不放插件目录——理由同 `semantics/__init__.py` / `i18n.py`：插件目录在扩展升级时会被整体替换，
 放那儿会导致每次更新都要重新指语料路径、重新跑一遍全量扫描。
@@ -68,16 +73,19 @@ def _load_index() -> dict:
 
 
 def stats() -> Optional[dict]:
-    """索引的整体统计（扫描文件数/失败数/类型数），从没建过索引时返回 None。"""
+    """索引的整体统计（扫描文件数/失败数/类型数/behaviorString 数），从没建过索引时返回
+    None。"""
     data = _load_index()
     if not data:
         return None
     types = data.get("types") or {}
+    behaviors = data.get("behaviors") or {}
     return {
         "filesTotal": data.get("filesTotal", 0),
         "filesScanned": data.get("filesScanned", 0),
         "filesFailed": data.get("filesFailed", 0),
         "typeCount": len(types),
+        "behaviorCount": len(behaviors),
     }
 
 
@@ -91,6 +99,26 @@ def files_for_type(type_name: str) -> list[str]:
     （语料被移走/改名的兜底）。语料根用的是**当前设置**，不是索引文件里记的
     `corpusRoot`——索引没重建过、语料目录被用户重新指定时，仍然按新设置解析。"""
     rel_paths = (_load_index().get("types") or {}).get(type_name) or []
+    corpus_dir = get_corpus_dir()
+    if not corpus_dir:
+        return []
+    out = []
+    for rel in rel_paths:
+        abs_path = os.path.join(corpus_dir, rel)
+        if os.path.isfile(abs_path):
+            out.append(abs_path)
+    return out
+
+
+def known_behaviors() -> list[str]:
+    """索引里实际出现过的 `PtBehavior.behaviorString` 值，按字母排序。"""
+    return sorted((_load_index().get("behaviors") or {}).keys())
+
+
+def files_for_behavior(behavior_string: str) -> list[str]:
+    """某个 `PtBehavior.behaviorString` 命中的文件绝对路径列表，规则同 `files_for_type()`
+    （按当前语料根拼回去，过滤掉已经不存在的）。"""
+    rel_paths = (_load_index().get("behaviors") or {}).get(behavior_string) or []
     corpus_dir = get_corpus_dir()
     if not corpus_dir:
         return []

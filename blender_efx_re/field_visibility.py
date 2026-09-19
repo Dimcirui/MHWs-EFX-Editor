@@ -194,6 +194,13 @@ def _eq3(v): return v == 3
 def _eq0_or_3(v): return v == 0 or v == 3
 def _is_sphere_or_cylinder(v): return v == 1 or v == 2
 
+#: `EFXAttributeAttractor.Flags` 低 2 位是"吸引目标模式"枚举（0=默认/1=未知/2=世界系目标点/
+#: 3=锁定粒子生成点，见 mhws_field_labels.json 该字段的 `bits` 段说明），第 4 位（数值 8）
+#: 是形状系统总开关。这里的 `v` 是 `Flags` 整个字段的原始值，不是解出来的子段值，
+#: 直接按位运算取子段——跟 `_mode_getter()` 读回来的是同一个原始 int。
+def _attract_target_is_world(v): return (v & 3) in (1, 2)  # 模式1未知，保守不隐藏
+def _shape_system_active(v): return (v & 8) != 0
+
 
 FIELD_VISIBILITY = {
     # Velocity3D：VelocityType=0(Direction) 用 DirectionVector 定方向；
@@ -246,21 +253,57 @@ FIELD_VISIBILITY = {
         "DivideEquidistantCalcOuterCurveData":   ("ShapeType", _eq2),
         "DivideEquidistantRecalcEveryFrameData": ("ShapeType", _eq2),
     },
+    # Attractor：`Flags` 是好几个互不相关的子系统共用一个 uint 拼出来的（低 2 位一个目标点
+    # 模式枚举 + 独立的形状系统开关，中间夹着一个还没验证出效果的单比特），门控字段直接填
+    # "Flags" 自己，谓词按位取子段，不走标准的"整数相等"比较。用户 2026-09-17/18 实机测试：
+    # 模式=2 才会激活 AttractPositionWorld（模式=1 从没单独测出效果，保守不隐藏，模式=0/3
+    # 确认无效）；`Flags` 第 4 位（数值 8）不开，`ShapeRangeX/Y/Z`/`ShapeRotation` 这一整套
+    # 形状参数不生效。取值分布/分档细节见 mhws_field_labels.json 该字段的 `bits` 段。
+    "ReeLib.Efx.Structs.Misc.EFXAttributeAttractor": {
+        "AttractPositionWorld": ("Flags", _attract_target_is_world),
+        "ShapeRangeX":          ("Flags", _shape_system_active),
+        "ShapeRangeY":          ("Flags", _shape_system_active),
+        "ShapeRangeZ":          ("Flags", _shape_system_active),
+        "ShapeRotation":        ("Flags", _shape_system_active),
+    },
+}
+
+
+# ── 行为性废弃字段（实机证据，不是结构性证据）───────────────────────────────
+# 跟 VERSION_EXCLUDED_FIELDS 不是一回事：那批字段是"这个版本的读写代码压根进不去这个分支"，
+# 有 RszVersion 条件文本可以代入求值证明；这里这些字段在 MHWilds 下**照常读写**，只是实机
+# 测试发现改任何值都测不出效果，判定是老游戏版本遗留、被同 attribute 的别的字段接管了功能。
+# 证据强度比结构性排除弱（"测不出效果"没法像条件求值一样穷举证明），所以单独放一张表，
+# 不跟 VERSION_EXCLUDED_FIELDS 混在一起——别把这两种证据的置信度混为一谈。
+BEHAVIORALLY_DEAD_FIELDS = {
+    # EFXAttributeAttractor.ForceResist：RE4/DD2 就有的老字段，MHWilds 下全语料 9175 个文件
+    # 1105 个 Attractor 实例里 1104 个恒为 0.0（唯一例外 0.2），用户实机测试改任意值无可见效果；
+    # 同一 attribute 的 MHWilds 专属字段 ForceResistWilds 已确认接管了阻尼/阻力的语义
+    # （2026-09-17，见 tools/vendor-patches/README.md #0006）。
+    "ReeLib.Efx.Structs.Misc.EFXAttributeAttractor": {
+        "ForceResist",
+    },
 }
 
 
 def has_rules(attr_type) -> bool:
-    """该 attribute 类型是否有任何隐藏规则（模式门控或版本性排除）——决定面板要不要画
-    "显示全部字段"开关。"""
-    return attr_type in FIELD_VISIBILITY or attr_type in VERSION_EXCLUDED_FIELDS
+    """该 attribute 类型是否有任何隐藏规则（模式门控、版本性排除或行为性废弃）——决定面板
+    要不要画"显示全部字段"开关。"""
+    return (
+        attr_type in FIELD_VISIBILITY
+        or attr_type in VERSION_EXCLUDED_FIELDS
+        or attr_type in BEHAVIORALLY_DEAD_FIELDS
+    )
 
 
 def field_hidden(attr_type, ori_name, get_value) -> bool:
     """该字段当前是否应隐藏。get_value(field_name)->int|None。
 
-    版本性排除（VERSION_EXCLUDED_FIELDS）恒隐藏，不看任何模式值——这批字段对 MHWilds
-    文件恒为默认值，没有"什么条件下生效"可言。"""
+    版本性排除（VERSION_EXCLUDED_FIELDS）和行为性废弃（BEHAVIORALLY_DEAD_FIELDS）都恒隐藏，
+    不看任何模式值——前者是结构性证据（条件恒假），后者是实机测试证据（改值无效果）。"""
     if ori_name in VERSION_EXCLUDED_FIELDS.get(attr_type, ()):
+        return True
+    if ori_name in BEHAVIORALLY_DEAD_FIELDS.get(attr_type, ()):
         return True
     rules = FIELD_VISIBILITY.get(attr_type)
     if not rules:

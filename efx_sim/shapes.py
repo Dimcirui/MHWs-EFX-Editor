@@ -118,6 +118,10 @@ PAIR_MIN_MAX_FIELDS = frozenset({
     ("EmitterHSV", "Range3"),                        # 75.0%  (100,100) (240,650)
     ("TexelChannelOperator", "Keep"),                # 26.3%  (20,60) (100,100) (0,5)
     ("TexelChannelOperator", "Vanish"),              # 73.7%  (80,80) (20,20)
+    # --- `Attractor.ShapeRangeX/Y/Z`，2026-09-18 用户实机测试（依据见 model.py 同名常量）。
+    ("Attractor", "ShapeRangeX"),
+    ("Attractor", "ShapeRangeY"),
+    ("Attractor", "ShapeRangeZ"),
 })
 
 _XYZ_UPPER = ("X", "Y", "Z")
@@ -319,12 +323,12 @@ class FieldView(object):
         return self.xy(key, default)
 
     # -- 抽取（把 Range 变成一个具体值）-------------------------------------
-    def roll(self, key, rng, mode=_rng.DIST_ONESIDED, default=(0.0, 0.0)):
+    def roll(self, key, rng, mode=_rng.DIST_SYMMETRIC, default=(0.0, 0.0)):
         """`Range` → 抽一个浮点值。"""
         s, r = self.sr(key, default)
         return _rng.roll_static_random(s, r, rng, mode)
 
-    def roll_int(self, key, rng, mode=_rng.DIST_ONESIDED, default=(0, 0)):
+    def roll_int(self, key, rng, mode=_rng.DIST_SYMMETRIC, default=(0, 0)):
         """`RangeI` → 抽一个整数值。"""
         s, r = self.sr(key, default)
         return _rng.roll_static_random_int(s, r, rng, mode)
@@ -344,7 +348,7 @@ class FieldView(object):
         lo, hi = self.min_max_pair(key, default)
         return _rng.roll_uniform_int(lo, hi, rng)
 
-    def roll_vec3(self, key_x, key_y, key_z, rng, mode=_rng.DIST_ONESIDED):
+    def roll_vec3(self, key_x, key_y, key_z, rng, mode=_rng.DIST_SYMMETRIC):
         """三个 `Range` 字段合成一个向量（`Velocity3D.DirectionVectorX/Y/Z` 那种）。"""
         return Vec3(self.roll(key_x, rng, mode),
                     self.roll(key_y, rng, mode),

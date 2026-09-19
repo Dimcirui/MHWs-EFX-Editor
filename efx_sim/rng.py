@@ -21,12 +21,21 @@ efx_sim/rng.py —— 随机量抽取 + 确定性噪声
 （见 `blender_efx_re/model.py::is_static_random_node()` 的说明，那套命名以后计划回哺到
 EFX-Editor）。所以这里的函数叫 `roll_static_random()` 而不是 `jitter()`。
 
-`r` 怎么参与抽取（`RANDOM_DIST`）是未定项
+`r` 怎么参与抽取（`RANDOM_DIST`）：默认已改成对称双向
 -----------------------------------------
-`s` 是静态基准值、`r` 是随机浮动量，这一点本仓已经用全语料定下来了；但**"浮动"具体怎么取
-值**（单边 `[s, s+r]`、对称 `[s-r, s+r]`、还是高斯）没有实机确认。默认按单边——这和上游
-标定出的 MHWI 结论一致（"在 static 基础上**追加** [0, amount]"），但**那是 MHWI 的实机结论，
-不是 MHWs 的**，所以它在 `SimConfig.random_dist` 里是开关，不是常量。
+`s` 是静态基准值、`r` 是随机浮动量，这一点本仓已经用全语料定下来了。"浮动"具体怎么取值
+（单边 `[s, s+r]`、对称 `[s-r, s+r]`、还是高斯）以前没有实机确认，默认按的是上游标定出的
+MHWI 结论（"在 static 基础上**追加** [0, amount]"）——但那是 MHWI 的结论，不是 MHWs 的。
+
+**2026-09-17 实机确认为对称双向，默认已翻转。** `EFXAttributeVelocity3D.Speed`
+（`vendor/.../EfxVelocity.cs` 里字节结构完全正常的 `via.Range`，没有解析问题）实机测过
+`static=1, random=1`：按旧的单边默认应该是 `[1,2]`，实际观测到速度覆盖 `[0,2]`——即
+`static ± random`。这和 `EFXAttributeAttractor.Force`（`ForceStatic`/`ForceBiRand`，见
+docs/PITFALLS.md #29）已经确认的 `[Static-x, Static+x]` 是同一个公式。**两次独立实机结果
+都指向对称双向，零次支持单边**，所以 `DIST_SYMMETRIC` 换成了默认值。`SimConfig.random_dist`
+这个开关本身保留——它同时覆盖 `SizeScalar`/`Rotation`/`ScaleX/Y/Z`/`Length`/`Width` 等二十余个
+字段，这些还没有逐个实机验证，理论上仍可能有个别例外（见 PITFALLS #29 的一般性警告：字节
+形状像 `via.Range` 不保证公式一样）。
 
 ⚠ 语料里 `r` 会出现**负值**（如 `EmitterShape3D.RangeY = {s:-0.2, r:-0.2}`）。单边分布下
 `uniform(0, -0.2)` 仍然合法（返回 `[-0.2, 0]`），所以不特判、不取绝对值——但"r 可以为负"
@@ -44,8 +53,8 @@ import random
 from .state import Vec3
 
 # -- 随机分布 ---------------------------------------------------------------
-DIST_ONESIDED  = "onesided"    # s + U[0, r]      <- 默认
-DIST_SYMMETRIC = "symmetric"   # s + U[-r, r]
+DIST_ONESIDED  = "onesided"    # s + U[0, r]
+DIST_SYMMETRIC = "symmetric"   # s + U[-r, r]     <- 默认（2026-09-17 实机确认，见上）
 DIST_GAUSSIAN  = "gaussian"    # s + N(0, r / 2)
 
 DIST_MODES = (DIST_ONESIDED, DIST_SYMMETRIC, DIST_GAUSSIAN)
@@ -57,22 +66,22 @@ DIST_LABELS = {
 }
 
 
-def roll_static_random(static, random_amount, rng, mode=DIST_ONESIDED):
+def roll_static_random(static, random_amount, rng, mode=DIST_SYMMETRIC):
     """`static` 上叠加 `random_amount` 规模的浮动。**所有随机抽取都必须走这里。**
 
     `rng` 是 `random.Random` 实例（逐粒子播种，见 `particle_rng`）。
     """
     static = float(static)
     random_amount = float(random_amount)
-    if mode == DIST_SYMMETRIC:
-        return static + rng.uniform(-random_amount, random_amount)
+    if mode == DIST_ONESIDED:
+        return static + rng.uniform(0.0, random_amount)
     if mode == DIST_GAUSSIAN:
         return static + rng.gauss(0.0, random_amount * 0.5)
-    # DIST_ONESIDED（默认）
-    return static + rng.uniform(0.0, random_amount)
+    # DIST_SYMMETRIC（默认）
+    return static + rng.uniform(-random_amount, random_amount)
 
 
-def roll_static_random_int(static, random_amount, rng, mode=DIST_ONESIDED):
+def roll_static_random_int(static, random_amount, rng, mode=DIST_SYMMETRIC):
     """整数字段（帧数一类）：按浮点抽完取整。"""
     return int(round(roll_static_random(static, random_amount, rng, mode)))
 

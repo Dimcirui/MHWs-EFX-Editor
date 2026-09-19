@@ -3018,6 +3018,193 @@
       }
     },
     "ReeLib.Efx.Structs.Misc.EFXAttributeAttractor": {
+      "Flags": {
+        "label_zh": "模式标志位",
+        "label_en": "Mode Flags",
+        "tooltip_zh": "低 2 位决定吸引目标怎么算，另一位开关决定要不要用形状化的吸引区域。",
+        "tooltip_en": "Low 2 bits pick how the attract target is computed; another bit turns the shaped attraction region on.",
+        "confidence": "likely",
+        "evidence": "用户 2026-09-17/18 实机测试：低 2 位是吸引目标模式枚举——0=默认（仅 AttractPositionLocal 生效）、2=AttractPositionWorld 叠加生效、3=目标点变成粒子自身生成点（AttractPositionWorld/Local 全部失效）；1 从未单独测出效果。数值 4 那一位单独测、配合枚举1测、配合形状系统测均无可见效果。数值 8 是形状系统总开关，8+16 会把方形/十字构造切换成圆柱构造，16 单独出现时等价于不开（Shape 系统本身要靠 8）。全语料只出现过 {0,2,3,5,8,16,18,21,24,26} 十种取值。",
+        "tester": "user (in-game)",
+        "date": "2026-09-18",
+        "bits": [
+          {
+            "mask": 3,
+            "label_zh": "吸引位置",
+            "label_en": "Attract Position",
+            "items": [
+              [0, "发射器位置", "Emitter Position"],
+              [1, "unknMode", "unknMode"],
+              [2, "世界中心（推测）", "World Center (guess)"],
+              [3, "粒子生成位置", "Particle Spawn Position"]
+            ]
+          },
+          {
+            "mask": 4,
+            "label_zh": "未知开关",
+            "label_en": "Unknown Toggle",
+            "items": [
+              [0, "关", "Off"],
+              [1, "开", "On"]
+            ]
+          },
+          {
+            "mask": 24,
+            "label_zh": "形状",
+            "label_en": "Shape",
+            "items": [
+              [0, "球形", "Sphere"],
+              [1, "立方体", "Box"],
+              [2, "unknSphereShape", "unknSphereShape"],
+              [3, "圆柱体", "Cylinder"]
+            ]
+          }
+        ]
+      },
+      "AttractPositionWorld": {
+        "label_zh": "世界系目标点",
+        "label_en": "World Target Position",
+        "tooltip_zh": "只在「吸引位置」选到「世界中心」时生效，和局部偏移叠加。",
+        "tooltip_en": "Only active when \"Attract Position\" is set to \"World Center\"; adds onto the local offset.",
+        "confidence": "confirmed",
+        "evidence": "用户实机测试：Flags 低 2 位=2 时该字段被激活，改 XYZ 会让粒子整体飞向对应方向偏移的一个固定位置，跟角色/摄像机转动无关；=0/3 时改任意值都测不出效果。",
+        "tester": "user (in-game)",
+        "date": "2026-09-18"
+      },
+      "AttractPositionLocal": {
+        "label_zh": "局部偏移目标点",
+        "label_en": "Local Offset Target",
+        "tooltip_zh": "相对发射器的吸引目标偏移，恒生效，跟随发射器移动。",
+        "tooltip_en": "Attract target offset relative to the emitter; always active and follows the emitter.",
+        "confidence": "confirmed",
+        "evidence": "用户实机测试：单独改 X/Y/Z 任意一维都能让粒子精确朝对应坐标轴偏移吸引目标点，效果和 AttractPositionWorld 相同、可矢量叠加。字节上原本是 vendor 声明的 `ForceScale.s/.r`+`ReversalForceScale.s`，边界切错位置，详见 tools/vendor-patches/README.md #0006。",
+        "tester": "user (in-game)",
+        "date": "2026-09-17"
+      },
+      "ForceStatic": {
+        "label_zh": "吸引力",
+        "label_en": "Attract Force",
+        "tooltip_zh": "拉向目标点的力度，数值越大粒子往返振荡得越快。",
+        "tooltip_en": "Pull strength toward the target; higher values oscillate faster.",
+        "confidence": "confirmed",
+        "evidence": "用户实机测试：固定粒子生命周期 120 帧，此值=1 时粒子刚好在 120 帧内跑到镜像位置，=3.5 时刚好跑完一整个振荡周期回到原位——数值越大周期越短，是弹簧力常数。原名 ReversalForceScale.r，字段边界纠正见 #0006。",
+        "tester": "user (in-game)",
+        "date": "2026-09-17"
+      },
+      "ForceBiRand": {
+        "label_zh": "吸引力浮动幅度",
+        "label_en": "Force Fluctuation",
+        "tooltip_zh": "每个粒子的吸引力在「吸引力」±此值之间随机取值。",
+        "tooltip_en": "Per-particle force randomizes within ± this amount of the base attract force.",
+        "confidence": "confirmed",
+        "evidence": "用户实机测试：配合 ForceStatic=1 时表现等价于力在 0~1 间逐粒子随机；取正值 x 和负值 -x 效果完全相同，只有对称双向公式 [Static-x, Static+x] 能解释，不是标准 [Static, Static+Random]。详见 docs/PITFALLS.md #29。原名 ReversalDistance.s。",
+        "tester": "user (in-game)",
+        "date": "2026-09-17"
+      },
+      "ForceResist": {
+        "label_zh": "阻力（已废弃）",
+        "label_en": "Resistance (Deprecated)",
+        "tooltip_zh": "MHWilds 下未生效，作用被下方的阻尼系数取代。",
+        "tooltip_en": "Has no effect in MHWilds; superseded by the damping field below.",
+        "confidence": "confirmed",
+        "evidence": "全语料 1105 个实例 1104 个恒为 0.0（唯一例外 0.2），用户实机测试改任意值无可见效果。已通过 field_visibility.BEHAVIORALLY_DEAD_FIELDS 在面板隐藏。",
+        "tester": "user (in-game)",
+        "date": "2026-09-17"
+      },
+      "ForceResistWilds": {
+        "label_zh": "阻力系数",
+        "label_en": "Drag",
+        "tooltip_zh": "跟速度成正比的阻力，数值越大粒子越快慢下来，接近 1 时粒子基本不动。",
+        "tooltip_en": "Drag proportional to velocity; near 1 the particle barely moves.",
+        "confidence": "confirmed",
+        "evidence": "用户实机测试：给 0.5 粒子运动明显变慢，给 1.0 粒子看不出运动。2026-09-18 用户订正：不是逐帧乘法衰减（那样速度只会单调趋于零），实际表现是让粒子维持在某个速度继续运动，符合阻力项 accel -= damping*vel（跟弹簧力一起积分）而不是 vel *= (1-damping) 直接乘。原名 unknWild1，类型订正+改名见 #0006，模拟实现见 efx_sim/behaviors/attractor.py。",
+        "tester": "user (in-game)",
+        "date": "2026-09-18"
+      },
+      "MaxAttractDistance": {
+        "label_zh": "最大作用距离",
+        "label_en": "Max Attract Distance",
+        "tooltip_zh": "粒子与目标点距离超过这个值就完全不受吸引力；-1 表示不限距离。",
+        "tooltip_en": "Beyond this distance the force has no effect at all; -1 means unlimited.",
+        "confidence": "confirmed",
+        "evidence": "用户实机测试：ES3D 球壳半径=0.5m 时该值需精确 ≥ 0.5 粒子才会被吸引，半径改成 1m 时需要 ≥ 1.0，证实是距离阈值。语料里 84% 取 -1（无限制哨兵值），此前误判的\"非 -1 就全体静止\"现象正是超出有限阈值导致完全无力。原名 unknWild3.r。",
+        "tester": "user (in-game)",
+        "date": "2026-09-17"
+      },
+      "AttractAxisBias": {
+        "label_zh": "坐标轴偏置力（推测）",
+        "label_en": "Axis Bias (guess)",
+        "tooltip_zh": "疑似让粒子沿坐标轴独立收缩；负值可能使粒子经过目标点附近后高速沿某轴飞出。",
+        "tooltip_en": "Suspected to pull particles independently along each axis; negative values may fling particles out along an axis after passing near the target.",
+        "confidence": "guess",
+        "evidence": "用户实机观测：取正值时粒子群从球壳收缩成正八面体、再收缩成十字，单粒子追踪确认轨迹是直线段（排除旋转/切向力）。上述\"独立收缩+负值高速飞出\"是用户推导结论，未逐条单独实机验证。原名 unknWild3.s。",
+        "tester": "user (in-game)",
+        "date": "2026-09-18"
+      },
+      "MultZoneRadius": {
+        "label_zh": "速度乘区半径",
+        "label_en": "Velocity-Multiplier Zone Radius",
+        "tooltip_zh": "粒子进入这个半径内的胶囊形区域后，额外叠加下面的逐帧速度乘数，正常引力不受影响。",
+        "tooltip_en": "Inside this capsule-shaped radius, the velocity multiplier below is additionally applied every frame on top of normal attraction.",
+        "confidence": "confirmed",
+        "evidence": "用户实机测试：MZR=0.1,ZVM=0.5 时粒子收在两个偏置点连线上；ES3D 放大、MZR=0.5,ZVM=0 时粒子停在胶囊体表面且两端密度更高，证实区域形状是胶囊而非两个独立球。ZVM=1 时无论 MZR 多大表现都不变，证实这是叠加在正常引力之上的额外乘数，不是切换掉正常引力的独立模式。原名 unknWild4.s。",
+        "tester": "user (in-game)",
+        "date": "2026-09-17"
+      },
+      "ZoneVelocityMultiplier": {
+        "label_zh": "区域速度乘数",
+        "label_en": "Zone Velocity Multiplier",
+        "tooltip_zh": "区域内每帧额外乘到粒子速度上，1=无影响，小于 1 减速、大于 1 加速。",
+        "tooltip_en": "Extra per-frame multiplier on particle velocity inside the zone; 1 = no effect, below 1 slows down, above 1 speeds up.",
+        "confidence": "likely",
+        "evidence": "用户实机测试：Static=1 时无论 MultZoneRadius 多大表现都不变（证实是额外叠加的乘数，不是切换的独立模式）；<1 明显减速，>1 明显加速。是否遵守标准 Static+Random 公式还是像 ForceBiRand 那样双向对称，尚未验证。原名 unknWild4.r+unknWild5.s，字段边界纠正见 #0006。",
+        "tester": "user (in-game)",
+        "date": "2026-09-17"
+      },
+      "SpawnDelay": {
+        "label_zh": "生成延迟（推测）",
+        "label_en": "Spawn Delay (guess)",
+        "tooltip_zh": "疑似吸引效果生效前的延迟，单位未知。",
+        "tooltip_en": "Suspected delay before the attraction effect kicks in; unit unknown.",
+        "confidence": "guess",
+        "evidence": "未逐条单独实机验证，取值分布上看像是一对 Static/Random，公式和单位都待确认。原名 unknWild5.r+unknWild6.s，字段边界纠正见 #0006。",
+        "tester": "assistant (corpus statistics)",
+        "date": "2026-09-17"
+      },
+      "ShapeRangeX": {
+        "label_zh": "形状范围 X（推测）",
+        "label_en": "Shape Range X (guess)",
+        "confidence": "guess",
+        "evidence": "用户实机测试：改这一对数值会让 MultZoneRadius 定义的胶囊区域沿某轴伸缩，具体是不是\"从 Min 延伸到 Max\"这个几何关系还没确定，先不写 tooltip。语料上 secondLtFirst 只有 4/1105 例违反 min<=max（判定是个别脏数据，不是模型错误）。这套参数是不是真的\"定义一个空间形状\"也还没最终结论——实测给三轴都设 1 时看到的是一个恒定正对摄像机的正方形边框，角色自转不会带着它转，这不是典型的世界/局部空间几何体行为。原名 unknWild6.r+unknWild7.s，字段边界纠正见 #0006。",
+        "tester": "user (in-game)",
+        "date": "2026-09-18"
+      },
+      "ShapeRangeY": {
+        "label_zh": "形状范围 Y（推测）",
+        "label_en": "Shape Range Y (guess)",
+        "confidence": "guess",
+        "evidence": "同 ShapeRangeX，语料 secondLtFirst 5/1105 例违反。原名 unknWild7.r+unknWild8.s。",
+        "tester": "user (in-game)",
+        "date": "2026-09-18"
+      },
+      "ShapeRangeZ": {
+        "label_zh": "形状范围 Z（推测）",
+        "label_en": "Shape Range Z (guess)",
+        "confidence": "guess",
+        "evidence": "同 ShapeRangeX，语料 secondLtFirst 0/1105 例违反，但主值恒为 0，min/max 和 static/random 在这个字段上无法区分。原名 unknWild8.r+unknWild9.s。",
+        "tester": "user (in-game)",
+        "date": "2026-09-18"
+      },
+      "ShapeRotation": {
+        "label_zh": "形状朝向",
+        "label_en": "Shape Rotation",
+        "tooltip_zh": "形状区域的朝向（弧度制）。",
+        "tooltip_en": "Orientation of the shape region, in radians.",
+        "confidence": "likely",
+        "evidence": "用户实机测试：Y 分量确认绕全局 Y 轴转动（会带着 Flags=8+unkn3 那套方向分裂轴一起转）；X/Z 分量也确认是角度，但各自绕哪根轴、旋转顺序未验证。原名 unknWild9.r/unknWild10/endwilds，字段边界纠正见 #0006。",
+        "tester": "user (in-game)",
+        "date": "2026-09-18"
+      },
       "boneName": {
         "label_zh": "父骨骼（内联副本）",
         "label_en": "Parent Bone (inline copy)",

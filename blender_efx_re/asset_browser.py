@@ -11,6 +11,16 @@ blender_efx_re/asset_browser.py —— Attribute 反查资产库
 
 面板是独立工具面板（跟 `EFX_RE_PT_add` 同类，不挂在某个 `~TYPE` 对象上），排在 "Wilds EFX"
 分组最下面——找参考文件是相对少用的辅助功能，不需要占据显眼位置。
+
+**PtBehavior 分支**：单按 attribute 类型反查太粗——"PtBehavior"这一个类型下挂着语料里成百
+上千个文件，但具体是游戏里哪个行为类（`behaviorString`，如
+`via.effect.script.EffectLight5000lm`）完全不同，选中"PtBehavior"类型只能看到一大堆无关
+文件。`asset_index.known_behaviors()`/`files_for_behavior()` 另开一张按 behaviorString 反查
+的表（同一份索引文件、同一趟 `attrindex` 扫描顺手建的，见 asset_index.py 头部说明）。这里不
+新开一套 UI，而是把 behaviorString 项混进现有的模糊搜索弹窗（`efx_re.asset_type_search`），
+用 `_BEHAVIOR_ID_PREFIX` 前缀区分两种选中的"是类型名还是 behaviorString"——用户体验上是同一个
+搜索框，输入 "EffectLight" 既能搜到类型名也能搜到具体的 PtBehavior 子类。选中后的展示文案是
+`ptbehavior: <behaviorString>`，和选中一个类型时只显示类型名区分开。
 """
 
 from __future__ import annotations
@@ -37,14 +47,25 @@ class EFXAssetMatchItem(PropertyGroup):
     filepath: StringProperty(name="File Path", subtype="FILE_PATH")
 
 
+# `efx_re_asset_attr_type` 存的标识符按这个前缀区分"选中的是 attribute 类型名，还是某个
+# PtBehavior.behaviorString"——两张反查表分别在 asset_index.known_types()/known_behaviors()
+# 里，identifier 不加前缀就是类型名（历史格式，向后兼容），加了前缀就去掉前缀当 behaviorString
+# 查 files_for_behavior()。
+_BEHAVIOR_ID_PREFIX = "ptbehavior:"
+
+
 def _refresh_matches(wm) -> None:
     """按当前选中的 efx_re_asset_attr_type 重新拉一遍命中文件，填进 efx_re_asset_matches。"""
     wm.efx_re_asset_matches.clear()
     wm.efx_re_asset_matches_active_index = 0
-    type_name = wm.efx_re_asset_attr_type
-    if not type_name:
+    identifier = wm.efx_re_asset_attr_type
+    if not identifier:
         return
-    for path in asset_index.files_for_type(type_name):
+    if identifier.startswith(_BEHAVIOR_ID_PREFIX):
+        paths = asset_index.files_for_behavior(identifier[len(_BEHAVIOR_ID_PREFIX):])
+    else:
+        paths = asset_index.files_for_type(identifier)
+    for path in paths:
         item = wm.efx_re_asset_matches.add()
         item.filepath = path
 
@@ -78,20 +99,22 @@ def invalidate_search_cache() -> None:
 def _search_type_items(self, context):
     global _search_items_cache
     if _search_items_cache is None:
-        types = asset_index.known_types()
-        _search_items_cache = (
-            [(name, name, "") for name in types]
-            if types else [("", "", "")]
-        )
+        items = [(name, name, "") for name in asset_index.known_types()]
+        items += [
+            (_BEHAVIOR_ID_PREFIX + name, f"ptbehavior: {name}", "")
+            for name in asset_index.known_behaviors()
+        ]
+        _search_items_cache = items if items else [("", "", "")]
     return _search_items_cache
 
 
 class EFX_RE_OT_asset_type_search(Operator):
-    """按名字模糊搜索已建索引的 attribute 类型，选中即定位（不新增任何东西）。"""
+    """按名字模糊搜索已建索引的 attribute 类型或 PtBehavior.behaviorString（后者显示成
+    "ptbehavior: <名字>"，见 `_BEHAVIOR_ID_PREFIX`），选中即定位（不新增任何东西）。"""
 
     bl_idname = "efx_re.asset_type_search"
     bl_label = "Search Indexed Attribute Type"
-    bl_description = "按名字模糊搜索已建索引的 attribute 类型，选中即定位"
+    bl_description = "按名字模糊搜索已建索引的 attribute 类型，或某个 PtBehavior 具体子类，选中即定位"
     bl_options = {"REGISTER"}
     bl_property = "attr_type"
 
@@ -188,7 +211,7 @@ class EFX_RE_OT_asset_index_rebuild(Operator):
         self.report(
             {"INFO"},
             f"已扫描 {envelope.get('filesScanned', 0)}/{envelope.get('filesTotal', 0)} 个文件，"
-            f"{len(envelope.get('types', {}))} 种类型",
+            f"{len(envelope.get('types', {}))} 种类型、{len(envelope.get('behaviors', {}))} 种 PtBehavior",
         )
         return {"FINISHED"}
 
@@ -259,7 +282,8 @@ class EFX_RE_PT_asset_browser(Panel):
                 text=(
                     f"{T('asset.stats_prefix')}{info['filesScanned']}/{info['filesTotal']} "
                     f"{T('common.items_suffix')}, {info['typeCount']} "
-                    f"{T('asset.types_suffix')}"
+                    f"{T('asset.types_suffix')}, {info['behaviorCount']} "
+                    f"{T('asset.behaviors_suffix')}"
                 ),
                 translate=False,
             )
@@ -275,11 +299,17 @@ class EFX_RE_PT_asset_browser(Panel):
             icon="DOWNARROW_HLT", translate=False,
         )
 
-        type_name = wm.efx_re_asset_attr_type
+        # 搜索弹窗混了两种 identifier（见 `_BEHAVIOR_ID_PREFIX` 的说明），选中的是 PtBehavior
+        # 具体子类时展示成 "ptbehavior: <behaviorString>"，和选中一个 attribute 类型区分开；
+        # 分类菜单点选出来的永远是裸类型名，不会带这个前缀。
+        identifier = wm.efx_re_asset_attr_type
         sel_row = layout.row()
-        if type_name:
-            item = attribute_types.by_name(type_name)
-            label = _attr_type_label(item["type"]) if item and item.get("type") else type_name
+        if identifier.startswith(_BEHAVIOR_ID_PREFIX):
+            behavior_string = identifier[len(_BEHAVIOR_ID_PREFIX):]
+            sel_row.label(text=f"ptbehavior: {behavior_string}", icon="CHECKMARK", translate=False)
+        elif identifier:
+            item = attribute_types.by_name(identifier)
+            label = _attr_type_label(item["type"]) if item and item.get("type") else identifier
             sel_row.label(text=label, icon="CHECKMARK", translate=False)
         else:
             sel_row.label(text=T("asset.no_type_selected"), translate=False)
@@ -288,7 +318,7 @@ class EFX_RE_PT_asset_browser(Panel):
             "EFX_RE_UL_asset_matches", "", wm, "efx_re_asset_matches",
             wm, "efx_re_asset_matches_active_index", rows=6,
         )
-        if type_name and not wm.efx_re_asset_matches:
+        if identifier and not wm.efx_re_asset_matches:
             box = layout.box()
             box.label(text=T("asset.no_matches"), translate=False)
 

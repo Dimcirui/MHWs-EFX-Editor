@@ -439,6 +439,121 @@ def _set_unknown_float32x4(self, value) -> None:
     _set_unknown_packed(self, tuple(value), "ffff")
 
 
+def _get_unknown_float32(self) -> float:
+    return _get_unknown_packed(self, "f")[0]
+
+
+def _set_unknown_float32(self, value: float) -> None:
+    _set_unknown_packed(self, (value,), "f")
+
+
+def _get_unknown_float32x2(self) -> tuple:
+    return _get_unknown_packed(self, "ff")
+
+
+def _set_unknown_float32x2(self, value) -> None:
+    _set_unknown_packed(self, tuple(value), "ff")
+
+
+def _get_unknown_float32x9(self) -> tuple:
+    return _get_unknown_packed(self, "fffffffff")
+
+
+def _set_unknown_float32x9(self, value) -> None:
+    _set_unknown_packed(self, tuple(value), "fffffffff")
+
+
+# `PropWstring2`（dataType=21）：不透明字节实际是 UTF-16LE、以单个 `\x00\x00` 结尾的宽字符串
+# （和 vendor 自己实现的 `PtBehaviorVariableDataWString.str` 同一种编码，只是 vendor 没把
+# PropWstring2 接到那个类上）。跟上面几个固定字节数的类型不一样：编辑会改变 `data` 的字节数，
+# 而 `PtBehaviorVariable.varSize` 完全没有 `[RszByteSizeField]` 标注、不会被 vendor 自愈
+# （docstring 见 ptbehavior_catalog.py），所以这三个 get/set 挂在**外层 PtBehaviorVariable
+# 节点**（不是 variable 子节点）上，改字符串的同时手动同步 `variable.size` 和外层 `varSize`
+# ——公式 `varSize = size + len(behaviorProperty 的 UTF-8 字节数) + 21` 是拿全部候选目录模板
+# （所有 behaviorString、所有字段名、所有 dataType）反过来验证过的，零例外（21 这个常数应该
+# 对应 PtBehaviorVariable 自己的固定字段开销，没有继续往下拆到具体是哪几个字段，公式本身
+# 已经用穷举验证过，不需要知道"为什么是 21"就能安全使用）。
+_PTBEHAVIOR_VARSIZE_FIXED_OVERHEAD = 21
+
+
+def is_unknown_wstring_shape(node: "EFXValueNode") -> bool:
+    """`node`（`variable` 子节点）的 `data` 解出来是不是一个合法的、以 `\\x00\\x00` 结尾的
+    UTF-16LE 宽字符串（偶数字节数、末尾正好一个 null 终止符、能无损解码）。给 `PropWstring2`
+    的紧凑编辑判断能不能画，不满足就回退到通用展开区，不硬套（铁律 #1）。
+    """
+    import base64
+
+    child = _unknown_data_child(node)
+    if child is None or child.data_type not in ("STRING", "NULL"):
+        return False
+    try:
+        raw = base64.b64decode(child.string_value or "")
+    except (ValueError, TypeError):
+        return False
+    if len(raw) < 2 or len(raw) % 2 != 0 or raw[-2:] != b"\x00\x00":
+        return False
+    try:
+        raw.decode("utf-16-le")
+    except UnicodeDecodeError:
+        return False
+    return True
+
+
+def _wstring_variable_and_data(node: "EFXValueNode"):
+    """`node` 是 PtBehaviorVariable 本体（含 varSize/dataType/variable/varHash/
+    behaviorProperty 五个直接子节点），返回 `(variable 节点, data 节点)`，形状不对返回
+    `(None, None)`。"""
+    variable = find_field(node.children, "variable")
+    if variable is None or variable.data_type != "OBJECT":
+        return None, None
+    data_child = find_field(variable.children, "data")
+    if data_child is None or data_child.data_type not in ("STRING", "NULL"):
+        return None, None
+    return variable, data_child
+
+
+def _get_unknown_wstring(self) -> str:
+    import base64
+
+    _variable, data_child = _wstring_variable_and_data(self)
+    if data_child is None:
+        return ""
+    try:
+        raw = base64.b64decode(data_child.string_value or "")
+    except (ValueError, TypeError):
+        return ""
+    try:
+        text = raw.decode("utf-16-le")
+    except UnicodeDecodeError:
+        return ""
+    return text.rstrip("\x00")
+
+
+def _set_unknown_wstring(self, value: str) -> None:
+    import base64
+
+    variable, data_child = _wstring_variable_and_data(self)
+    if data_child is None:
+        return
+    raw = (value + "\x00").encode("utf-16-le")
+    if data_child.data_type == "NULL":
+        data_child.data_type = "STRING"
+    data_child.string_value = base64.b64encode(raw).decode("ascii")
+
+    inner_size_node = find_field(variable.children, "size")
+    if inner_size_node is not None and inner_size_node.data_type == "INT":
+        inner_size_node.int_value = len(raw)
+
+    varsize_node = find_field(self.children, "varSize")
+    behavior_prop_node = find_field(self.children, "behaviorProperty")
+    if (varsize_node is not None and varsize_node.data_type == "INT"
+            and behavior_prop_node is not None):
+        prop_name = node_to_value(behavior_prop_node) or ""
+        varsize_node.int_value = (
+            len(raw) + len(prop_name.encode("utf-8")) + _PTBEHAVIOR_VARSIZE_FIXED_OVERHEAD
+        )
+
+
 # `IBoneRelationAttribute` 各实现类里"内联存的那份骨骼名"字段名（`ParentOptions.BoneName` /
 # `Attractor.boneName` / `VanishArea3D.JointName` / `TypeLightning3D.boneName` /
 # `TypeStrainRibbonV3.boneName`）。它和 `ParentBone` 是**同一个值的两种编码**：一个内联在
@@ -796,6 +911,20 @@ class EFXValueNode(PropertyGroup):
     )
     unknown_float32x4_value: FloatVectorProperty(
         name="Value", size=4, get=_get_unknown_float32x4, set=_set_unknown_float32x4,
+    )
+    unknown_float32_value: FloatProperty(
+        name="Value", get=_get_unknown_float32, set=_set_unknown_float32,
+    )
+    unknown_float32x2_value: FloatVectorProperty(
+        name="Value", size=2, get=_get_unknown_float32x2, set=_set_unknown_float32x2,
+    )
+    unknown_float32x9_value: FloatVectorProperty(
+        name="Value", size=9, get=_get_unknown_float32x9, set=_set_unknown_float32x9,
+    )
+    # 挂在 PtBehaviorVariable 本体（不是 variable 子节点）上——get/set 要连外层 varSize 一起
+    # 同步，见 _set_unknown_wstring() 的说明。
+    unknown_wstring_value: StringProperty(
+        name="Value", get=_get_unknown_wstring, set=_set_unknown_wstring,
     )
 
     # 只在这个节点是弧度制角度字段的标量子节点时才有意义——覆盖三种形状：Transform3D.

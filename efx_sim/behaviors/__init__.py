@@ -64,6 +64,11 @@ P0 之后追加（渲染主体的另外几档）
     PtLife                粒子死亡时召唤一个 Action（`Actions[ActionIndex]`），只做
                           `Status==死亡时` 这一档，只产出 `SpawnRequest`、不递归模拟被
                           召唤的子树，见 ptlife.py 说明
+    Attractor             弹簧力+阻尼吸引目标点，`FORCE` 阶段写 `p.vel`。只做字段语义里
+                          把握够的一/二/三档（目标点两分量、距离阈值、阻尼、球形死区+速度
+                          乘区）；`AttractAxisBias`/`SpawnDelay`/Shape 系统（`ShapeRangeX/Y/Z`+
+                          `ShapeRotation`）故意不做，语义还是猜测或有未解决的反常现象
+                          （"始终正对摄像机"），见 attractor.py 说明
 
 `Gpu` 前缀的这两个都和 `Spawn`/`EmitterShape3D`/`Life`/`Velocity3D` 同 entry 共存
 （语料文件级共现率 ≥99.6%），真正的粒子数/位置/寿命/运动仍由那几个属性决定——"Gpu" 只是
@@ -75,6 +80,7 @@ P0 之后追加（渲染主体的另外几档）
 约束：纯 Python，**禁 import bpy**；零第三方依赖。
 """
 
+from . import attractor        # noqa: F401
 from . import billboard3d      # noqa: F401
 from . import emittershape3d   # noqa: F401
 from . import gpupolygon       # noqa: F401
@@ -99,4 +105,5 @@ from . import velocity3d           # noqa: F401
 __all__ = ["spawn", "life", "emittershape3d", "billboard3d", "velocity3d",
            "uvsequence", "polygon", "polygontrail", "ribbonlength", "ribbonfollow",
            "gpupolygon", "gpuribbonlength", "meshv2", "scaleanim", "rotateanim",
-           "transform3d", "transform3dmodifier", "parentoptions", "nodraw", "ptlife"]
+           "transform3d", "transform3dmodifier", "parentoptions", "nodraw", "ptlife",
+           "attractor"]

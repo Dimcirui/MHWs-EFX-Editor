@@ -295,6 +295,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "ptbehavior.add_all_properties": {"EN": "Add All",     "ZH": "全部添加"},
     "ptbehavior.unknown_shape": {"EN": "(unknown data type, expand to inspect)",
                                   "ZH": "（未知数据类型，展开查看）"},
+    "ptbehavior.obb_hint": {"EN": "(T/R/S below)", "ZH": "（T/R/S 见下方）"},
 
     # 重命名
     "name.label":             {"EN": "Name",                "ZH": "名称"},
