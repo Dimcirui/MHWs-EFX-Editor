@@ -114,7 +114,7 @@ def enum_members(attr_type_fullname: str, field_key: str) -> Optional[list]:
 
     `ForceWord` 这类**枚举宽度占位**会被剔掉（见 `_PLACEHOLDER_MEMBER_NAMES`）——
     它不是游戏语义、全语料零出现。⚠ 剔掉的只是**下拉里的选项**：如果某个文件里真的
-    存着这个值，`_enum_proxy_items()` 仍然会补一条"原值"项原样保留它（铁律 #2，
+    存着这个值，`_enum_proxy_items()` 仍然会补一条"原值"项原样保留它（铁律 #1，
     宁可拒绝也不静默改数据）。
     """
     cat = _catalogue()
@@ -135,6 +135,25 @@ def enum_members(attr_type_fullname: str, field_key: str) -> Optional[list]:
     return out
 
 
+# PtBehaviorVariable.dataType（C# 侧 `PtBehaviorPropType`，见
+# vendor/RE-Engine-Lib/REE-Lib/OtherFiles/EFX/EfxPtBehavior.cs）——只有 11 个成员、字段已经
+# 定型，反射目录（上面的 `_catalogue()`）目前只覆盖顶层 `EFXAttribute` 子类，不下探
+# `PtBehaviorVariable` 这种嵌套 struct，扩展反射链路的成本明显大于硬编码这一张小表
+# （2026-09-19 已和用户确认）。值不连续，跳过的数字是全语料里出现过但 vendor 没登记的
+# "未知类型"（`PtBehaviorVariableDataPrefabUnknown` 兜底，见 ptbehavior_catalog.py）。
+_PT_BEHAVIOR_PROP_TYPE_NAMES = {
+    4: "Uint", 9: "Float", 10: "Range", 11: "Float3", 14: "Int",
+    15: "Color", 16: "WstringName", 17: "Prefabpath", 18: "Enum",
+    19: "Float2", 21: "Wstring2",
+}
+
+
+def pt_behavior_prop_type_name(value: int) -> Optional[str]:
+    """`PtBehaviorVariable.dataType` 的枚举名；不在表里（vendor 未知的类型）返回 `None`，
+    调用方按"未知类型"处理，不编名字。"""
+    return _PT_BEHAVIOR_PROP_TYPE_NAMES.get(value)
+
+
 def by_name(name: str) -> Optional[dict]:
     return _catalogue()["by_name"].get(name)
 
@@ -143,6 +162,27 @@ def item_type_id(attr_type_fullname: str) -> Optional[int]:
     """完整 C# 类名（`Object.efx_attr_type` 存的那个）-> 文件里的 itemTypeId。查不到返回 None。"""
     item = _catalogue()["by_type"].get(attr_type_fullname)
     return item.get("itemTypeId") if item else None
+
+
+def expression_assign_field_order(attr_type_fullname: str) -> list[str]:
+    """一个 `IExpressionAttribute` 类型里全部 `ExpressionAssignType` 字段，按声明顺序排列——
+    这个顺序就是 bit 下标（`EfxBridge bitnames` 反射时用的是同一个顺序：
+    `type.GetFields(...).Where(f => f.FieldType == typeof(ExpressionAssignType))
+    .OrderBy(f => f.MetadataToken)`，见 `tools/EfxBridge/Program.cs::ResolveExpressionBitNames()`）。
+
+    只用 `fields`/`fieldEnums`（都是机械反射出来的事实：字段声明顺序、字段的 C# 类型），
+    不掺 `BitNameDict` 那张人工写的"友好名字"表——`model.expression_bit_index_for_field()`
+    原来是拿字段名去 `mhws_bit_names.json` 的显示名数组里找，`BitNameDict` 给某个 bit 起了
+    跟字段名不一样的字符串（`particleColor` 被起名 `"GreenChColor"` 这种）时，那张数组里
+    根本没有 `particleColor` 这个字符串，找不到，字段那一行就不出现 [+]（已用真实样本
+    `EFXAttributeRgbCommonExpression` 复现：7 个字段因为这个原因拿不到按钮，bit 其实都在）。
+    这里换成完全按声明顺序做位置匹配，不比较任何名字，绕开这整类问题。
+    """
+    item = _catalogue()["by_type"].get(attr_type_fullname)
+    if not item:
+        return []
+    field_enums = item.get("fieldEnums") or {}
+    return [name for name in (item.get("fields") or []) if field_enums.get(name) == "ExpressionAssignType"]
 
 
 # EnumProperty 的 items 回调必须自己持有返回的元组，不能每次现造：Blender 只保存指向字符串

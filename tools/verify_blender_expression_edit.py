@@ -58,7 +58,7 @@ tools/verify_blender_expression_edit.py —— Expression 公式结构化编辑�
 `-0.5` 公式）能抓到它。下面会打印样本覆盖到的节点种类，缺哪种一眼能看见。
 
 退出码：全绿 0，有失败 1。⚠ `blender --background --python` 在脚本抛未捕获异常时退出码
-仍是 0（实测），所以入口自己兜一层，见文件末尾。
+仍是 0（实测），所以入口自己加一层捕获，见文件末尾。
 """
 
 from __future__ import annotations
@@ -77,7 +77,7 @@ if str(_REPO_ROOT) not in sys.path:
 import bpy  # noqa: E402  （必须在 sys.path 铺好之后再 import 本项目的包）
 
 import blender_efx_re  # noqa: E402
-from blender_efx_re import bridge, expr_edit, io_tree, model, operators, transform3d_view  # noqa: E402
+from blender_efx_re import bridge, expr_edit, io_tree, model, operators, semantics, transform3d_view  # noqa: E402
 from efx_sim import expr as _expr  # noqa: E402
 
 
@@ -378,7 +378,7 @@ def verify_editing_operations(report: Report) -> None:
     report.check("从 -30 回根的链是 [0, 6]",
                  _expr.path_to_root(srows, 6) == [0, 6], str(_expr.path_to_root(srows, 6)))
 
-    # 参数角色名：只有语义已定的两个函数有，其余留空（铁律 #6）
+    # 参数角色名：只有语义已定的两个函数有，其余留空（不把猜测当事实）
     curve.formula = "Lerp(SmoothStep(TIMER, 12, 0), 190, -30)"
     roles = _expr.arg_roles(expr_edit.read_rows(curve))
     # 7 行：`-30` 在建行时就折成一个带符号常量，角色名直接落在它身上
@@ -397,7 +397,7 @@ def verify_canonical_notation(report: Report, curve) -> None:
     它是 **RNA get/set 派生属性**，所以纯 Python 单测碰不到这条路——
     `efx_sim/expr_text.py` 那层由 `tests/test_sim_expr_text.py` 覆盖，这里测的是
     "接进 Blender 属性之后还对不对"：读得出、写得回、写进去之后行视图跟着重建、
-    以及**坏输入不许动 `formula`**（铁律 #2）。
+    以及**坏输入不许动 `formula`**（铁律 #1）。
     """
     print("\n=== 规范记法栏")
     from efx_sim import expr_text
@@ -460,7 +460,7 @@ def verify_tree_parameters(report: Report) -> None:
 
     导出侧原来写死 `"parameters": []`，后果实测过：导入用了 `PI` 的官方特效再导出，
     `source` 从 1(Constant) 退成 2(External)、值从 3.1415927 变成 0，游戏里那段效果
-    静默改掉（铁律 #2）。
+    静默改掉（铁律 #1）。
 
     ⚠ **逐字节往返门禁对它免疫**——`diag/` 的样本里一个 `PI` 都没有，"门禁没测到东西
     也会全绿"。所以这里**自己造**一条带 Constant 参数的公式，不依赖样本里恰好有。
@@ -544,6 +544,71 @@ def verify_tree_parameters(report: Report) -> None:
     got4 = pi_entries(io_tree.export_root_to_efxfile(root))
     report.check("公式没引用就不补条目", got4 == [], str(got4))
 
+def verify_bit_field_positional_matching(report: Report) -> None:
+    """`model.expression_bit_index_for_field()` 按**声明顺序**匹配 bit，不比较名字——
+    见 docs/EXPRESSION_SEMANTICS.md §7.1c。用真实类型 `EFXAttributeRgbCommonExpression`
+    （`EfxMiscStructs.cs:681`）复现：`BitNameDict` 给 bit0/2/3/5/7/8/9 起的友好名字
+    （`GreenChColor`/`GreenChIntensity`/…）和这些 bit 真正对应的 C# 字段名
+    （`particleColor`/`colorIntensityGreen`/…）完全不一样，旧版按名字反查
+    `mhws_bit_names.json` 会在这几个字段上失败（面板上字段那一行的 [+] 不出现，
+    即使 bit 真实存在）。
+
+    不需要真实 .efx 样本——这是纯类型元数据层面的问题，内存里造一个只含
+    `expressionBits`/`expressions`/`expressionBits` 三个必需键的最小 dict 就够触发
+    `is_expression_attribute_dict()`，其余字段走通用树也不影响这条检查。
+    """
+    print("\n=== bit-字段位置匹配（不认 BitNameDict 的友好名字）")
+    scene_col = bpy.context.scene.collection
+    tree = {"version": 5571972, "expressions": [], "parsedExpressions": []}
+    bits = {"bitCount": 22, "bits": [], "bitNames": None}
+    attr = {
+        "$type": "ReeLib.Efx.Structs.Misc.EFXAttributeRgbCommonExpression",
+        "Version": 5571972, "UniqueID": 0, "IsTypeAttribute": False, "type": 0,
+        "Expression": tree, "expressions": tree,
+        "ExpressionBits": bits, "expressionBits": bits,
+    }
+    data = {"Header": {"Version": 5571972},
+            "Entries": [{"name": "e0", "index": 0, "Attributes": [attr]}],
+            "Actions": [], "Bones": [], "FieldParameterValues": [], "UvarGroups": [],
+            "ExpressionParameters": [], "EffectGroups": []}
+    root = io_tree.build_root_from_efxfile(data, scene_col, "bit_field_probe")
+    obj = next(
+        o for o in bpy.data.objects
+        if o.get("~TYPE") == model.TYPE_ATTRIBUTE
+        and o.efx_attr_type.endswith("EFXAttributeRgbCommonExpression")
+    )
+    attr_type = obj.efx_attr_type
+
+    # 7 个"友好名字 != 字段名"的字段，声明顺序里的下标是已知的（见 docstring）
+    want = {
+        "particleColor": 0, "colorIntensityGreen": 2, "colorSaturate": 3,
+        "particleColor2": 5, "colorIntensityRed": 7, "alpha1": 8, "alpha2": 9,
+    }
+    got = {name: model.expression_bit_index_for_field(attr_type, name) for name in want}
+    report.check(
+        "7 个友好名字被覆盖的字段，按声明顺序都能正确反查到 bit",
+        got == want, f"{got} != {want}",
+    )
+
+    # 旧实现（按名字去 mhws_bit_names.json 反查）在这 7 个字段上必须失败——用来确认这条
+    # 检查真的是在测"新旧两种匹配方式的差异"，不是凑巧一直都对（验证纪律：新回归防护
+    # 必须证明把 bug 注回去会 FAIL）。
+    old_names = semantics.get_expression_bit_names(attr_type)
+    old_would_find = {name: (name in old_names) for name in want}
+    report.check(
+        "旧的按名字匹配方式确实找不到这 7 个字段（证明这条检查测的是真问题）",
+        not any(old_would_find.values()), str(old_would_find),
+    )
+
+    # 没有名字冲突的普通字段（unkn2 本身就没被 BitNameDict 覆盖）新旧两种方式结果一致，
+    # 确认这次改动没有把简单情况改坏。
+    report.check(
+        "没有被 BitNameDict 覆盖的字段（unkn2）新旧匹配方式结果一致",
+        model.expression_bit_index_for_field(attr_type, "unkn2") == 1
+        and old_names.index("unkn2") == 1,
+    )
+
+
 def main() -> int:
     opts = _parse_args(_script_args())
 
@@ -576,6 +641,7 @@ def main() -> int:
         total_curves += verify_sample(orig, workdir, report, kinds_seen)
     verify_editing_operations(report)
     verify_tree_parameters(report)
+    verify_bit_field_positional_matching(report)
 
     # 样本覆盖到哪些节点种类。**不是失败条件**（用户的 diag/ 里有什么不归这个脚本管），
     # 但"某一类节点这批样本一条都没有"必须说出来——否则针对那一类的回归在这儿是隐形的。
@@ -603,7 +669,7 @@ def main() -> int:
 
 if __name__ == "__main__":
     # `blender --background --python x.py` 在脚本抛未捕获异常时退出码仍然是 0（实测），
-    # "崩在第一行"和"全过"对调用方长得一模一样，所以自己兜一层（验证纪律）。
+    # "崩在第一行"和"全过"对调用方长得一模一样，所以自己加一层捕获（验证纪律）。
     try:
         sys.exit(main())
     except SystemExit:
