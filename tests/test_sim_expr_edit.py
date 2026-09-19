@@ -74,7 +74,7 @@ class TestRoundTrip(unittest.TestCase):
                 self.assertEqual(expr.from_rows(rows, parsed.second_branch), text)
 
     def test_second_branch_is_carried_through(self):
-        """`a  |  b` 的第二支语义没证实，但不能丢（铁律 #2）。连接符是两边各两个空格。"""
+        """`a  |  b` 的第二支语义没证实，但不能丢（铁律 #1）。连接符是两边各两个空格。"""
         text = "TIMER  |  (1 - TIMER)"
         parsed = expr.parse(text)
         self.assertEqual(parsed.second_branch, "(1 - TIMER)")
@@ -150,7 +150,7 @@ class TestRowEncoding(unittest.TestCase):
                          [None, 0, 1, 1, 1, 0, 0])
 
     def test_arity_mismatch_is_rejected_not_padded(self):
-        """行结构坏了就抛，不补零凑合——静默凑出一条合法但内容不对的公式正是铁律 #2 要防的。"""
+        """行结构坏了就抛，不补零凑合——静默凑出一条合法但内容不对的公式正是铁律 #1 要防的。"""
         rows = expr.to_rows(expr.parse("(1 - 2)"))
         rows[0]["arity"] = 3
         with self.assertRaises(expr.ExprError):
@@ -276,7 +276,7 @@ class TestMutations(unittest.TestCase):
 
 class TestArgRoles(unittest.TestCase):
     """参数角色名。**只有语义已定、而且参数顺序有意义的调用才有名字**——给没确认的
-    东西编个名字就是把猜测画成确定（铁律 #6）。
+    东西编个名字就是把猜测画成确定。
 
     2026-09-16 那一轮把语义全测出来之后，这张表从 2 条扩到 6 条。**扩的依据是"参数
     顺序反直觉、不标会写错"**，不是"反正已经确认了就都标上"：
@@ -336,7 +336,7 @@ class TestArgRoles(unittest.TestCase):
         3. 名字说不完的（弧度/角度、`Log` 的底、多参的参数顺序）。
 
         反过来，`Min`/`Max`/`Floor` 这种"名字就是全部信息"的不需要再写一遍——那属于
-        CLAUDE.md #7 要防的冗余文案。
+        docs/PITFALLS.md #25 要防的冗余文案。
         """
         for name in ("/", "-", "Mod", "PowOp", "InvLerp",
                      "Sin", "Cos", "Asin", "Acos", "SinDeg", "CosDeg", "Log",
@@ -655,6 +655,41 @@ class TestSignatures(unittest.TestCase):
                      "PLAY_SPEED", "SpawnNum"):
             self.assertIn(name, expr.KNOWN_EXTERNAL_VARIABLES)
         self.assertIn(expr.DEFAULT_VARIABLE, expr.KNOWN_EXTERNAL_VARIABLES)
+
+    def test_resolved_external_variable_hashes_correctly(self):
+        """`EM_SPEED`/`WIND_SPEED` 和 vendor 自己那 22 个地位相同——都是"这个字面量的
+        MurMur3 ASCII 哈希对得上"，唯一区别是 vendor 自己的 `ToString()` 不认识这两个
+        哈希，从文件读出来的公式文本永远是 `ext:<hash>` 占位，所以还需要一层显示/存盘
+        转换。"""
+        self.assertNotIn("EM_SPEED", expr.KNOWN_EXTERNAL_VARIABLES)
+        self.assertIn("EM_SPEED", expr.RESOLVED_EXTERNAL_VARIABLES)
+        self.assertEqual(expr.display_var_name("ext:302732036"), "EM_SPEED")
+        self.assertEqual(expr.vendor_var_name("EM_SPEED"), "ext:302732036")
+        self.assertNotIn("WIND_SPEED", expr.KNOWN_EXTERNAL_VARIABLES)
+        self.assertIn("WIND_SPEED", expr.RESOLVED_EXTERNAL_VARIABLES)
+        self.assertEqual(expr.display_var_name("ext:213419702"), "WIND_SPEED")
+        self.assertEqual(expr.vendor_var_name("WIND_SPEED"), "ext:213419702")
+        # 不认识的字面量原样透传。
+        self.assertEqual(expr.display_var_name("TIMER"), "TIMER")
+        self.assertEqual(expr.vendor_var_name("ext:1017435601"), "ext:1017435601")
+
+    def test_unresolved_external_var_literals_have_no_name(self):
+        """这两个哈希连名字都没解出来——占位本身就是它们在选择器里出现的样子，
+        不该意外进了 `RESOLVED_EXTERNAL_VARIABLES`（那张表只放真的解出名字的）。"""
+        for literal in expr.UNRESOLVED_EXTERNAL_VAR_LITERALS:
+            self.assertTrue(literal.startswith("ext:"), literal)
+            self.assertNotIn(literal, expr.RESOLVED_EXTERNAL_VARIABLES)
+
+    def test_variable_picker_choices_covers_all_three_tiers(self):
+        choices = expr.variable_picker_choices()
+        self.assertIn("TIMER", choices)                  # vendor 自己解出的真名
+        self.assertIn("EM_SPEED", choices)                # 我们自己解出的名字，同等地位
+        self.assertIn("WIND_SPEED", choices)              # 同上，第二个自己解出的名字
+        self.assertIn("ext:1017435601", choices)          # 连名字都没有的占位
+        self.assertEqual(
+            len(choices),
+            len(expr.KNOWN_EXTERNAL_VARIABLES) + len(expr.RESOLVED_EXTERNAL_VARIABLES)
+            + len(expr.UNRESOLVED_EXTERNAL_VAR_LITERALS))
 
 
 if __name__ == "__main__":

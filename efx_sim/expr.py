@@ -13,7 +13,7 @@ efx_sim/expr.py —— IExpressionAttribute 公式（文本形式）的解析与
 形式，见 `EfxExpressionParser.cs` 的 `ReadIdentifier()`），预处理时把 `:` 换成 `__` 再喂给
 `ast.parse(..., mode="eval")`。
 
-置信度分层（**只有这样分层，才对得起铁律 #6"没拿到真实样本就不实现、不断言"**）
+置信度分层（**只有这样分层，才对得起"没拿到真实样本就不实现、不断言"**）
 --------------------------------------------------------------------------
 - **实机确认：vendor 给六个二元操作码起的名字，一个都不对。** 文本里的
   `+` 是**乘**、`-` 是**除**（`b/a`）、`*` 是**取模**（`fmod(b,a)`）、`/` 是**加**，
@@ -140,7 +140,7 @@ _KNOWN_UNARY_EVIDENCE = {
 #: 未知函数名直接拒绝——那是**我们这侧的限制，不是引擎说 3 不存在**（vendor 的枚举
 #: 大概是按语料里出现过的取值列的，没出现过就没列）。0/1/2 是 `sin`/`cos`/`asin`，
 #: **3 很可能是 `acos`**，但要测得先给 `EfxExpressionFunction` 加枚举项（vendor 补丁），
-#: 没有语料样本之前不值得动（铁律 #4/#6）。
+#: 没有语料样本之前不值得动（铁律 #2/#3）。
 _UNKNOWN_FUNC_ARGC = {}
 
 
@@ -151,23 +151,50 @@ class ExprError(Exception):
 class EvalContext(object):
     """一次求值需要的输入 + 输出."""
 
-    __slots__ = ("variables", "unknown_func_policy", "clamp_mode", "notes")
+    __slots__ = ("variables", "unknown_func_policy", "clamp_mode", "notes",
+                 "guessed_names", "_unresolved")
 
     def __init__(self, variables, unknown_func_policy="identity", notes=None,
-                 clamp_mode="remap_smoothstep"):
+                 clamp_mode="remap_smoothstep", guessed_names=None):
         #: 标识符 -> 数值。key 就是公式文本里出现的原样标识符
         #: （`TIMER`/`ext:302732036`/`p:2597296009`/已解析出名字的 `EM_SPEED` 等）。
         self.variables = variables
         self.unknown_func_policy = unknown_func_policy
         #: `Clamp` 怎么读，见 `_eval_ternary_known()` 和 `SimConfig.expr_clamp_mode`
         self.clamp_mode = clamp_mode
-        #: **预览不静默撒谎**（铁律 #2 在只读侧的对应物，同 `EmitterState.note()`）：
+        #: **预览不静默撒谎**（铁律 #1 在只读侧的对应物，同 `EmitterState.note()`）：
         #: 未知变量、未确认语义的函数、被丢弃的第二根值都记在这里，去重按消息文本。
         self.notes = notes if notes is not None else []
+        #: `variables` 里这些 key 即使**有值**，也不是确认过的真值，是我们自己选的代表值
+        #: （`RAND`=0.5、`PLAY_SPEED`=1.0 这类，调用方——`expr_preview.build_variables()`/
+        #: `Simulator._eval_expressions()`——在构造变量表时一并传进来）。跟"表里根本没有、
+        #: 按 0 处理"是同一个置信度：都是"引擎才知道的量，我们替上了一个数"，`EM_SPEED`/
+        #: `WIND_SPEED`（名字解出来了）和裸 `ext:<hash>`（连名字都没有）也在同一档——
+        #: 名字解出来与否只影响显示成什么字符串，不影响这里的置信度判断（不把猜测当事实）。
+        self.guessed_names = guessed_names or ()
+        #: `[(显示名, 实际取的值), ...]`，去重按显示名。`evaluate()`/`evaluate_rows()`
+        #: 收尾时统一拼成一条 note，不在 `_resolve_variable()` 里逐个各发一条——多个变量
+        #: 分开报，界面上就是一串长得几乎一样的行，看不出这是同一件事。
+        self._unresolved = []
 
     def note(self, msg):
         if msg not in self.notes:
             self.notes.append(msg)
+
+    def _note_guessed(self, display_name, value):
+        for existing_name, _ in self._unresolved:
+            if existing_name == display_name:
+                return
+        self._unresolved.append((display_name, value))
+
+    def flush_guessed_notes(self):
+        """把 `_unresolved` 拼成**一条**note。`evaluate()`/`evaluate_rows()` 收尾时调，
+        不暴露成公开 API 之外的细节。"""
+        if not self._unresolved:
+            return
+        parts = ["%s 按取 %s 处理" % (name, format_float(value))
+                 for name, value in self._unresolved]
+        self.note("预览给不出真值：%s" % "、".join(parts))
 
 
 class ParsedExpr(object):
@@ -220,7 +247,9 @@ def evaluate(parsed, ctx):
     """对 `parse()` 的产物求值，返回 float。"""
     if parsed.second_branch:
         ctx.note("公式带第二根值（'a | b'），语义未证实（vendor 自己也只是猜测），只用第一支")
-    return _eval(parsed.tree.body, ctx)
+    result = _eval(parsed.tree.body, ctx)
+    ctx.flush_guessed_notes()
+    return result
 
 
 def _eval(node, ctx):
@@ -255,10 +284,20 @@ def _eval(node, ctx):
 
 def _resolve_variable(raw_name, ctx):
     name = _desanitize_identifier(raw_name)
+    # `display_var_name()` 定义在本文件后面（`RESOLVED_EXTERNAL_VARIABLES` 那一节），
+    # 模块级函数调用时才查名字，不受定义顺序影响。
+    #
+    # 名字解出来了没有（`EM_SPEED` vs 裸 `ext:<hash>`）只影响下面报出来的字符串好不好读，
+    # 不改变置信度判断——两者都是"引擎才知道的量，我们给不出真值"，同一档，不单独分文案
+    # （不把猜测当事实：解出来的名字本身不构成语义证据）。`ctx.guessed_names` 里的名字
+    # （`RAND`/`PLAY_SPEED` 这类）道理相同：`ctx.variables` 里有值不代表这个值被确认过，
+    # 只是我们自己选的代表值——跟"表里根本没有、按 0 处理"是同一件事，一起走这条 note。
     value = ctx.variables.get(name)
     if value is None:
-        ctx.note("未知变量 %s，按 0.0 处理" % name)
+        ctx._note_guessed(display_var_name(name), 0.0)
         return 0.0
+    if name in ctx.guessed_names:
+        ctx._note_guessed(display_var_name(name), value)
     return float(value)
 
 
@@ -723,7 +762,7 @@ BINARY_OPERATORS = ("+", "-", "*", "/")
 
 
 #: 置信度分层，逐条依据见模块 docstring 和 docs/EXPRESSION_SEMANTICS.md。
-#: **UI 要如实展示这一层，四档不能画成一个样**（铁律 #6）。
+#: **UI 要如实展示这一层，四档不能画成一个样**（不把猜测当事实）。
 CONFIDENCE_CONFIRMED = "confirmed"      # 语义完全确认（运算符本身 + Min/Max）
 CONFIDENCE_CORPUS = "corpus"            # 语料一致性推断：有成规模的正面证据、零反例，但没实机确认
 CONFIDENCE_UNDECIDED = "undecided"      # 语料里有互相矛盾的用法，读法未定
@@ -907,7 +946,7 @@ def emit_parsed(parsed):
     桥接重新解析出来的树一模一样，产物字节完全相同）。合成一个就没有"漂"这回事。
 
     格式规则本身逐条复刻 vendor `ExpressionAtom.ToString()`，见 `_emit_rows()`。
-    第二根值（`a | b`）原样带回去——语义没证实不等于可以丢（铁律 #2）。
+    第二根值（`a | b`）原样带回去——语义没证实不等于可以丢（铁律 #1）。
     """
     return from_rows(to_rows(parsed), parsed.second_branch)
 
@@ -930,6 +969,7 @@ def evaluate_rows(parsed, ctx):
     """
     out = []
     _eval_collect(parsed.tree.body, ctx, out)
+    ctx.flush_guessed_notes()
     return out
 
 
@@ -1060,7 +1100,7 @@ def from_rows(rows, second_branch=None):
     """`to_rows()` 的逆函数：扁平行 -> 公式文本。
 
     行数对不上（arity 声明的子节点数量和实际行数不符）直接抛 `ExprError`，**不补零、不截断**
-    ——那是编辑器状态坏了，静默凑出一条合法但内容不对的公式正好是铁律 #2 要防的东西。
+    ——那是编辑器状态坏了，静默凑出一条合法但内容不对的公式正好是铁律 #1 要防的东西。
     """
     text, used = _emit_rows(list(rows), 0)
     if used != len(rows):
@@ -1147,6 +1187,91 @@ KNOWN_EXTERNAL_VARIABLES = (
     "LightShadowRatio", "BackFaceLightRatio",
 )
 
+#: `KNOWN_EXTERNAL_VARIABLES` 里这几个，预览/模拟给出的值本身也是我们自己选的代表数，
+#: 不是确认过的运行时真值——`RAND`/`EM_INIRAND*` 没有量级证据，`[0,1)` 只是多数引擎的
+#: 约定；`PLAY_SPEED` 没有对应的预览/模拟概念，固定给 1.0（未建模，不是"确认了就是 1"，
+#: 原话见 `efx_sim/simulator.py` 变量表那段注释）。`TIMER`（已实机确认为帧号）和 `PI`
+#: （数学常数，不是经验声明）不在这张表里，两者不属于同一档。
+#:
+#: 传给 `EvalContext(guessed_names=...)`，求值时和"表里根本没有、按 0 处理"走同一条 note
+#: （`_resolve_variable()`）——两者是同一件事："引擎才知道的量，我们替上了一个数"，跟
+#: 这个名字是 vendor 自己命名的还是我们自己解出来的无关（不把猜测当事实）。调用方
+#: （`expr_preview.build_variables()`/`Simulator._eval_expressions()`）必须传同一张表，
+#: 否则面板读数和粒子预览会对"这条提示该不该出现"给出两个答案。
+GUESSED_BUILTIN_VARIABLES = ("RAND", "EM_INIRAND", "EM_INIRAND_SHARED", "PLAY_SPEED")
+
+#: vendor 表里没有、我们自己解出来的外部变量名字，和 `KNOWN_EXTERNAL_VARIABLES` 地位相同——
+#: 分开放只是因为它不属于"vendor 自己那 22 个"的镜像范围，不是置信度分级。
+#:
+#: `EM_SPEED` 解出过程：全语料唯一未解出的高频哈希 `302732036`（26699 棵树里出现 1824 次）
+#: 用暴力枚举撞出唯一命中的候选词，用法（clamp 到真实数值量级再 lerp）也吻合"发射器移动
+#: 速度"。名字这一层不需要额外验证：`MurMur3HashUtils.GetAsciiHash("EM_SPEED") ==
+#: 302732036`，而且读过 `EfxExpressionParser.cs:61`（`StoreNewParameters`）能确认——公式
+#: 文本里裸写 `EM_SPEED`（不带 `ext:` 前缀）解析出的标识符 `source` 会被这行代码统一改写成
+#: `External`，和显式写 `ext:302732036` 走到的分支**产出完全相同的 `EFXExpressionTree`**，
+#: 不依赖实机、不是概率论证。（这个哈希本身连 vendor 自己都没解出来，见
+#: `EfxExpressionParser.cs` 里注释掉的 `// [302732036] = "???"`。）
+#:
+#: `WIND_SPEED` 解出过程（2026-09-18）：`213419702`（627 次，`VortexelWindEmitterExpression`
+#: 等风场相关 attrType 为主）暴力枚举撞中，同样是 `GetAsciiHash("WIND_SPEED") ==
+#: 213419702` 精确命中。用法证据：`Art\VFX\EffectEditor\Stage\St101\11_st101_wind_000.efx`
+#: （文件名直接叫 wind）里 11 处全是 `(0.8 + 0.2 * Sin(0.02 * TIMER)) *
+#: InvLerp(20, 0, ext:213419702)`——`InvLerp` 已实机确认是真 `clamp`（见 docs/
+#: EXPRESSION_SEMANTICS.md 第 30 条），钳到 `[0, 20]` 这个量级和风速单位吻合。
+#:
+#: 两者名字之外，运行时具体怎么变化仍未知（Blender 预览环境造不出真实的"发射器移动速度"/
+#: "风速"），这属于语义结论那一类，跟这里"叫什么名字"是两回事，继续按
+#: 未知变量处理即可，见 memory `mhws-expression-external-var-hashes.md` 和
+#: docs/EXPRESSION_SEMANTICS.md 第 16 节。
+RESOLVED_EXTERNAL_VARIABLES = (
+    "EM_SPEED",
+    "WIND_SPEED",
+)
+
+#: `RESOLVED_EXTERNAL_VARIABLES` 里每个名字对应的 vendor 占位字面量。存在的唯一原因是
+#: vendor 自己的 `ToString()` 不认识这些哈希（不在它的 `KnownExternalHashes` 里），从
+#: 文件读出来的公式文本永远是 `ext:<hash>`——这是 vendor 侧的限制，不是我们对这些名字
+#: 有所保留。`KNOWN_EXTERNAL_VARIABLES` 里的 22 个不需要这张表，因为 vendor 自己的
+#: `ToString()` 已经把它们替换成真名了，文本到我们手上时就是名字，不是占位符。
+_RESOLVED_EXTERNAL_VAR_LITERALS = {
+    "EM_SPEED": "ext:302732036",
+    "WIND_SPEED": "ext:213419702",
+}
+_RESOLVED_EXTERNAL_VAR_NAMES = {
+    literal: name for name, literal in _RESOLVED_EXTERNAL_VAR_LITERALS.items()
+}
+
+
+def display_var_name(name):
+    """变量名（vendor 字面量，可能是 `ext:302732036` 这种占位）-> 界面上显示的名字。"""
+    return _RESOLVED_EXTERNAL_VAR_NAMES.get(name, name)
+
+
+def vendor_var_name(name):
+    """界面上打的变量名 -> 存盘/求值用的 vendor 字面量（`display_var_name()` 的逆）。"""
+    return _RESOLVED_EXTERNAL_VAR_LITERALS.get(name, name)
+
+
+#: 全语料扫描确认出现过、但连名字都没解出来的外部变量哈希（memory
+#: `mhws-expression-external-var-hashes.md`）。元素本身就是 `ext:<hash>` 占位字面量，
+#: 不是名字——选择器里选出来是什么样、存到公式里就是什么样。
+UNRESOLVED_EXTERNAL_VAR_LITERALS = (
+    "ext:1017435601",
+    "ext:3433402344",
+)
+
+
+def variable_picker_choices():
+    """变量选择器（下拉/`prop_search` 候选表）里，跟当前文件无关的那一半：vendor 自己
+    解出的内置外部变量、我们自己解出的（`EM_SPEED`）、连名字都没有的占位哈希，三档全给——
+    地位相同，都是"公式文本里能直接写的标识符"，用户不需要分辨来源。"""
+    return (
+        list(KNOWN_EXTERNAL_VARIABLES)
+        + list(RESOLVED_EXTERNAL_VARIABLES)
+        + list(UNRESOLVED_EXTERNAL_VAR_LITERALS)
+    )
+
+
 #: 新建变量节点时的默认名字。选 `TIMER` 是因为它是语料里最常见的内置变量（抽样 147 个
 #: 文件出现 203 次），而且语义无歧义——不用先想"填什么"才能继续编辑。
 #: 公式文本里长得像变量、其实是**值存在文件里的具名常量**的名字 ->
@@ -1172,7 +1297,7 @@ DEFAULT_VARIABLE = "TIMER"
 
 def recompute_depths(rows):
     """按 `arity` 重算每行的 `depth`。所有结构变换都靠这个收尾——`depth` 只给面板算缩进，
-    是派生量，任何时候都不该手动维护（照铁律 #5 的路子：全量重算，不做增量）。"""
+    是派生量，任何时候都不该手动维护（照全量重算原则的路子：全量重算，不做增量）。"""
     stack = []          # [剩余待消费的子节点数, ...]
     for row in rows:
         while stack and stack[-1] == 0:
@@ -1300,7 +1425,7 @@ def delete_node(rows, index):
 #: 函数名 -> 各参数的角色名。**只收语义已定的**：`Clamp(value, hi, lo)` 和
 #: `Lerp(t, from, to)` 的读法有全语料证据（见 docs/EXPRESSION_SEMANTICS.md），
 #: `Min`/`Max` 对称不需要名字，语义未知的 `Unary*`/`Func*` **一律不收** —— 给它们编一个
-#: 参数名就是把猜测画成确定（铁律 #6）。
+#: 参数名就是把猜测画成确定。
 #:
 #: 只有两个条目看着少，但实测这两个占函数调用的 763/~1700，而 `Lerp(Clamp(...))` 这个
 #: 套路本身就是全语料 31.5% 的公式，正好是最需要解释的那个形状。
@@ -1319,7 +1444,7 @@ CALL_ARG_ROLES = {
     "Pow": ("exponent", "base"),
 }
 
-#: 调用名 -> **真实语义**的极简说明，给界面用（铁律 #7：只写"这个东西干什么"，
+#: 调用名 -> **真实语义**的极简说明，给界面用（用户文案规则：只写"这个东西干什么"，
 #: 出处/置信度/验证过程一律不进去，那些在 docs/ 和代码注释里）。
 #: 之所以必须显示：**这些名字全是错的**——用户打 `Min(a, b)` 完全不知道它算 `b - a`、
 #: 打 `+` 不知道它是乘法。用数学记法写，跨语言通用、不用过 i18n。
@@ -1526,7 +1651,8 @@ def node_summary(rows, index):
     if kind == KIND_CONST:
         return format_float(row.get("value", 0.0))
     if kind == KIND_VAR:
-        return (row.get("name") or "").strip() or "?"
+        name = (row.get("name") or "").strip()
+        return display_var_name(name) or "?"
     if kind == KIND_NEG:
         return "-"
     name = (row.get("name") or "").strip()

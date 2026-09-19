@@ -201,7 +201,7 @@ class TestNotationRoundTrip(unittest.TestCase):
                 self.assertEqual(expr_text.canonical_to_vendor(canon), base)
 
     def test_second_root_value_branch_survives(self):
-        """`a | b` 的第二支语义没证实，但不许在转换里丢掉（铁律 #2）。"""
+        """`a | b` 的第二支语义没证实，但不许在转换里丢掉（铁律 #1）。"""
         base = (_vendor_canonical_form("((40 / TIMER) - 1)")
                 + expr._ROOT_VALUE_SEPARATOR + "TIMER")
         canon = expr_text.vendor_to_canonical(base)
@@ -209,7 +209,7 @@ class TestNotationRoundTrip(unittest.TestCase):
         self.assertEqual(expr_text.canonical_to_vendor(canon), base)
 
     def test_unknown_names_pass_through_untouched(self):
-        """认不出来的函数名原样保留，不装作知道（铁律 #6）。
+        """认不出来的函数名原样保留，不装作知道（不把猜测当事实）。
 
         13 / 14 号引擎没实现、枚举里也没有，是"真未知"的现成例子。
         """
@@ -413,7 +413,7 @@ class TestModFunctionAlias(unittest.TestCase):
 
 
 class TestPoisonedMappingsAreCaught(unittest.TestCase):
-    """把中转表改错，`TestCanonicalMeansWhatItSays` 的判据必须真的报错（铁律 #11）。
+    """把中转表改错，`TestCanonicalMeansWhatItSays` 的判据必须真的报错（整文件拒绝导入原则1）。
 
     这里顺带把"往返抓不到"这件事本身钉死：同一组投毒下文本往返**全绿**，只有数值对拍
     会红。哪天有人把主判据简化成往返，这条测试会提醒他为什么不行。

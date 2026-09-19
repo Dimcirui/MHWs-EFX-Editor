@@ -102,7 +102,7 @@ def collect_expr_parameters(root_col) -> dict:
 
     `Float`/`Range`/`Float2` 取 `value1`（`Range` 的 vendor 注释推测是
     `{初始值, 最小值, 最大值}`，初始值就是 `value1`）。`Color` **不收**——公式里把它当
-    标量用的读法我们没有证据，收进来等于编一个数（铁律 #6）。
+    标量用的读法我们没有证据，收进来等于编一个数（不把猜测当事实）。
     """
     out = {}
     if root_col is None:
@@ -218,16 +218,18 @@ def _eval_context(variables, notes, context=None):
         except Exception:
             cfg = None
     if cfg is None:
-        return _expr.EvalContext(variables, "identity", notes)
+        return _expr.EvalContext(variables, "identity", notes,
+                                 guessed_names=_expr.GUESSED_BUILTIN_VARIABLES)
     return _expr.EvalContext(variables, cfg.expr_unknown_func_policy, notes,
-                             cfg.expr_clamp_mode)
+                             cfg.expr_clamp_mode,
+                             guessed_names=_expr.GUESSED_BUILTIN_VARIABLES)
 
 
 def evaluate_curve(curve, variables, context=None) -> tuple:
     """一条曲线在给定变量表下的值，返回 `(值 或 None, notes)`。
 
     解析/求值失败返回 `None` 而不是 0.0——面板要显示"算不出来"，不能显示一个看起来像
-    结果的 0（铁律 #2 在只读侧的对应物）。
+    结果的 0（铁律 #1 在只读侧的对应物）。
     """
     notes = []
     ctx = _eval_context(variables, notes, context)
@@ -511,6 +513,10 @@ def draw_preview(layout, context, obj) -> None:
 
     if _DRAW_ERROR[0]:
         box.label(text=_DRAW_ERROR[0], icon="ERROR", translate=False)
+    if notes:
+        # 统一说一次"不影响导出"，不塞进每条 note 的文本里——那样等于暗示"没说这句话
+        # 的 note 可能会影响导出"，这句话对下面每一条 note 都成立，跟具体是哪条无关。
+        box.label(text=T("expr.preview.notes_disclaimer"), icon="INFO", translate=False)
     for note in notes:
         box.label(text=note, icon="ERROR", translate=False)
 

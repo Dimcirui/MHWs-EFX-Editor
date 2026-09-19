@@ -497,7 +497,7 @@ class TestKnownUnaryFunctions(unittest.TestCase):
         # bump submodule 换来的新能力，所以这里改成正面断言。
         self.assertAlmostEqual(_ev("Acos(1)")[0], 0.0, places=9)
         self.assertAlmostEqual(_ev("Acos(0)")[0], 1.5708, places=4)
-        # 引擎真没实现的 13 / 14 仍然求值不了（我们不给未知操作码编语义，铁律 #6）
+        # 引擎真没实现的 13 / 14 仍然求值不了（我们不给未知操作码编语义，不把猜测当事实）
         with self.assertRaises(ExprError):
             _ev("Func13(1)")
 
@@ -923,7 +923,7 @@ class TestExprFieldOverrides(unittest.TestCase):
 
     def test_velocity3d_placeholder_bit_names_stay_unresolved(self):
         """`unkn3`/`unkn5`/`unkn6` 是反射表按声明顺序补的**占位名**，vendor 自己没认出它们
-        指哪个字段——全语料分别用过 34/198/75 次，但**不许猜**（铁律 #6）。定位不到就该返回
+        指哪个字段——全语料分别用过 34/198/75 次，但**不许猜**（不把猜测当事实）。定位不到就该返回
         None 让调用方 note 出来，不能退回启发式凑一个 `Unkn5` 上去。"""
         raw = _velocity3d_raw()
         for bit_name in ("unkn3", "unkn5", "unkn6", "unkn19"):

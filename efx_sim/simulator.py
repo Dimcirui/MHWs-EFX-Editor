@@ -155,7 +155,7 @@ _EXPR_FIELD_OVERRIDES = {
     # 起了名，其余是 `unkn3`~`unkn19`（反射表 `semantics/mhws_bit_names.json` 按声明顺序
     # 补齐的占位名）。**占位名一个都不进表**——`unkn5`(bit4，全语料 198 次)、
     # `unkn6`(bit5，75 次)、`unkn3`(bit2，34 次) 都是真被作者用过的，但 vendor 自己都没认出
-    # 它们指哪个字段，猜一个进来只会让预览拿错字段算出一条看着合理的假曲线（铁律 #6）。
+    # 它们指哪个字段，猜一个进来只会让预览拿错字段算出一条看着合理的假曲线（不把猜测当事实）。
     # 定位不到的曲线走 `_resolve_expr_target()` 返回 None 那条路，由调用方 note 出来。
     #
     # `speed`/`speedRand` -> `Speed` 没有歧义：`EFXAttributeVelocity3D` 上只有一个 `Speed`。
@@ -424,7 +424,7 @@ class EmitterState(object):
     # -- 记事（给 UI：本次模拟里跳过 / 猜了什么）------------------------------
     def note(self, msg):
         """**预览不静默撒谎**：凡是没模拟、按假设处理、被上限截断的，都要在这里留一条，
-        面板逐条列出来。这是铁律 #2"宁可拒绝，不要悄悄丢"在只读侧的对应物。"""
+        面板逐条列出来。这是铁律 #1"宁可拒绝，不要悄悄丢"在只读侧的对应物。"""
         if msg not in self._notes:
             self._notes.append(msg)
 
@@ -681,7 +681,7 @@ class Simulator(object):
     def _resolve_expr_curves(self, em):
         """把 `self._expressions_raw` 解析成 `[_ExprCurve, ...]`：解析公式文本、定位目标
         字段、快照"导入时的原始值"（`_EXPR_ASSIGN_OPS` 要用它当基准，不能用上一帧被改过的
-        值，见该表的说明）。任何一步失败都是"这条曲线不动"，不是"整条模拟崩掉"（铁律 #2
+        值，见该表的说明）。任何一步失败都是"这条曲线不动"，不是"整条模拟崩掉"（铁律 #1
         的只读侧对应物：note 一条，不静默丢、也不拖垮其他曲线）。"""
         out = []
         for item in self._expressions_raw:
@@ -728,7 +728,8 @@ class Simulator(object):
 
         notes = []
         ctx = _expr.EvalContext(variables, self.config.expr_unknown_func_policy, notes,
-                                self.config.expr_clamp_mode)
+                                self.config.expr_clamp_mode,
+                                guessed_names=_expr.GUESSED_BUILTIN_VARIABLES)
         for curve in self._expr_curves:
             try:
                 result = _expr.evaluate(curve.parsed, ctx)

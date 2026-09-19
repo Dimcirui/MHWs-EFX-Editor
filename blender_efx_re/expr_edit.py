@@ -40,7 +40,7 @@ blender_efx_re/expr_edit.py —— Expression 公式的结构化（模块化）�
 `Unary0~12` / `Func18~21` 语义未确认（vendor 注释原话只是"potential candidates"），
 `Lerp`/`InvLerp`/`Clamp` 是名字确认、参数顺序靠猜。抽样 910 条公式里只有 36.0% 完全确认，
 28.7% 只差参数顺序，35.3% 含未确认函数或未知变量。菜单里这三档分开列、选中未确认的函数时
-在面板上标出来——**不把猜测画成确定**（铁律 #6）。
+在面板上标出来——**不把猜测画成确定**。
 """
 
 from __future__ import annotations
@@ -120,10 +120,16 @@ def _curve_of_node(node):
 
 
 def read_rows(curve) -> list:
-    """PropertyGroup 行 -> `efx_sim.expr` 认的 dict 行。"""
+    """PropertyGroup 行 -> `efx_sim.expr` 认的 dict 行。
+
+    VAR 槽位的 `name` 在 PropertyGroup 里存的是**给人看的名字**（`EM_SPEED`），dict 行
+    要还原成 `to_rows()`/`from_rows()` 认的 vendor 字面量（`ext:302732036`）——和
+    `expr_nodes.py::_leaf_row()` 对同一份底层数据用同一套转换，理由见那边的注释。
+    """
     return [
         {"kind": n.kind, "depth": n.depth, "arity": n.arity,
-         "name": n.name, "value": n.value}
+         "name": _expr.vendor_var_name(n.name) if n.kind == _expr.KIND_VAR else n.name,
+         "value": n.value}
         for n in curve.nodes
     ]
 
@@ -134,6 +140,10 @@ def write_rows(curve, rows) -> None:
     没有"折叠状态"要保：槽位设计里纵向展开的就是"从根到选中槽位"那条链
     （`expr.path_to_root()`），由 `nodes_active_index` 一个整数完全决定，不需要逐行存
     展开位。上一版有个 `ui_expand` 是给树形视图用的，随视图一起删了。
+
+    VAR 槽位反过来要把 dict 行里的 vendor 字面量换成给人看的名字再存进 PropertyGroup
+    （`display_var_name()`，`read_rows()` 的逆），否则检查器里直接显示 `ext:302732036`
+    ——和节点视口（`expr_nodes.py` 526 行）本该一致的两个编辑器就对不上了。
     """
     with _Suspended():
         curve.nodes.clear()
@@ -142,7 +152,8 @@ def write_rows(curve, rows) -> None:
             item.kind = row["kind"]
             item.depth = int(row.get("depth", 0))
             item.arity = int(row.get("arity", 0))
-            item.name = row.get("name", "") or ""
+            name = row.get("name", "") or ""
+            item.name = _expr.display_var_name(name) if row["kind"] == _expr.KIND_VAR else name
             item.value = float(row.get("value", 0.0) or 0.0)
         curve.nodes_active_index = min(
             max(curve.nodes_active_index, 0), max(len(curve.nodes) - 1, 0))
@@ -169,7 +180,7 @@ def rebuild_rows(curve) -> None:
 
 def write_formula(curve) -> None:
     """行 -> `formula`。拼不出来（行结构坏了）就只写错误、**不动 `formula`**：宁可让
-    用户看见"结构坏了"，也不要拿一条内容不对的公式覆盖掉原来那条（铁律 #2）。"""
+    用户看见"结构坏了"，也不要拿一条内容不对的公式覆盖掉原来那条（铁律 #1）。"""
     try:
         text = _expr.from_rows(read_rows(curve), curve.second_branch or None)
     except _expr.ExprError as exc:
@@ -240,7 +251,7 @@ def _on_load_post(_dummy) -> None:
 # ---------------------------------------------------------------------------
 # 候选项
 # ---------------------------------------------------------------------------
-#: 置信度 -> 菜单分组标题的 i18n key。**只写状态，不写出处**（CLAUDE.md #25）：
+#: 置信度 -> 菜单分组标题的 i18n key。**只写状态，不写出处**（docs/PITFALLS.md #25）：
 #: "语义未知"是未知状态本身，不是"谁什么时候验过"。
 _CONFIDENCE_ORDER = (
     (_expr.CONFIDENCE_CONFIRMED, "expr.conf.confirmed"),
@@ -295,7 +306,7 @@ def _call_label(name) -> str:
 def file_parameter_names(context) -> list:
     """当前文件自己的具名 Expression 参数（`EfxFile.ExpressionParameters`）。公式文本里
     `Color_A`/`BloodColor`/`Length` 这类名字就是从这张表来的——它是**逐文件**的，和内置
-    外部变量不是一回事（名字像但两回事，同 CLAUDE.md #26 的道理）。"""
+    外部变量不是一回事（名字像但两回事，同 docs/PITFALLS.md #26 的道理）。"""
     root = io_tree.resolve_root(context)
     if root is None:
         return []
@@ -318,7 +329,8 @@ def unknown_variable_names(context, curve) -> list:
 
     ⚠ 大小写敏感，**不做"你是不是想打 PI"的自动纠正**：猜一个名字等于替用户改数据。
     """
-    names = set(_expr.KNOWN_EXTERNAL_VARIABLES) | set(file_parameter_names(context))
+    names = (set(_expr.KNOWN_EXTERNAL_VARIABLES) | set(_expr.RESOLVED_EXTERNAL_VARIABLES)
+             | set(file_parameter_names(context)))
     unknown = []
     for node in curve.nodes:
         if node.kind != "VAR":
@@ -610,8 +622,10 @@ class EFX_RE_MT_expression_slot_kind(Menu):
 
 
 class EFX_RE_MT_expression_variable(Menu):
-    """变量候选：本文件的具名参数（在前，改这个才对当前文件有意义）+ vendor 已解出名字的
-    内置外部变量。解不出名字的 `ext:<hash>` 占位不进菜单——那种只能手打。"""
+    """变量候选：本文件的具名参数（在前，改这个才对当前文件有意义）+ 内置外部变量
+    （vendor 已解出真名的、我们猜出名字的、连猜测都没有只能露哈希的三档全列出来，
+    `_expr.variable_picker_choices()`），选哪一档用户不需要关心——菜单文字上打的就是
+    选出来能看懂的样子，落进公式里再统一换回 `vendor_var_name()` 认的字面量。"""
 
     bl_idname = "EFX_RE_MT_expression_variable"
     bl_label = "Variable"
@@ -629,11 +643,11 @@ class EFX_RE_MT_expression_variable(Menu):
                 op.var_name = name
             layout.separator()
         layout.label(text=T("expr.var.builtins"), translate=False)
-        for name in _expr.KNOWN_EXTERNAL_VARIABLES:
+        for name in _expr.variable_picker_choices():
             op = layout.operator(EFX_RE_OT_expression_node_set_var.bl_idname,
                                  text=name, translate=False)
             op.node_index = index
-            op.var_name = name
+            op.var_name = _expr.vendor_var_name(name)
 
 
 # ---------------------------------------------------------------------------

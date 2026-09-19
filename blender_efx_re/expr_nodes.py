@@ -47,7 +47,7 @@ blender_efx_re/expr_nodes.py —— Expression 公式的**节点视口**编辑
 
 vendor 的表达式是**树**，不是 DAG：`from_rows()` 要求每个参数槽位恰好一棵子树。所以
 一个节点的输出接到两个地方是**无法表达**的形状。这里的做法是**拒绝并说明**，不是悄悄
-复制一份子树——复制会让图上画的和存下去的不是一回事，正是铁律 #2 要防的那类"看起来
+复制一份子树——复制会让图上画的和存下去的不是一回事，正是铁律 #1 要防的那类"看起来
 没问题"。成环同理。两种情况都由 `read_graph()` 抛 `ExprError`，同步层报给用户并把图按
 `formula` 重建一遍（那根连线随之消失），公式本身一个字符都不动。
 """
@@ -347,7 +347,7 @@ class EFX_RE_ExprCallNode(Node):
             sub.active = False
             sub.label(text=semantics, translate=False)
         if confidence != _expr.CONFIDENCE_CONFIRMED:
-            # 置信度如实显示（铁律 #6），不把猜测画成确定
+            # 置信度如实显示，不把猜测画成确定
             layout.label(text=T(_CONFIDENCE_LABEL[confidence]),
                          icon=_CONFIDENCE_ICON[confidence], translate=False)
 
@@ -429,6 +429,12 @@ def _leaf_row(socket):
         name = (socket.var_name or "").strip()
         if not name:
             raise _expr.ExprError("有一个变量插槽的名字是空的")
+        # 插槽上打的是名字（可能是 `EM_SPEED` 这种我们自己解出、vendor 表里没有的名字），
+        # 存回行数据前换成 vendor 自己的 `ToString()` 会用的占位字面量（`ext:302732036`，
+        # vendor 不认识这个哈希，读文件时给的就是这个占位符）——两个编辑器（这里和
+        # `expr_edit.py` 的文本框）必须对同一份底层数据用同一套转换，见
+        # `efx_sim/expr.py::vendor_var_name()` 的注释。
+        name = _expr.vendor_var_name(name)
         return {"kind": _expr.KIND_VAR, "depth": 0, "arity": 0,
                 "name": name, "value": 0.0}
     return {"kind": _expr.KIND_CONST, "depth": 0, "arity": 0,
@@ -492,7 +498,7 @@ def _emit_node(node, rows, path, seen):
 
 def read_graph(tree):
     """节点图 -> `efx_sim.expr` 认的 dict 行。形状表达不了就抛 `ExprError`，
-    **绝不返回一个凑出来的结构**（铁律 #2）。"""
+    **绝不返回一个凑出来的结构**（铁律 #1）。"""
     output = next((n for n in tree.nodes if n.bl_idname == _OUTPUT_NODE_ID), None)
     if output is None:
         raise _expr.ExprError("图里没有输出节点")
@@ -515,7 +521,9 @@ def _apply_leaf(socket, row, degrees):
         socket.show_degrees = bool(degrees)
         if row["kind"] == _expr.KIND_VAR:
             socket.leaf_kind = "VAR"
-            socket.var_name = row.get("name", "") or ""
+            # 反方向：行数据里的 vendor 字面量换成人看的名字再摆到插槽上,
+            # 和 `_leaf_row()` 的转换互为逆操作。
+            socket.var_name = _expr.display_var_name(row.get("name", "") or "")
         else:
             socket.leaf_kind = "CONST"
             socket.value = float(row.get("value", 0.0) or 0.0)
@@ -570,7 +578,7 @@ def _layout(node, depth, cursor):
 
 
 def build_graph(tree, context=None):
-    """`formula` -> 整张图。**全量重建，不做增量 diff**（同铁律 #5 的路子）。"""
+    """`formula` -> 整张图。**全量重建，不做增量 diff**（同全量重算原则的路子）。"""
     global _LAST_ERROR
     curve = _bound_curve(tree)
     with _Suspended():
@@ -582,7 +590,7 @@ def build_graph(tree, context=None):
         rows = expr_edit.read_rows(curve)
         if not rows:
             # 公式解析不了（`curve.formula_error` 非空）或者行还没建起来。
-            # 只画一个空的输出节点——不画半棵树（铁律 #1 的同一条道理）。
+            # 只画一个空的输出节点——不画半棵树（整文件拒绝导入原则的同一条道理）。
             return
         same_unit = _same_unit_mask(context, curve, rows)
         _build_into(tree, rows, 0, output.inputs[0], same_unit)
@@ -644,14 +652,15 @@ class EFXExprVarName(PropertyGroup):
 
 
 def _refresh_variable_names(context):
-    """内置外部变量 + 当前文件的具名参数 -> 补全表。建图时刷一次就够：
-    两份来源都只在导入/用户改参数表时变，而那两件事都会重建图。"""
+    """内置外部变量（含猜测名、连名字都没有的占位哈希，`variable_picker_choices()`）
+    + 当前文件的具名参数 -> 补全表。建图时刷一次就够：两份来源都只在导入/用户改参数表时变，
+    而那两件事都会重建图。"""
     scene = getattr(context, "scene", None) if context is not None else None
     if scene is None:
         scene = bpy.data.scenes[0] if bpy.data.scenes else None
     if scene is None:
         return
-    names = list(_expr.KNOWN_EXTERNAL_VARIABLES)
+    names = _expr.variable_picker_choices()
     try:
         for name in expr_edit.file_parameter_names(context):
             if name not in names:
@@ -805,7 +814,7 @@ class EFX_RE_MT_expr_node_add(Menu):
 
 class EFX_RE_OT_expr_node_add(Operator):
     """加一个游离节点。**不自己写自己的 `bl_description`** 会被 docstring 顶替，
-    所以显式写一条（CLAUDE.md 铁律 #7）。"""
+    所以显式写一条（docs/PITFALLS.md #25）。"""
 
     bl_idname = "efx_re.expr_node_add"
     bl_label = "Add Expression Node"

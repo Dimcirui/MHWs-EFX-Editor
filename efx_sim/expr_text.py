@@ -181,7 +181,7 @@ def _reject_vendor_literal(name):
 
     "认不出来的名字原样透传"这条只该覆盖**我们真的不知道语义**的名字
     （`Unary3`、将来的新操作码）。**已知语义、只是用了 vendor 那一侧名字**的一律拒绝
-    ——静默改含义比报错糟得多（铁律 #2 的文本版）。
+    ——静默改含义比报错糟得多（铁律 #1 的文本版）。
     """
     canonical = expr.CALL_DISPLAY_NAMES.get(name)
     if canonical is None or canonical == name or name in _FUNC_TO_VENDOR:
@@ -244,7 +244,7 @@ def _emit_canonical(rows, index):
         name = (row.get("name") or "").strip()
         if not name:
             raise expr.ExprError("变量节点的名字是空的")
-        return name, _ATOM_PRECEDENCE, index
+        return expr.display_var_name(name), _ATOM_PRECEDENCE, index
     if kind == expr.KIND_NEG:
         inner, inner_prec, index = _emit_canonical(rows, index)
         # `--1` 语法非法，判据用"子文本是不是以减号开头"而不是"值是不是负的"
@@ -285,7 +285,7 @@ def _emit_canonical(rows, index):
 def canonical_to_rows(text):
     """规范记法文本 -> `expr.to_rows()` 那种行（**vendor 一侧**），返回 (rows, 第二根值)。
 
-    第二根值（`a | b`）原样带回去，不做任何解释——语义没证实不等于可以丢（铁律 #2）。
+    第二根值（`a | b`）原样带回去，不做任何解释——语义没证实不等于可以丢（铁律 #1）。
     """
     raw = (text or "").strip() or "0"
     primary, secondary = expr._split_root_value(raw)
@@ -306,8 +306,9 @@ def _collect_vendor_rows(node, depth, rows):
                      "name": "", "value": float(node.value)})
         return
     if isinstance(node, ast.Name):
+        name = expr.vendor_var_name(expr._desanitize_identifier(node.id))
         rows.append({"kind": expr.KIND_VAR, "depth": depth, "arity": 0,
-                     "name": expr._desanitize_identifier(node.id), "value": 0.0})
+                     "name": name, "value": 0.0})
         return
     if isinstance(node, ast.UnaryOp):
         if isinstance(node.op, ast.UAdd):
