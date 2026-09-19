@@ -43,6 +43,7 @@ _MINED_JSON = Path(__file__).resolve().parent / "mhws_field_labels_mined.json"
 _HASHES_JSON = Path(__file__).resolve().parent / "mhws_name_hashes.json"
 _FACTORY_JSON = Path(__file__).resolve().parent / "mhws_field_labels.json"
 _ATTR_DEFAULTS_JSON = Path(__file__).resolve().parent / "mhws_attribute_defaults.json"
+_INSTANCE_DEFAULTS_JSON = Path(__file__).resolve().parent / "mhws_attribute_instance_defaults.json"
 _BIT_NAMES_JSON = Path(__file__).resolve().parent / "mhws_bit_names.json"
 
 
@@ -124,16 +125,37 @@ def _attr_defaults_table() -> dict:
     return _attr_defaults_cache
 
 
+_instance_defaults_cache: Optional[dict] = None
+
+
+def _instance_defaults_table() -> dict:
+    global _instance_defaults_cache
+    if _instance_defaults_cache is None:
+        data = _load_table(_INSTANCE_DEFAULTS_JSON)
+        _instance_defaults_cache = data.get("defaults") or {}
+    return _instance_defaults_cache
+
+
 def get_attribute_defaults(type_name: str) -> Optional[dict]:
     """查一个 EfxAttributeType 枚举短名（`bridge.new_attribute()` 用的那个名字）对应的
-    "建议默认值"——语料众数统计出来的，只覆盖置信度够高的字段，见 tools/build_attr_defaults.py。
-    查不到返回 None（这批分析目前只覆盖了语料里最常见的 40 种类型，见 tools/typefreq_report.json）。
+    "建议默认值"。
+
+    优先用 `mhws_attribute_instance_defaults.json`——每个类型从全语料里挑一份"跟逐字段众数
+    向量最贴近的真实实例"整份抄下来（见 tools/build_instance_defaults.py），保证落地的默认值
+    是游戏文件里真实存在过的字段组合，不会把互相耦合的字段拆散拼出语料里从没出现过的假组合。
+    这份表不需要知道字段含义就能生成，覆盖了全部 282 个 attribute 类型（语料里出现过的那些）。
+
+    查不到（这个类型在语料里一次都没出现过）就退回 `mhws_attribute_defaults.json`——逐字段
+    独立取众数的旧表，只覆盖语料里最常见的 40 种类型且只填置信度够高的字段，见
+    tools/build_attr_defaults.py。两边都查不到返回 None。
 
     返回的是深拷贝：调用方（`structure_ops.add_attribute()`）要把这份默认值原地合并进
     `bridge.new_attribute()` 吐出来的结构里，不能直接改到缓存的字典上，否则下一次新建同类型
     attribute 会读到被前一次调用改坏的表。
     """
-    entry = _attr_defaults_table().get(type_name)
+    entry = _instance_defaults_table().get(type_name)
+    if entry is None:
+        entry = _attr_defaults_table().get(type_name)
     return copy.deepcopy(entry) if entry is not None else None
 
 
