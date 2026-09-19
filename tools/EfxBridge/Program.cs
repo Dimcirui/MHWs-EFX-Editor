@@ -413,6 +413,8 @@ static int RunLoad(string[] args)
         var efx = JsonSerializer.Deserialize<EfxFile>(json, CreateBridgeJsonOptions())
             ?? throw new Exception("反序列化结果为 null");
 
+        FixJsonRoundtripGaps(efx);
+
         // Python 侧只写 Expression.parsedExpressions（人类可读的公式字符串——反序列化时已经
         // 由 vendor 的 EFXExpressionTreeJsonConverter 调用 EfxExpressionStringParser.Parse()
         // 编译成树了），不写 expressions（真正参与二进制写出的扁平后缀栈）。这里补一步把树
@@ -478,6 +480,81 @@ static void PatchEffectGroupMemberOrder(string path, EfxFile efx, Dictionary<str
         }
     }
     if (bytes != null) File.WriteAllBytes(path, bytes);
+}
+
+// `EfxMaterialClipData.Version`（`[RszIgnore] public EfxVersion Version;`）在 System.Text.Json
+// 往返中永远丢失、恒定停在默认值 0——这个字段只在二进制 Read() 的对象图构造顺序里由
+// `RszConstructorParams(nameof(Version))` 正确赋值（外层 attr.Version 早于 clipData 字段初始化
+// 前已经就位），JSON 反序列化走的是无参默认构造函数 + Populate 就地填充，没有任何一步会把
+// 外层 attr.Version 传给这个已经造好的 clipData 实例，也没有 JSON 键能覆盖它——它是
+// `[RszIgnore]`，压根不参与 JSON 序列化（实测：手工在 JSON 里塞一个正确的 "Version" 值，
+// 反序列化结果的字节长度分毫不变，证明这个键从未被读取）。`EfxMaterialClipData.DoWrite()`
+// 用这个字段判断走新格式（Version>=RE4 时多写 mdfPropertyCount/mdfProperties，
+// >=RE3 时多写 indicesCount/indices）还是旧格式，字段停在 0 就会漏写这四个字段，产物比
+// `expectedSize` 短一截，下次读回直接错位（"Expected: 44 Actual: 100" 这类症状）。
+//
+// KNOWN_UPSTREAM_ISSUES.md #8 把这 9 个 `IMaterialClipAttribute` 实现类的这个症状归因于
+// "MaterialClip => clipData 只读别名 + Populate 重复填充"——这个归因是没有反例复现验证过的
+// 猜测（铁律 #7 提醒过的那种），实测证伪：一个全新创建、除 clipData.Version 外别无二致的
+// 空 attribute（列表全空，没有任何"重复填充"能填的内容）单独往返就已经必现同一症状，
+// 猜测的机制作废，真正根因是这个版本号丢失。9 个实现类全部受影响（不止已确认的 5 个），
+// `new_attribute`（走 InitBlankClipData）和 `load`（走这里）两条路径都要补。
+//
+// 同一批症状里另外 5 个 `IMaterialExpressionAttribute` 实现类是完全不同的根因，别用上面这套
+// 解释类比过去：源生成器给可空 `[RszClassInstance]` 字段生成的 Read/Write 本身就不对称
+// （`ReeLibGenerator.cs`，实测导出 `--EmitCompilerGeneratedFiles` 拿到的
+// `*_EFXAttributeTypeBillboard3DMaterialExpression.rsz.cs` 逐字确认）——
+// `materialExpressions ??= new(Version); materialExpressions.Read(handler);` 无条件读，
+// 但 `materialExpressions?.Write(handler);` 是空条件写：字段为 null 时 Write 完全不写
+// 任何字节，Read 却始终认为这里有数据要读，直接把后面属于别的字段/下一个 attribute 的字节
+// 当成这个容器的内容消费掉。`materialExpressions` 恰好没有任何一条路径会主动构造它
+// （Python 只给 IExpressionAttribute 专属的 `expressions`/`expressionBits` 建了真实对象，
+// `materialExpressions` 原样透传 raw dump 里的 null），所以每一个新建/透传的
+// `IMaterialExpressionAttribute` 实例都会踩上。跟 #2 版本号丢失那个 bug 判据一致
+// （空 attribute 单独往返即可稳定复现），但机制、受影响字段、影响范围都不同，分开记。
+// 这是源生成器级别的缺陷，理论上任何"可空 RszClassInstance 字段"都可能中招，但目前
+// 只在这一个字段上验证过，不铺开断言（铁律 #7）；绕不开生成器本身，就地在这两条入口把
+// null 的 MaterialExpressions 换成一个空容器，效果等价于"一条公式都没有"，构造参数走
+// 正确的 Version，同时避免 #2 那个版本号丢失坑。
+//
+// 用反射按属性名+类型找，不按 IMaterialExpressionAttribute 接口找：
+// `EFXAttributeTypeRibbonParticleMaterialExpression` 结构上和其它 5 个一模一样（同名
+// `MaterialExpressions` 属性、同一个只读别名写法），但类声明上只写了 `IExpressionAttribute`，
+// 没有声明 `IMaterialExpressionAttribute`——接口列表本身在 vendor 里就是不完整的（漏声明，
+// 不是没有这个字段），按接口找会漏掉它，已用真实复现确认（同样的 [bytes==sizeof(T)]
+// 崩溃）。这是 vendor 自己遗漏了接口声明，不是我们瞎猜的模式扩大化。
+static void FixNullMaterialExpressions(EFXAttribute attr)
+{
+    var prop = attr.GetType().GetProperty("MaterialExpressions");
+    if (prop == null || prop.PropertyType != typeof(EFXMaterialExpressionList) || !prop.CanRead || !prop.CanWrite)
+    {
+        return;
+    }
+    if (prop.GetValue(attr) == null)
+    {
+        prop.SetValue(attr, new EFXMaterialExpressionList(attr.Version));
+    }
+}
+
+static void FixJsonRoundtripGaps(EfxFile file)
+{
+    void Visit(EFXEntryBase entry)
+    {
+        foreach (var attr in entry.Attributes)
+        {
+            if (attr is IMaterialClipAttribute matClip)
+            {
+                matClip.MaterialClip.Version = attr.Version;
+            }
+            FixNullMaterialExpressions(attr);
+            if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
+            {
+                FixJsonRoundtripGaps(pe.efxrData);
+            }
+        }
+    }
+    foreach (var entry in file.Entries) Visit(entry);
+    foreach (var action in file.Actions) Visit(action);
 }
 
 static void CompileExpressions(EfxFile file)
@@ -3242,11 +3319,25 @@ static int RunNew(string[] args)
 // "一条曲线都没有的空 clip"，正是新建时应有的状态。
 static void InitBlankClipData(EFXAttribute attr)
 {
+    // 见 FixJsonRoundtripGaps()/FixNullMaterialExpressions() 的说明：materialExpressions
+    // 为 null 时 Write 完全跳过写字节、Read 却无条件读，新建的 attribute 天生就是 null，
+    // 第一次 load 就会把后面的字节读错位——跟是不是 IClipAttribute 无关，必须在下面的
+    // early return 之前处理。
+    FixNullMaterialExpressions(attr);
+
     if (attr is not IClipAttribute clipAttr) return;
     var clip = clipAttr.Clip;
     clip.clips ??= Array.Empty<EfxClipHeader>();
     clip.frames ??= Array.Empty<EfxClipFrame>();
     clip.interpolationData ??= Array.Empty<EfxClipInterpolationTangents>();
+    // 见 FixJsonRoundtripGaps() 的说明：clipData.Version 不会被 RszConstructorParams
+    // 自动带上（这里走的是 EFXAttribute.Create() 之后手动补 attr.Version 的顺序，比字段
+    // 初始化晚），新建的 attribute 必须当场补一次，否则这个 attribute 从没导出/导入过
+    // 也会在第一次 load 时就写坏。
+    if (attr is IMaterialClipAttribute matClipAttr)
+    {
+        matClipAttr.MaterialClip.Version = attr.Version;
+    }
 }
 
 static int RunExprCheck(string[] args)
