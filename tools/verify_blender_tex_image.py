@@ -204,7 +204,7 @@ def main() -> int:
         _check(adj > 0.3, "解出来的图相邻格明显相关（不是噪声）", f"adj={adj:.3f}")
 
         # 反例常驻：把**旧的坏路径**（vendor ConvertToDDS，不解 GDeflate）的产物喂进同一个
-        # 判据，必须被判成噪声。按 CLAUDE.md #11，回归防护要能真的抓到那个 bug——与其每次
+        # 判据，必须被判成噪声。按 CLAUDE.md「门禁什么时候会静默全绿」，回归防护要能真的抓到那个 bug——与其每次
         # 手工注入，不如把坏路径永久留成对照组。
         try:
             from blender_efx_re import bridge
@@ -257,7 +257,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    # ⚠ 必须自己兜住异常再 sys.exit(1)：`blender --background --python x.py` 在脚本抛出
+    # ⚠ 必须自己捕获异常再 sys.exit(1)：`blender --background --python x.py` 在脚本抛出
     # **未捕获异常**时**退出码仍然是 0**（实测），`sys.exit(main())` 那行根本轮不到执行——
     # 净效果是"门禁崩在第一行"和"门禁全过"对调用方长得一模一样，正是静默全绿。
     try:
