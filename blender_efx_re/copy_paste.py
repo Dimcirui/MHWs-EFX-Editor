@@ -23,7 +23,7 @@ import/export 路径早就验证过），复制/粘贴不需要另写一套序�
    Clip/Expression 曲线），不含身份（name/efx_index/UniqueID/parent/子对象）和嵌套 efxrData
    子树，套到**已经存在**的同类型目标对象上（原地覆盖内容，不新建对象）。Attribute 额外要求
    `$type` 完全一致——不同 $type 的字段结构不兼容，贴错了要么静默丢字段要么读回来直接崩，属于
-   铁律 2"宁可拒绝不要静默丢数据"，在 poll() 里就拦掉，不让按钮亮起来。
+   铁律 #1"宁可拒绝不要静默丢数据"，在 poll() 里就拦掉，不让按钮亮起来。
 
 粘贴对象的 efx_index 取"当前同类型兄弟对象里最大值 + 1"（没有兄弟就是 0）——不影响原有对象
 的顺序，新对象排在最后；这是唯一需要在复制/粘贴路径里新写的逻辑，其余全部复用现有
@@ -257,7 +257,7 @@ class EFX_RE_OT_properties_paste(Operator):
     """把剪贴板里的属性套到当前选中对象上，原地覆盖内容，不新建对象。Entry 只能贴到 Entry，
     Attribute 只能贴到 $type 完全相同的 Attribute——类型不匹配时字段结构对不上，贴进去要么
     静默丢字段要么读回来直接崩，所以在 poll() 里就拦掉，不新写一条"类型不匹配"的运行时校验
-    也能生效（铁律 2）。"""
+    也能生效（铁律 #1）。"""
 
     bl_idname = "efx_re.properties_paste"
     bl_label = "Paste Properties"
@@ -286,6 +286,10 @@ class EFX_RE_OT_properties_paste(Operator):
                 self.report({"ERROR"}, "类型不匹配，已取消（Attribute 属性只能贴到同类型的 Attribute 上）")
                 return {"CANCELLED"}
             obj.efx_fields.clear()
+            # 先回收旧曲线的 fcurve + 自定义 ID 属性，再清集合——反过来做会把它们变成孤儿
+            # 永久留在这个对象的 Action 里（见 clip_fcurve.remove_all_channels() 的说明）。
+            from . import clip_fcurve
+            clip_fcurve.remove_all_channels(obj)
             obj.efx_clip_curves.clear()
             obj.efx_expression_curves.clear()
             io_tree.apply_attribute_content(obj, data)

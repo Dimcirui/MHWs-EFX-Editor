@@ -446,8 +446,10 @@ class EFX_RE_OT_export(Operator, ExportHelper):
         try:
             io_tree.check_bone_references(root_col)
             io_tree.check_clip_bits(root_col)
+            io_tree.check_clip_interpolations(root_col)
             io_tree.check_expression_bits(root_col)
-        except (io_tree.BoneReferenceError, io_tree.ClipBitError, io_tree.ExpressionBitError) as ex:
+        except (io_tree.BoneReferenceError, io_tree.ClipBitError, io_tree.ClipInterpolationError,
+                io_tree.ExpressionBitError) as ex:
             self.report({"ERROR"}, str(ex))
             return {"CANCELLED"}
 
@@ -470,7 +472,7 @@ class EFX_RE_OT_export(Operator, ExportHelper):
         # 写完立刻原样读一遍，读不回来就拒绝导出——不能只看 load 的退出码：语料里约 13.3%
         # 的文件带 Layout attribute（KNOWN_UPSTREAM_ISSUES.md #1），vendor 的 bug 实际触发点
         # 是"重新解析自己刚写出的字节"，不是原始文件的 Read 本身，所以 load 对这些文件退出码
-        # 是 0（"成功"），却写出一个字节数不同、读不回来的坏文件，界面上完全看不出来——铁律 2
+        # 是 0（"成功"），却写出一个字节数不同、读不回来的坏文件，界面上完全看不出来——铁律 #1
         # 明确不允许这种静默丢数据。校验路径必须落在跟 out_path 同名的临时文件上（放在
         # 目标同目录的临时子目录里），不能随便拼后缀：版本号是从**文件名**解析的
         # （FileHandler.FileVersion，见本文件头部说明），拼后缀会把 dump_efx() 的校验本身搞错。
