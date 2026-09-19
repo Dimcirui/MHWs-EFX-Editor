@@ -631,4 +631,14 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # ⚠ 必须自己捕获异常再 sys.exit(1)：`blender --background --python x.py` 在脚本抛出
+    # **未捕获异常**时**退出码仍然是 0**（实测），`sys.exit(main())` 那行根本轮不到执行——
+    # 净效果是"门禁崩在第一行"和"门禁全过"对调用方长得一模一样，正是静默全绿。
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except BaseException:
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

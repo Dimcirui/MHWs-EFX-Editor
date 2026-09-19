@@ -98,7 +98,7 @@ def _particle_snapshot(em):
 
     ⚠ 只抓 pos 是不够的：`build_render` 若碰了 `age`/`alpha`/`vel`，位置当帧看不出差别，
     下一帧才炸。第一版就是只抓 (frame, 粒子数, pos)，注入"build_render 里 age += 1"之后
-    门禁照样全绿才发现——和 CLAUDE.md #11 说的"只看它绿不算数"是同一个坑。
+    门禁照样全绿才发现——和 CLAUDE.md「门禁什么时候会静默全绿」 说的"只看它绿不算数"是同一个坑。
     """
     return (em.frame, [(p.pos.as_tuple(), p.vel.as_tuple(), p.scale.as_tuple(),
                         p.rot.as_tuple(), tuple(p.color), p.alpha, p.age,
@@ -577,7 +577,7 @@ def main() -> int:
                         # 序列本身只有 1 帧（`.uvs` 里就是张静态图，不是每个序列都是动画），
                         # 两种情况下 rects 恒为 1 个是正确行为，不是没推进——第一次跑到
                         # TypeGpuRibbonLength（PointCloudEmitter 一次只养 1 个粒子）时就被
-                        # 这条误伤过，见 CLAUDE.md #11：门禁本身也要经得起真实语料的检验。
+                        # 这条误伤过，见 CLAUDE.md「门禁什么时候会静默全绿」：门禁本身也要经得起真实语料的检验。
                         max_frames = max((it.extra.get("uvs_n", 0) for it in items), default=0)
                         if len(items) > 1 and max_frames > 1 and len(rects) <= 1:
                             _check(False, f"{entry.name} 序列帧没有推进",
@@ -629,4 +629,14 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # ⚠ 必须自己捕获异常再 sys.exit(1)：`blender --background --python x.py` 在脚本抛出
+    # **未捕获异常**时**退出码仍然是 0**（实测），下面那行根本轮不到执行——净效果是
+    # "门禁崩在第一行"和"门禁全过"对调用方长得一模一样，正是静默全绿。
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except BaseException:
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

@@ -80,7 +80,8 @@ _ADD_OPS = (
     ("uvar_group_add", "ENTRY"),
     ("expression_parameter_add", "ENTRY"),
     ("clip_curve_add", "CLIP"),
-    ("clip_keyframe_add", "CLIP"),
+    # clip_keyframe_add 已经不存在——Clip 关键帧现在用 Blender 原生 Dope Sheet/Graph Editor
+    # 插入（clip_fcurve.py），不再是一个"往集合里 add()"式的算子，这类冒烟测试测不到它。
     ("expression_curve_add", "EXPR"),
 )
 
@@ -98,7 +99,7 @@ def check_add_ops(samples: list[str]) -> int:
     from blender_efx_re import io_tree, model
 
     # 把所有样本都导进来：单个文件未必同时含 Clip 和 Expression 两种 attribute，
-    # 全导一遍才能把八个算子都覆盖到（少覆盖一个就等于少一道防线）。
+    # 全导一遍才能把 _ADD_OPS 里的算子都覆盖到（少覆盖一个就等于少一道防线）。
     for sample in samples:
         if getattr(bpy.ops.efx_re, "import")(filepath=sample) != {"FINISHED"}:
             print("[算子] 导入样本失败：%s" % sample)
@@ -151,4 +152,14 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # ⚠ 必须自己捕获异常再 sys.exit(1)：`blender --background --python x.py` 在脚本抛出
+    # **未捕获异常**时**退出码仍然是 0**（实测），下面那行根本轮不到执行——净效果是
+    # "门禁崩在第一行"和"门禁全过"对调用方长得一模一样，正是静默全绿。
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except BaseException:
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
