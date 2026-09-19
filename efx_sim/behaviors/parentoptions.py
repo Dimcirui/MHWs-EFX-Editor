@@ -46,7 +46,7 @@ parenting / 约束里了（见 `bone_binding.py`），`sim_preview.py::_entry_ma
 
 `ConstFrame`/`ConstReleaseFrame`/`ConstInheritReleaseRate`（跟踪多少帧后开始释放、释放
 要几帧、释放曲线的形状）本仓不做：语料里这三个字段绝大多数是 `(0, 0)`，是"永不释放"还是
-"默认值=没配置、实际有别的隐含含义"两种读法都说得通，没有实机对拍分不出来（铁律 #6）。
+"默认值=没配置、实际有别的隐含含义"两种读法都说得通，没有实机对拍分不出来（不把猜测当事实）。
 P0 只处理"一直按 `ConstInheritRate` 跟踪到粒子死亡"这一种情况，三个字段非零时如实
 note，不假装模拟了释放曲线。
 

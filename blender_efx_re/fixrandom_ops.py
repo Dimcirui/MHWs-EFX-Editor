@@ -109,7 +109,7 @@ class EFX_RE_OT_randomfix_edit_table_group(Operator):
             self.report({"ERROR"}, "找不到目标字段（对象树变了？）")
             return {"CANCELLED"}
         # 只改低 8 位，高位（常见的 -1 哨兵折出来的全 1 高位）原样保留——不认识的位不代表
-        # 可以清零，见 CLAUDE.md 铁律 #2。
+        # 可以清零，见 CLAUDE.md 铁律 #1。
         packed = bitfield.read_packed(node) or 0
         low8 = 0
         for i in range(TABLE_SIZE):

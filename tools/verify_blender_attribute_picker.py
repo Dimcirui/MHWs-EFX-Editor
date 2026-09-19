@@ -166,7 +166,7 @@ def main() -> int:
 
 if __name__ == "__main__":
     # `blender --background --python x.py` 在脚本抛未捕获异常时退出码仍然是 0（实测），
-    # 入口必须自己兜住。
+    # 入口必须自己捕获。
     try:
         sys.exit(main())
     except SystemExit:

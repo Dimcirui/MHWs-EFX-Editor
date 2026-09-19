@@ -17,7 +17,7 @@ efx_sim/behaviors/polygon.py —— `TypePolygon`（固定朝向的片，不朝�
         同 `TypeBillboard3D` 的 SizeScalar / SizeX / SizeY / Color / ColorRange，语义一致、
         只是改了名。
 
-⚠ 这次纠正的依据（铁律 #6：没有样本不断言，这里如实记依据，不是拍脑袋）
+⚠ 这次纠正的依据（不把猜测当事实：没有样本不断言，这里如实记依据，不是拍脑袋）
 ------------------------------------------------------------------------
 上一版模型是"`OrientDirectionUpVector` 选基准轴，`RotationX/Y/Z` 整体转开"（姊妹项目
 EFX-Editor 的 PLANE 是这个思路），**被真实场景实测推翻**：`[029] partical_4 (GpuPolygon)`

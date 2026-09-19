@@ -41,7 +41,7 @@ class CatalogError(RuntimeError):
     """材质解析失败——文件不在、读不出来、或者形状超出已验证范围。
 
     一律向上抛、由算子转成 `{"ERROR"}`：拿不到材质就说明填不出可靠的 `mdfPropertyIndex`，
-    这种情况必须拒绝而不是猜一个下标（猜错等于静默改到另一个参数上，铁律 #2/#6）。
+    这种情况必须拒绝而不是猜一个下标（猜错等于静默改到另一个参数上，铁律 #1/#3）。
     """
 
 
@@ -73,7 +73,7 @@ def load(mdf_path: str) -> dict:
     if len(materials) > 1:
         # EFX 侧只有一个 MaterialPath、一份 properties，`mdfPropertyIndex` 里也没有"用第几个
         # 材质"这一维——多材质的 mdf2 该按哪张参数表算下标是未知的，已核对过的真实引用全都是
-        # 单材质。宁可拒绝也不猜（铁律 #2/#6）。
+        # 单材质。宁可拒绝也不猜（铁律 #1/#3）。
         raise CatalogError(
             f"这个 .mdf2 里有 {len(materials)} 个材质，而 attribute 只有一个 MaterialPath，"
             "下标该按哪张参数表算无法确定，拒绝猜"

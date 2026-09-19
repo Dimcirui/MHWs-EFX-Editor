@@ -51,7 +51,7 @@ bone.matrix_local`），`owner_world_before` 就是 Entry 的 `matrix_basis`（�
 的一共 4 个（另有 `Attractor` / `VanishArea3D` / `TypeLightning3D`，见
 docs/TOPLEVEL_STRUCTURE.md "Bones / BoneRelations 结构调研"），但那三个的骨骼是各自效果
 自己的目标/作用点（吸引子往哪吸、消隐区在哪），不是"这个 Entry 挂在哪根骨头上"——没有样本
-证据支持把它们也当成父级变换（铁律 #6），所以不碰。
+证据支持把它们也当成父级变换（不把猜测当事实），所以不碰。
 """
 
 from __future__ import annotations

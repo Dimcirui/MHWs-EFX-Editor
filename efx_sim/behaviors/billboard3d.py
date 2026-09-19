@@ -17,7 +17,7 @@ efx_sim/behaviors/billboard3d.py —— `TypeBillboard3D`（面朝相机的片�
 P0 只画纯色四边形
 -----------------
 不贴图、不读 `Flags` 的混合模式。贴图那条链（`UVSequence` + `UVSPath` + `EfxBridge tex2dds`）
-是 P1 的事；`Flags` 的取值语义标的是 guess（"疑似是混合类型 BlendType"），按铁律 #6 不猜。
+是 P1 的事；`Flags` 的取值语义标的是 guess（"疑似是混合类型 BlendType"），不猜。
 `blend` 恒为 `ALPHA`，并在有非默认 `Flags` 时 note 一条。
 
 `Color` 的解包顺序照抄 `model._get_rgba_color()`（低字节 R、高字节 A），两边必须一致——

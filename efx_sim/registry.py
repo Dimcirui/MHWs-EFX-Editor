@@ -24,14 +24,14 @@ efx_sim/registry.py —— Behavior 协议 + 注册表
 与上游的两处差异
 ----------------
 1. **注册键是短类型名字符串**（`"Velocity3D"`），不是 hash、也不是 `efx_type_id` 整数。
-   短名就是 ATTRIBUTE_TYPES.md 的索引键，读代码不用查表；范围只做 MHWs（CLAUDE.md #20），
+   短名就是 ATTRIBUTE_TYPES.md 的索引键，读代码不用查表；范围只做 MHWs（docs/PITFALLS.md #20），
    不需要为跨游戏版本的 TypeID 漂移留余地。取名走
    `blender_efx_re/model.py::short_attr_name()`（`…EFXAttributeVelocity3D` -> `Velocity3D`）。
 2. **`STAGE` 必须显式声明。** 上游没声明时会去查它自己的 `categories.py` 分类表推一个默认，
    本仓没有那张表，照抄一张半吊子的只会让"这个 behavior 为什么跑在这里"变得不可追。
 
 未注册的属性类型不进逐帧流程，但会被记进 `em.unsupported`，UI 上列出"本 entry 有 N 个未模拟
-属性"。**预览不静默撒谎**——这是铁律 #2 那条"宁可拒绝，不要悄悄丢"在只读侧的对应物。
+属性"。**预览不静默撒谎**——这是铁律 #1 那条"宁可拒绝，不要悄悄丢"在只读侧的对应物。
 
 约束：纯 Python，**禁 import bpy**；零第三方依赖。
 """

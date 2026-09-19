@@ -135,7 +135,7 @@ def main() -> int:
         values = [m[0] for m in members]
         _check("ForceWord" not in names, "下拉里没有 ForceWord", str(names))
         _check(sorted(values) == [0, 1, 2, 3, 4], "只剩五个真实取值", str(sorted(values)))
-    # 但文件里真存着 -1 时仍要原样保留（铁律 #2：宁可拒绝也不静默改数据）
+    # 但文件里真存着 -1 时仍要原样保留（铁律 #1：宁可拒绝也不静默改数据）
     node.int_value = -1
     model.set_inline_enum_items(node, members or [])
     built3 = model._enum_proxy_items(node, bpy.context)
@@ -154,7 +154,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    # ⚠ 必须自己兜住异常再 sys.exit(1)：`blender --background --python x.py` 在脚本抛出
+    # ⚠ 必须自己捕获异常再 sys.exit(1)：`blender --background --python x.py` 在脚本抛出
     # **未捕获异常**时**退出码仍然是 0**（实测），`sys.exit(main())` 那行根本轮不到执行。
     try:
         sys.exit(main())

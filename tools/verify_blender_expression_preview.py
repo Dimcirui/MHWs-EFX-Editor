@@ -49,7 +49,7 @@ tools/verify_blender_expression_preview.py —— Expression 公式数值可视�
 挪到这儿来。下面会打印样本实际覆盖到的形态，缺哪类一眼能看见。
 
 退出码：全绿 0，有失败 1。⚠ `blender --background --python` 在脚本抛未捕获异常时退出码
-仍是 0（实测），所以入口自己兜一层，见文件末尾。
+仍是 0（实测），所以入口自己加一层捕获，见文件末尾。
 """
 
 from __future__ import annotations

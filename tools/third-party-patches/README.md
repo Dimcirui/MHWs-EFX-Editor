@@ -4,7 +4,7 @@
 进来的 `vendor/RE-Engine-Lib`，这边改的是装在用户 Blender 扩展目录里的第三方插件。
 
 ⚠ **第三方插件不在我们的版本控制下，每次它更新都会把补丁覆盖掉**，要重新打一遍。这跟
-CLAUDE.md 铁律 #4 对 vendor 的顾虑是同一件事（fork 会持续增加维护负担），只是这次是用户
+CLAUDE.md 铁律 #2 对 vendor 的顾虑是同一件事（fork 会持续增加维护负担），只是这次是用户
 明确要求集成进解包流程，所以接受这个代价。补丁刻意做得**只有三个 hunk**，重新打很便宜。
 
 ## 0001-re-asset-library-resolve-unknown-from-references.patch

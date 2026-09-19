@@ -22,7 +22,7 @@ MHWilds 文件永远进不去，字段值只可能是 C# 默认值——不是�
 类名分组）、`wrong_class`（假阳性，字段所在类不是 MHWilds 实际解析出来的类）、
 `parse_failures`（条件文本没解析出来，需要人工看一眼源码）。
 
-**vendor 升级后要重跑**（CLAUDE.md 铁律 #5 同一个理由：字段的版本条件、类版本映射都可能变）。
+**vendor 升级后要重跑**（PLAN.md 架构决策 7 同一个理由：字段的版本条件、类版本映射都可能变）。
 跑之前先 `dotnet build tools/EfxBridge -p:LangVersion=preview` 生成新的
 `blender_efx_re/semantics/mhws_attribute_types.json`（`EfxBridge types <路径>`）。
 """

@@ -42,7 +42,7 @@ tools/verify_blender_expr_nodes.py —— Expression 节点视口的回归防护
 `_INJECTION_MATRIX`（跑的时候会打印出来，改这个文件之前先照着重跑一遍）。
 
 退出码：全绿 0，有失败 1。⚠ `blender --background --python` 在脚本抛未捕获异常时退出码
-仍是 0（实测），所以入口自己兜一层，见文件末尾。
+仍是 0（实测），所以入口自己加一层捕获，见文件末尾。
 """
 
 from __future__ import annotations
@@ -267,7 +267,7 @@ def verify_sample(orig: pathlib.Path, workdir: pathlib.Path, report: Report,
             continue
         # 一条公式把建图/读回搞崩了，不该连带让整条门禁只剩一个 traceback、
         # 一行 PASS/FAIL 都没有（实测：`rebuild_sockets()` 不裁插槽那个注入就是这样，
-        # 退出码虽然是 1，但输出里看不出是哪一项坏了）。逐条兜住，记成一个具名 FAIL。
+        # 退出码虽然是 1，但输出里看不出是哪一项坏了）。逐条捕获，记成一个具名 FAIL。
         # ⚠ 原文本要在过节点图**之前**存下来：`_graph_roundtrip()` 会把读回的行写回
         # 曲线（字节判据需要），写回之后再拿 `curve.formula` 当基准，这条检查就变成
         # 自己和自己比、永远绿。
@@ -555,7 +555,7 @@ def main() -> int:
 
 if __name__ == "__main__":
     # `blender --background --python x.py` 在脚本抛未捕获异常时退出码仍然是 0（实测），
-    # "崩在第一行"和"全过"对调用方长得一模一样，所以自己兜一层（验证纪律）。
+    # "崩在第一行"和"全过"对调用方长得一模一样，所以自己加一层捕获（验证纪律）。
     try:
         sys.exit(main())
     except SystemExit:

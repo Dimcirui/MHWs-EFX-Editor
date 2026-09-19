@@ -123,7 +123,8 @@ def format_name(fmt: int) -> str:
 
 def version_from_path(path) -> int | None:
     """从文件名后缀取格式版本号，**照抄 `PathUtils.ParseFileFormat()` 的严格规则**
-    （铁律 #3）：扩展名从 basename 的**第一个**点算起，版本号必须紧跟其后。
+    （同 `operators._parsed_file_version()`）：扩展名从 basename 的**第一个**点算起，
+    版本号必须紧跟其后。
 
     `a.tex.241106027` -> 241106027；`a.b.tex.241106027` -> None（第一个点后面是 `b`，
     不是 `tex`）。宽松判断（"文件名里出现过 .tex.<数字>"）在这个项目里是明令禁止的。

@@ -16,7 +16,7 @@ tools/verify_blender_fixrandom_ops.py —— FixRandomGenerator 专属编辑控�
    无符号值写回有符号 32 位的 `int_value`（`bitfield.py` 通用弹窗那条路的写法），赋值会抛
    `ValueError`，整个属性面板对这个字段直接罢工。`fixrandom_ops.py` 改成只碰低 8 位、
    写回前折回有符号范围（`model.as_int32()`），这里验证：不崩、低 8 位如预期、
-   不认识的高位原样保留（铁律 #2：宁可拒绝也不静默改数据）。
+   不认识的高位原样保留（铁律 #1：宁可拒绝也不静默改数据）。
 
 ## 为什么必须在真 Blender 里跑
 
@@ -122,7 +122,7 @@ def main() -> int:
         _check(new_packed & 0xFF == 0b0000_1001,
                "低 8 位如预期（勾了 Table 0 + Table 3 = 0x09）", bin(new_packed & 0xFF))
         _check(new_packed & ~0xFF == origin_packed & ~0xFF,
-               "不认识的高位原样保留，没被静默清零（铁律 #2）",
+               "不认识的高位原样保留，没被静默清零（铁律 #1）",
                f"{hex(new_packed & ~0xFF)} vs {hex(origin_packed & ~0xFF)}")
         _check(INT32_MIN <= group_node.int_value <= INT32_MAX,
                "折回去的 int_value 落在有符号 int32 内", str(group_node.int_value))
@@ -144,7 +144,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    # ⚠ 必须自己兜住异常再 sys.exit(1)：`blender --background --python x.py` 在脚本抛出
+    # ⚠ 必须自己捕获异常再 sys.exit(1)：`blender --background --python x.py` 在脚本抛出
     # **未捕获异常**时**退出码仍然是 0**（实测），`sys.exit(main())` 那行根本轮不到执行。
     try:
         sys.exit(main())

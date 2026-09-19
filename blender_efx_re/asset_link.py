@@ -41,7 +41,7 @@ Blender 的对象父子关系（`Object.parent`，`io_tree.export_*` 完全不�
 
 找不到就如实说，不编占位
 ------------------------
-每一层解析失败都进 `problems` 列表，由 `report_problems()` 统一报出来（铁律 #2）。
+每一层解析失败都进 `problems` 列表，由 `report_problems()` 统一报出来（铁律 #1）。
 
 mesh 和 mdf2 的材质名对不上 -> 自己把材质套上去
 ----------------------------------------------
@@ -469,7 +469,7 @@ def _ensure_material_applied(new_objects, mdf_local: Path, material_path: str,
     52/52 的 mdf2 都是单材质；网格侧多材质是常事（实测 `POD042_000.mesh` 有 6 个材质槽
     Base3~Base8，mdf2 只有一个 `lambert1`，全不匹配——那 6 个槽原来全是空节点树，
     在视口里就是纯黑）。
-    mdf2 **本身**有多个材质时才是真歧义：不猜，记一条 problem 如实说（铁律 #2/#6）。
+    mdf2 **本身**有多个材质时才是真歧义：不猜，记一条 problem 如实说（铁律 #1/#3）。
 
     这一步调的是 RE Mesh Editor 的**内部函数** `importMDF()`，不是算子：它没有"把某个
     mdf2 套到某个已存在的材质上"的算子入口（`re_mdf.apply_mdf` 要的是一整套 MDF 对象集合
@@ -1160,7 +1160,7 @@ _REPORT_HEAD = 4
 
 
 def report_problems(op, problems: list, summary: str) -> None:
-    """成功计数一条 INFO、未解决的一条 WARNING——**不静默失败**（铁律 #2）。
+    """成功计数一条 INFO、未解决的一条 WARNING——**不静默失败**（铁律 #1）。
 
     联动失败不该让 EFX 导入本身变成错误（`{"ERROR"}` 会让 `bpy.ops` 调用方直接收到
     RuntimeError），所以一律 WARNING。
