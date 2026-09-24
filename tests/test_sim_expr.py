@@ -52,7 +52,7 @@ class TestSelfConsistencyIdentities(unittest.TestCase):
     """
 
     #: 从 -1 线性扫到 +1（实机时 Z 轴放 `-Lerp(Clamp(TIMER, 60, 0), 2, -1)` 当横轴）
-    SWEEP = "Lerp(SmoothStep(TIMER, 60, 0), 1, -1)"
+    SWEEP = "Lerp(-1, 1, SmoothStep(0, 60, TIMER))"
 
     def _assert_flat_zero(self, formula, places=5):
         for i in range(13):
@@ -67,25 +67,25 @@ class TestSelfConsistencyIdentities(unittest.TestCase):
         **这条是"两个 pow 入口互相抵消"**：操作码 0（中缀幂）和 `Func20`（函数幂）
         算的是同一件事，一个平方、一个开平方，抵消回 `|x|`。"""
         self._assert_flat_zero(
-            "(20 * (Abs(%s) - PowOp((2 / 1), Pow(2, %s))))" % (self.SWEEP, self.SWEEP))
+            "(20 * ((Pow(%s, 2) ^ (1 / 2)) - Abs(%s)))" % (self.SWEEP, self.SWEEP))
 
     def test_pythagorean_identity(self):
         """`sin² + cos² == 1`。覆盖：`Unary0`=sin、`Unary1`=cos（**弧度**）、
         `Max(`=pow（平方）、`/`=加、`Min(`=减。一条公式验五个读法。"""
         self._assert_flat_zero(
-            "(20 * (1 - (PowOp(2, Sin(%s)) + PowOp(2, Cos(%s)))))"
+            "(20 * (((Sin(%s) ^ 2) + (Cos(%s) ^ 2)) - 1))"
             % (self.SWEEP, self.SWEEP))
 
     def test_log_exp_are_inverses(self):
         """`ln(e^x) == x`。覆盖 `Unary6`=ln、`Unary8`=exp。"""
         self._assert_flat_zero(
-            "(20 * (%s - Log(Exp(%s))))" % (self.SWEEP, self.SWEEP))
+            "(20 * (Log(Exp(%s)) - %s))" % (self.SWEEP, self.SWEEP))
 
     def test_log10_base_against_exp(self):
         """`log10(e^x) == x·log10(e)`。覆盖 `Unary7`=log10、`Unary8`=exp、`+`=乘。
         这条同时钉住 log 的**底数**（换成 ln 会差 2.303 倍）。"""
         self._assert_flat_zero(
-            "(20 * ((0.4342945 * %s) - Log10(Exp(%s))))" % (self.SWEEP, self.SWEEP))
+            "(20 * (Log10(Exp(%s)) - (0.4342945 * %s)))" % (self.SWEEP, self.SWEEP))
 
     def test_floor_and_ceil_are_reflections(self):
         """`floor(x) + ceil(-x) == 0`。覆盖 `Unary4`=floor、`Unary5`=ceil、`/`=加、
@@ -98,19 +98,19 @@ class TestSelfConsistencyIdentities(unittest.TestCase):
         """`saturate(x) == min(max(x, 0), 1)`。覆盖 `Unary10`=saturate、`Func18`=min、
         `Func19`=max。"""
         self._assert_flat_zero(
-            "(20 * (Min(Max(%s, 0), 1) - Saturate(%s)))" % (self.SWEEP, self.SWEEP))
+            "(20 * (Saturate(%s) - Min(Max(%s, 0), 1)))" % (self.SWEEP, self.SWEEP))
 
     def test_degree_and_radian_sin_agree(self):
         """`sin°(x) == sin(x · π/180)`。覆盖 `Unary11`=角度制 sin、`Unary0`=弧度 sin、
         `+`=乘。"""
         self._assert_flat_zero(
-            "(20 * (Sin((0.0174533 * %s)) - SinDeg(%s)))" % (self.SWEEP, self.SWEEP))
+            "(20 * (SinDeg(%s) - Sin((0.0174533 * %s))))" % (self.SWEEP, self.SWEEP))
 
     def test_asin_undoes_sin(self):
         """`asin(sin(x)) == x`（x 在 ±π/2 内）。覆盖 `Unary2`=asin、`Unary0`=sin。"""
-        sweep = "Lerp(SmoothStep(TIMER, 60, 0), 1.5, -1.5)"
+        sweep = "Lerp(-1.5, 1.5, SmoothStep(0, 60, TIMER))"
         self._assert_flat_zero(
-            "(20 * (%s - Asin(Sin(%s))))" % (sweep, sweep))
+            "(20 * (Asin(Sin(%s)) - %s))" % (sweep, sweep))
 
     def test_func21_is_the_un_eased_twin_of_lerp_clamp(self):
         """⚠ **`Func21` 和写开的 `Lerp(Clamp(...))` 不相等**——这条恒等式在 2026-09-16
@@ -124,9 +124,9 @@ class TestSelfConsistencyIdentities(unittest.TestCase):
         任何一个改了它都会破。"""
         # 参考：smoothstep(x) - x，用已确认语义搭（x = TIMER/60）
         # smoothstep(x) = x^2*(3-2x) -> `(PowOp(2, x) * ((2 * x) - 3))`
-        residual = "((60 / TIMER) - (PowOp(2, (60 / TIMER)) * ((2 * (60 / TIMER)) - 3)))"
-        formula = ("(20 * (%s - (Remap(1, 0, 60, 0, TIMER) - "
-                   "Lerp(SmoothStep(TIMER, 60, 0), 1, 0))))" % residual)
+        residual = "((((TIMER / 60) ^ 2) * (3 - (2 * (TIMER / 60)))) - (TIMER / 60))"
+        formula = ("(20 * ((Lerp(0, 1, SmoothStep(0, 60, TIMER)) - "
+                   "Remap(TIMER, 0, 60, 0, 1)) - %s))" % residual)
         self._assert_flat_zero(formula)
 
     def test_lerp_and_clamp_are_linear_and_eased_respectively(self):
@@ -136,18 +136,18 @@ class TestSelfConsistencyIdentities(unittest.TestCase):
 
         `Lerp` 纹丝不动（线性）、`Clamp` 是 S 形摆动（带缓动）。"""
         # Lerp 对线性基准：恒等
-        self._assert_flat_zero("(20 * ((100 / TIMER) - Lerp((100 / TIMER), 1, 0)))")
+        self._assert_flat_zero("(20 * (Lerp(0, 1, (TIMER / 100)) - (TIMER / 100)))")
         # Clamp 对线性基准：**不为 0**，差值正好是 smoothstep 残差
         for i in range(1, 12):
             timer = 100.0 * i / 12.0
             x = timer / 100.0
-            got, _ = _ev("((100 / TIMER) - SmoothStep(TIMER, 100, 0))", {"TIMER": timer})
+            got, _ = _ev("(SmoothStep(0, 100, TIMER) - (TIMER / 100))", {"TIMER": timer})
             self.assertAlmostEqual(got, x * x * (3 - 2 * x) - x, places=6,
                                    msg="TIMER=%.1f" % timer)
         # 偏离最大的地方在四分位点（±0.096），**中点和两端是 smoothstep 的不动点、
         # 残差本来就是 0**——只在四分位点断言"确实不为 0"，不然会误判
         for timer, want in ((25.0, -0.09375), (75.0, 0.09375)):
-            got, _ = _ev("((100 / TIMER) - SmoothStep(TIMER, 100, 0))", {"TIMER": timer})
+            got, _ = _ev("(SmoothStep(0, 100, TIMER) - (TIMER / 100))", {"TIMER": timer})
             self.assertAlmostEqual(got, want, places=6, msg="TIMER=%.1f" % timer)
 
 
@@ -184,11 +184,11 @@ class TestBinaryOperatorSemantics(unittest.TestCase):
                              ((1, 2), 2.0), ((2, 1), 2.0)):
             self.assertEqual(_ev("(%d * %d)" % (a, b))[0], want, "(%d * %d)" % (a, b))
 
-    def test_opcode2_minus_is_division_with_the_right_operand_on_top(self):
-        """实机：``(1,2)->2`` 而 ``(2,1)->0.5``（非交换），``(1,1)->1``，
-        ``(1,0)->0``；``(0,1)->0`` 说明**除零按 0**——这是引擎实测行为，不只是我们兜底。"""
-        for (a, b), want in (((1, 2), 2.0), ((2, 1), 0.5), ((1, 1), 1.0),
-                             ((1, 0), 0.0), ((0, 1), 0.0)):
+    def test_opcode2_is_division(self):
+        """实机：``2/1->2`` 而 ``1/2->0.5``（非交换），``1/1->1``，``0/1->0``；
+        ``1/0->0`` 说明**除零按 0**——这是引擎实测行为，不只是我们兜底。"""
+        for (a, b), want in (((2, 1), 2.0), ((1, 2), 0.5), ((1, 1), 1.0),
+                             ((0, 1), 0.0), ((1, 0), 0.0)):
             self.assertEqual(_ev("(%d / %d)" % (a, b))[0], want, "(%d / %d)" % (a, b))
 
     def test_opcode4_is_addition(self):
@@ -196,26 +196,24 @@ class TestBinaryOperatorSemantics(unittest.TestCase):
         for (a, b), want in (((1, 0), 1.0), ((1, 1), 2.0), ((2, 0), 2.0), ((0, 2), 2.0)):
             self.assertEqual(_ev("(%d + %d)" % (a, b))[0], want, "(%d + %d)" % (a, b))
 
-    def test_opcode5_is_subtraction_right_minus_left(self):
-        """实机：``(1,0)->-1``、``(0,1)->1``、``(1,1)->0``、``(1,2)->1``、``(2,1)->-1``。"""
-        for (a, b), want in (((1, 0), -1.0), ((0, 1), 1.0), ((1, 1), 0.0),
-                             ((1, 2), 1.0), ((2, 1), -1.0)):
+    def test_opcode5_is_subtraction(self):
+        """实机：``0-1->-1``、``1-0->1``、``1-1->0``、``2-1->1``、``1-2->-1``。"""
+        for (a, b), want in (((0, 1), -1.0), ((1, 0), 1.0), ((1, 1), 0.0),
+                             ((2, 1), 1.0), ((1, 2), -1.0)):
             self.assertEqual(_ev("(%d - %d)" % (a, b))[0], want, "(%d - %d)" % (a, b))
 
-    def test_opcode0_max_is_power_with_the_exponent_on_the_left(self):
-        """实机 ``(1,0)->0``、``(0,1)->1``、``(1,1)->1``、``(1,2)->2``、``(2,1)->1``
-        这五点 ``pow(b,a)`` 和"直接返回 b"都满足——**是语料把它定下来的**：全部 3 处
-        `Max(` 用法的左参数都是小整数指数（`Max(2, Unary9(Unary0(...)))`、
-        `Max(2, Lerp(...))`、`Func21(..., Max(4, FinishRate))`），按 ``pow`` 读是
-        "归一化值取平方/四次方"，按"返回 b"读这三个指数全是死参数。所以它是 `corpus`
-        档，而且求值时会记 note。"""
-        for (a, b), want in (((1, 0), 0.0), ((0, 1), 1.0), ((1, 1), 1.0),
-                             ((1, 2), 2.0), ((2, 1), 1.0)):
-            self.assertEqual(_ev("PowOp(%d, %d)" % (a, b))[0], want, "PowOp(%d, %d)" % (a, b))
-        # 指数在左：这一对把 `pow(b,a)` 和 `pow(a,b)` 分开
-        self.assertEqual(_ev("PowOp(2, 3)")[0], 9.0)
-        self.assertEqual(_ev("PowOp(3, 2)")[0], 8.0)
-        self.assertTrue(any("PowOp" in n for n in _ev("PowOp(2, 3)")[1]))
+    def test_opcode0_is_power(self):
+        """实机 ``0^1->0``、``1^0->1``、``1^1->1``、``2^1->2``、``1^2->1``。这五点
+        ``pow`` 和"直接返回底数"都满足，后来靠 `Max(2, <扫描>)`（当时的写法）画出 U 形
+        抛物线排掉了后者（docs/EXPRESSION_SEMANTICS.md 11.6）。"""
+        for (a, b), want in (((0, 1), 0.0), ((1, 0), 1.0), ((1, 1), 1.0),
+                             ((2, 1), 2.0), ((1, 2), 1.0)):
+            self.assertEqual(_ev("(%d ^ %d)" % (a, b))[0], want, "(%d ^ %d)" % (a, b))
+        # 底在左：这一对把 `pow(a,b)` 和 `pow(b,a)` 分开
+        self.assertEqual(_ev("(3 ^ 2)")[0], 9.0)
+        self.assertEqual(_ev("(2 ^ 3)")[0], 8.0)
+        # U 形：负底数平方后非负
+        self.assertEqual(_ev("(-1 ^ 2)")[0], 1.0)
 
     def test_unary_negation_is_the_only_one_vendor_got_right(self):
         """实机：``-0 -> 0``、``-1 -> -1``、``-2 -> -2``。"""
@@ -225,41 +223,41 @@ class TestBinaryOperatorSemantics(unittest.TestCase):
 
     def test_is_not_commutative(self):
         """第一个把"基础算术运算"整类排除掉的观察：乘/加/`Min`/`Max` 全是交换的。"""
-        self.assertAlmostEqual(_ev("Mod(0.4, 0.5)")[0], 0.1, places=6)
-        self.assertAlmostEqual(_ev("Mod(0.5, 0.4)")[0], 0.4, places=6)
+        self.assertAlmostEqual(_ev("(0.5 % 0.4)")[0], 0.1, places=6)
+        self.assertAlmostEqual(_ev("(0.4 % 0.5)")[0], 0.4, places=6)
 
     def test_live_confirmed_non_monotonic_table(self):
         """决定性的一组定量实测：`X * 1` == `fmod(1, X)`，随 X 变化是**非单调**锯齿。
         实机跑了 X=0.6/0.5/0.4/0.3 四个点，读数 0.4/0/0.2/0.1 全中——任何单调的二元运算
         （含乘法：0.6/0.5/0.4/0.3）都给不出"降到 0 再升回 0.2 再降到 0.1"这个形状。"""
         for modulus, expected in ((0.6, 0.4), (0.5, 0.0), (0.4, 0.2), (0.3, 0.1)):
-            self.assertAlmostEqual(_ev("Mod(%r, 1)" % modulus)[0], expected, places=6,
+            self.assertAlmostEqual(_ev("(1 %% %r)" % modulus)[0], expected, places=6,
                                    msg="X=%r" % modulus)
 
     def test_same_operands_give_zero(self):
         """`0.5 * 0.5` 实机是一条 Z 恒定的竖直线，值 0。"""
-        self.assertEqual(_ev("Mod(0.5, 0.5)")[0], 0.0)
+        self.assertEqual(_ev("(0.5 % 0.5)")[0], 0.0)
 
     def test_sign_follows_dividend_like_c_fmod_not_python_modulo(self):
         """必须用 `math.fmod`（余数符号跟被除数），**不能用 Python 的 `%`**（向下取整、
         余数符号跟模数）。实机判据：`2 * sweep` 里 `sweep` 从 -1 扫到 0.5，轨迹和"不加这
         一项"完全一样（斜率 -1 的直线），即负半段原样透传；Python 的 `%` 会把 -1 折成
         +1，轨迹中途会跳一下，实测没有。"""
-        self.assertAlmostEqual(_ev("Mod(2, -1)")[0], -1.0, places=6)
-        self.assertAlmostEqual(_ev("Mod(2, -0.25)")[0], -0.25, places=6)
+        self.assertAlmostEqual(_ev("(-1 % 2)")[0], -1.0, places=6)
+        self.assertAlmostEqual(_ev("(-0.25 % 2)")[0], -0.25, places=6)
         self.assertAlmostEqual(-1.0 % 2, 1.0, places=6)   # 对照：Python `%` 的答案是错的
 
     def test_passthrough_when_dividend_is_smaller_than_modulus(self):
         """`|B| < A` 时原样返回 B。这条解释了最早那组 Func21 测试为什么什么都没测到：
         `Func21(...) * 0.01` 是 `fmod(0.01, F)`，F 只要大于 0.01 就恒等于 0.01，
         Func21 的信息一个字节都没进到结果里。"""
-        self.assertAlmostEqual(_ev("Mod(90, 0.01)")[0], 0.01, places=6)
-        self.assertAlmostEqual(_ev("Mod(90, 1)")[0], 1.0, places=6)
+        self.assertAlmostEqual(_ev("(0.01 % 90)")[0], 0.01, places=6)
+        self.assertAlmostEqual(_ev("(1 % 90)")[0], 1.0, places=6)
 
     def test_zero_modulus_is_noted_not_nan(self):
         """模数为 0 时 `fmod` 是 NaN——NaN 会顺着位置字段传进视口/导出，按 0 处理并记 note
         （和除零那条同一套处理）。"""
-        value, notes = _ev("Mod(0, 1)")
+        value, notes = _ev("(1 % 0)")
         self.assertEqual(value, 0.0)
         self.assertTrue(any("取模" in n for n in notes), notes)
 
@@ -275,15 +273,15 @@ class TestBinaryOperatorSemantics(unittest.TestCase):
         - `(1 / (0.1 + X))` = ``1 + 0.1*X``：基准值加一个小扰动。
         """
         for timer, want in ((0, -30.0), (10, -20.0), (44, 14.0), (45, -30.0), (55, -20.0)):
-            got, _ = _ev("(30 - Mod(45, TIMER))", {"TIMER": float(timer)})
+            got, _ = _ev("((TIMER % 45) - 30)", {"TIMER": float(timer)})
             self.assertAlmostEqual(got, want, places=6, msg="TIMER=%d" % timer)
         # 1 - Clamp(...)：TIMER 在 lo 处是 1（完全不透明），到 hi 处降到 0
         self.assertAlmostEqual(
-            _ev("(SmoothStep(TIMER, 100, 20) - 1)", {"TIMER": 20.0})[0], 1.0, places=6)
+            _ev("(1 - SmoothStep(20, 100, TIMER))", {"TIMER": 20.0})[0], 1.0, places=6)
         self.assertAlmostEqual(
-            _ev("(SmoothStep(TIMER, 100, 20) - 1)", {"TIMER": 100.0})[0], 0.0, places=6)
+            _ev("(1 - SmoothStep(20, 100, TIMER))", {"TIMER": 100.0})[0], 0.0, places=6)
         self.assertAlmostEqual(
-            _ev("(SmoothStep(TIMER, 100, 20) - 1)", {"TIMER": 60.0})[0], 0.5, places=6)
+            _ev("(1 - SmoothStep(20, 100, TIMER))", {"TIMER": 60.0})[0], 0.5, places=6)
         # 1 + 0.1*X
         self.assertAlmostEqual(_ev("(1 + (0.1 * X))", {"X": 2.0})[0], 1.2, places=6)
 
@@ -410,12 +408,12 @@ class TestKnownUnaryFunctions(unittest.TestCase):
 
         ⚠ 它和 `Max(a, b)`（操作码 0）现在读法完全相同，那是个**未解决的疑点**，
         见 `expr._eval_known_binary_func()` 的 docstring。"""
-        self.assertAlmostEqual(_ev("Pow(2, 0.5)")[0], 0.25, places=6)
-        self.assertAlmostEqual(_ev("Pow(-4, 0.5)")[0], 16.0, places=6)
-        self.assertAlmostEqual(_ev("Pow(3, 2)")[0], 8.0, places=6)     # 2^3
-        self.assertAlmostEqual(_ev("Pow(2, 3)")[0], 9.0, places=6)     # 3^2
+        self.assertAlmostEqual(_ev("Pow(0.5, 2)")[0], 0.25, places=6)
+        self.assertAlmostEqual(_ev("Pow(0.5, -4)")[0], 16.0, places=6)
+        self.assertAlmostEqual(_ev("Pow(2, 3)")[0], 8.0, places=6)     # 2^3
+        self.assertAlmostEqual(_ev("Pow(3, 2)")[0], 9.0, places=6)     # 3^2
         # 语料：Func20(0.01*TIMER, 3) = 3^(0.01*TIMER)，平缓的指数上升
-        f = "Pow((0.01 * TIMER), 3)"
+        f = "Pow(3, (0.01 * TIMER))"
         self.assertAlmostEqual(_ev(f, {"TIMER": 0.0})[0], 1.0, places=6)
         self.assertAlmostEqual(_ev(f, {"TIMER": 100.0})[0], 3.0, places=6)
 
@@ -436,8 +434,8 @@ class TestKnownUnaryFunctions(unittest.TestCase):
         # 形状：min 在 sweep 越过 0.5 之后变平、max 在之前是平的。
         # ⚠ 扫描量用的 `Clamp` **带 smoothstep 缓动**（2026-09-16 实机，见
         # `expr._eval_clamp()`），所以中间点的数值不是线性插值出来的那几个。
-        f18 = "Min(Lerp(SmoothStep(TIMER, 60, 0), 1, -1), 0.5)"
-        f19 = "Max(Lerp(SmoothStep(TIMER, 60, 0), 1, -1), 0.5)"
+        f18 = "Min(Lerp(-1, 1, SmoothStep(0, 60, TIMER)), 0.5)"
+        f19 = "Max(Lerp(-1, 1, SmoothStep(0, 60, TIMER)), 0.5)"
         for timer, sw in ((0, -1.000000), (15, -0.687500), (45, 0.687500), (60, 1.000000)):
             self.assertAlmostEqual(_ev(f18, {"TIMER": float(timer)})[0],
                                    min(sw, 0.5), places=6, msg="TIMER=%d" % timer)
@@ -455,7 +453,7 @@ class TestKnownUnaryFunctions(unittest.TestCase):
         缓动、`Func21` 的重映射不带，两者的差就是那层缓动。这也是 `Func21` 存在的理由。
         判据是拿 `TIMER/100` 当不经过任何待测函数的线性基准分别对拍，见
         `expr._eval_func21()` 的判据表。"""
-        f = "Remap(90, 0, 60, 0, TIMER)"
+        f = "Remap(TIMER, 0, 60, 0, 90)"
         for timer, want in ((0, 0.0), (15, 22.5), (30, 45.0), (60, 90.0), (120, 90.0)):
             self.assertAlmostEqual(_ev(f, {"TIMER": float(timer)})[0], want, places=6,
                                    msg="TIMER=%d" % timer)
@@ -463,19 +461,19 @@ class TestKnownUnaryFunctions(unittest.TestCase):
         for timer in (7, 15, 23, 41, 45):
             x = timer / 60.0
             fused, _ = _ev(f, {"TIMER": float(timer)})
-            spelled, _ = _ev("Lerp(SmoothStep(TIMER, 60, 0), 90, 0)", {"TIMER": float(timer)})
+            spelled, _ = _ev("Lerp(0, 90, SmoothStep(0, 60, TIMER))", {"TIMER": float(timer)})
             self.assertAlmostEqual(spelled - fused, 90.0 * (x * x * (3 - 2 * x) - x),
                                    places=6, msg="TIMER=%d" % timer)
         # 端点仍然一致（缓动只改中段）——这正是它藏这么久的原因
         for timer in (0, 60, 120):
             fused, _ = _ev(f, {"TIMER": float(timer)})
-            spelled, _ = _ev("Lerp(SmoothStep(TIMER, 60, 0), 90, 0)", {"TIMER": float(timer)})
+            spelled, _ = _ev("Lerp(0, 90, SmoothStep(0, 60, TIMER))", {"TIMER": float(timer)})
             self.assertAlmostEqual(fused, spelled, places=6, msg="TIMER=%d" % timer)
         # 端点方向：t 在 lo 端取第 2 参 b、在 hi 端取第 1 参 a（同 Lerp 的方向）
-        self.assertAlmostEqual(_ev("Remap(5, 1, 10, 2, 2)")[0], 1.0, places=6)
-        self.assertAlmostEqual(_ev("Remap(5, 1, 10, 2, 10)")[0], 5.0, places=6)
+        self.assertAlmostEqual(_ev("Remap(2, 2, 10, 1, 5)")[0], 1.0, places=6)
+        self.assertAlmostEqual(_ev("Remap(10, 2, 10, 1, 5)")[0], 5.0, places=6)
         # 语料高频写法：Unary11(Func21(90, 0, hi, 0, TIMER)) = sin(角度)，0°->90°
-        corpus = "SinDeg(Remap(90, 0, 60, 0, TIMER))"
+        corpus = "SinDeg(Remap(TIMER, 0, 60, 0, 90))"
         self.assertAlmostEqual(_ev(corpus, {"TIMER": 0.0})[0], 0.0, places=6)
         self.assertAlmostEqual(_ev(corpus, {"TIMER": 30.0})[0], 0.7071, places=4)
         self.assertAlmostEqual(_ev(corpus, {"TIMER": 60.0})[0], 1.0, places=6)
@@ -492,7 +490,8 @@ class TestKnownUnaryFunctions(unittest.TestCase):
         self.assertEqual(expr._UNKNOWN_FUNC_ARGC, {})
         for name in ("Min", "Max", "Pow", "Remap"):
             self.assertEqual(expr_call_confidence(name), "confirmed", name)
-        self.assertEqual(expr_call_confidence("InvLerp"), "confirmed")
+        self.assertEqual(expr_call_confidence("Clamp"), "confirmed")
+        self.assertEqual(expr_call_confidence("InvLerp"), "unknown")    # 旧名字不再认
         # `Acos` 现在是**能求值**的（a96e1d9 把它加进了 FunctionArgCounts）——这正是
         # bump submodule 换来的新能力，所以这里改成正面断言。
         self.assertAlmostEqual(_ev("Acos(1)")[0], 0.0, places=9)
@@ -507,7 +506,7 @@ class TestExprEvaluate(unittest.TestCase):
         """`2 + 3` 是 2*3=6；`6 / 2` 是 6+2=8；`8 - 2` 是 2/8=0.25。"""
         self.assertEqual(_ev("(2 * 3)")[0], 6.0)
         self.assertEqual(_ev("(6 + 2)")[0], 8.0)
-        self.assertEqual(_ev("(8 / 2)")[0], 0.25)
+        self.assertEqual(_ev("(2 / 8)")[0], 0.25)
 
     def test_operator_precedence_is_the_texts_not_the_semantics(self):
         """优先级仍然按文本语法那套（`ast` 和 vendor 的
@@ -515,7 +514,7 @@ class TestExprEvaluate(unittest.TestCase):
         **这次改的只有"算什么"**。所以 `2 + 4 * 3` 先算 `4 * 3`（=`fmod(3,4)`=3）
         再算 `2 + 3`（=乘=6）——注意这时候"先算的"反而是取模、"后算的"是乘法，
         优先级和真实语义已经对不上了，这是 vendor 文本形式自带的性质，不是 bug。"""
-        self.assertEqual(_ev("(2 * Mod(4, 3))")[0], 6.0)
+        self.assertEqual(_ev("(2 * (3 % 4))")[0], 6.0)
 
     def test_unary_negation(self):
         """一元负号是唯一没被 vendor 标错的运算符。`-(1 + 2)` = `-(1*2)` = -2。"""
@@ -527,10 +526,10 @@ class TestExprEvaluate(unittest.TestCase):
     def test_min_is_subtraction_and_max_is_power(self):
         """`Min(a, b)` = `b - a`（操作码 5，实机确认）、`Max(a, b)` = `pow(b, a)`
         （操作码 0，语料推断）。真正的 min/max 在这套表达式里不存在。"""
-        self.assertEqual(_ev("(3 - 7)")[0], 4.0)
-        self.assertEqual(_ev("(7 - 3)")[0], -4.0)
-        self.assertEqual(_ev("PowOp(2, 3)")[0], 9.0)
-        self.assertEqual(_ev("PowOp(3, 2)")[0], 8.0)
+        self.assertEqual(_ev("(7 - 3)")[0], 4.0)
+        self.assertEqual(_ev("(3 - 7)")[0], -4.0)
+        self.assertEqual(_ev("(3 ^ 2)")[0], 9.0)
+        self.assertEqual(_ev("(2 ^ 3)")[0], 8.0)
 
     def test_clamp_is_a_remap_with_both_ends_saturated(self):
         """`Clamp(value, hi, lo)` 是把 value 从 `[lo, hi]` 重映射到 `[0, 1]`，**不是**
@@ -543,13 +542,13 @@ class TestExprEvaluate(unittest.TestCase):
         注回"夹住"实现（`min(max(x, lo), hi)`）时 x=4.5 会 FAIL 得到 4.5 而不是 0.5；
         注回旧的"上界不钳"实现时 x=9.0 会 FAIL 得到 2.0 而不是 1.0。
         """
-        self.assertEqual(_ev("SmoothStep(x, 6, 3)", {"x": 3.0})[0], 0.0)
-        self.assertEqual(_ev("SmoothStep(x, 6, 3)", {"x": 6.0})[0], 1.0)
-        self.assertEqual(_ev("SmoothStep(x, 6, 3)", {"x": 4.5})[0], 0.5)
+        self.assertEqual(_ev("SmoothStep(3, 6, x)", {"x": 3.0})[0], 0.0)
+        self.assertEqual(_ev("SmoothStep(3, 6, x)", {"x": 6.0})[0], 1.0)
+        self.assertEqual(_ev("SmoothStep(3, 6, x)", {"x": 4.5})[0], 0.5)
         # 上界饱和：越过 hi 之后恒为 1（实机确认，见上）
-        self.assertEqual(_ev("SmoothStep(x, 6, 3)", {"x": 9.0})[0], 1.0)
+        self.assertEqual(_ev("SmoothStep(3, 6, x)", {"x": 9.0})[0], 1.0)
         # 下界饱和在 0（仍是语料推断，这条测试没有独立实机证据）
-        self.assertEqual(_ev("SmoothStep(x, 6, 3)", {"x": 0.0})[0], 0.0)
+        self.assertEqual(_ev("SmoothStep(3, 6, x)", {"x": 0.0})[0], 0.0)
 
     def test_clamp_mode_switch(self):
         """四档读法都能选到。`remap_saturate_low`/`remap_unclamped`/`bounds_clamp` 是
@@ -557,7 +556,7 @@ class TestExprEvaluate(unittest.TestCase):
         def ev(mode, x):
             notes = []
             ctx = EvalContext({"x": x}, "identity", notes, mode)
-            return expr_evaluate(expr_parse("SmoothStep(x, 6, 3)"), ctx)
+            return expr_evaluate(expr_parse("SmoothStep(3, 6, x)"), ctx)
 
         self.assertEqual(ev("remap_saturate_both", 0.0), 0.0)
         self.assertEqual(ev("remap_saturate_both", 9.0), 1.0)   # 两端都饱和（默认，已实机确认）
@@ -568,9 +567,9 @@ class TestExprEvaluate(unittest.TestCase):
         self.assertEqual(ev("bounds_clamp", 4.5), 4.5)
 
     def test_clamp_degenerate_bounds_are_noted(self):
-        result, notes = _ev("SmoothStep(x, 5, 5)", {"x": 1.0})
+        result, notes = _ev("SmoothStep(5, 5, x)", {"x": 1.0})
         self.assertEqual(result, 0.0)
-        self.assertTrue(any("Clamp" in n for n in notes))
+        self.assertTrue(any("SmoothStep" in n for n in notes))
 
     def test_lerp_clamps_its_factor_and_does_not_extrapolate(self):
         """`Lerp(t, a, b)` 的 `t` **钳在 `[0, 1]`**，而且是线性的、方向是 t=0 取第 3 参。
@@ -590,11 +589,11 @@ class TestExprEvaluate(unittest.TestCase):
         这条零差探针不依赖它。
 
         注回"不钳"会 FAIL：`Lerp(2, 7, 3)` 会给 11 而不是 7。"""
-        self.assertEqual(_ev("Lerp(0, 7, 3)")[0], 3.0)
-        self.assertEqual(_ev("Lerp(1, 7, 3)")[0], 7.0)
-        self.assertEqual(_ev("Lerp(0.5, 7, 3)")[0], 5.0)
-        self.assertEqual(_ev("Lerp(-1, 7, 3)")[0], 3.0)     # 不外推
-        self.assertEqual(_ev("Lerp(2, 7, 3)")[0], 7.0)      # 不外推
+        self.assertEqual(_ev("Lerp(3, 7, 0)")[0], 3.0)
+        self.assertEqual(_ev("Lerp(3, 7, 1)")[0], 7.0)
+        self.assertEqual(_ev("Lerp(3, 7, 0.5)")[0], 5.0)
+        self.assertEqual(_ev("Lerp(3, 7, -1)")[0], 3.0)     # 不外推
+        self.assertEqual(_ev("Lerp(3, 7, 2)")[0], 7.0)      # 不外推
 
     def test_invlerp_is_the_real_clamp(self):
         """**操作码 16（vendor 叫 `InvLerp`）是真正的 `clamp`**：
@@ -624,15 +623,15 @@ class TestExprEvaluate(unittest.TestCase):
         不随参考端点动——两条一起说明跳变由 `hi` 支配。逐读法对照见
         docs/EXPRESSION_SEMANTICS.md 第 3 节。
         """
-        self.assertEqual(_ev("InvLerp(4, 1, 0.5)")[0], 1.0)     # 低于 lo -> lo
-        self.assertEqual(_ev("InvLerp(4, 1, 2.5)")[0], 2.5)     # 区间内 -> 原值
-        self.assertEqual(_ev("InvLerp(4, 1, 9)")[0], 4.0)       # 高于 hi -> hi
+        self.assertEqual(_ev("Clamp(0.5, 1, 4)")[0], 1.0)     # 低于 lo -> lo
+        self.assertEqual(_ev("Clamp(2.5, 1, 4)")[0], 2.5)     # 区间内 -> 原值
+        self.assertEqual(_ev("Clamp(9, 1, 4)")[0], 4.0)       # 高于 hi -> hi
         for x in (-1.0, -0.5, 0.0, 0.5, 0.9, 1.0, 1.5, 2.0):
-            self.assertEqual(_ev("InvLerp(%r, 1, 0)" % x)[0], 1.0, "P1 x=%r" % x)
+            self.assertEqual(_ev("Clamp(0, 1, %r)" % x)[0], 1.0, "P1 x=%r" % x)
         for x, want in ((-1.0, 0.0), (0.3, 0.3), (0.9, 0.9), (2.0, 1.0)):
-            self.assertEqual(_ev("InvLerp(1, 0, %r)" % x)[0], want, "P2 x=%r" % x)
+            self.assertEqual(_ev("Clamp(%r, 0, 1)" % x)[0], want, "P2 x=%r" % x)
         # **它不是 Lerp**：同一组参数下两者必须给出不同的数
-        self.assertNotEqual(_ev("InvLerp(4, 1, 0.5)")[0], _ev("Lerp(0.5, 4, 1)")[0])
+        self.assertNotEqual(_ev("Clamp(0.5, 1, 4)")[0], _ev("Lerp(1, 4, 0.5)")[0])
 
     def test_invlerp_applies_min_before_max_so_lo_wins(self):
         """引擎是 `max(lo, min(hi, value))` —— **`lo > hi` 时 `lo` 赢**。
@@ -642,13 +641,13 @@ class TestExprEvaluate(unittest.TestCase):
         画出斜线。这个先后**是测出来的，不是我们挑的约定**——别"顺手规范化成
         `min<=max`"，那样下面两条会 FAIL（会给 0）。
         """
-        self.assertEqual(_ev("InvLerp(0, 5, 3)")[0], 5.0)       # lo=5 > hi=0 -> lo 赢
-        self.assertEqual(_ev("InvLerp(-2, 1, 0)")[0], 1.0)
+        self.assertEqual(_ev("Clamp(3, 5, 0)")[0], 5.0)       # lo=5 > hi=0 -> lo 赢
+        self.assertEqual(_ev("Clamp(0, 1, -2)")[0], 1.0)
 
     def test_lerp_is_still_a_lerp(self):
-        self.assertEqual(_ev("Lerp(0.5, 0, 8)")[0], 4.0)
-        self.assertEqual(_ev("Lerp(0, 0, 8)")[0], 8.0)
-        self.assertEqual(_ev("Lerp(1, 0, 8)")[0], 0.0)
+        self.assertEqual(_ev("Lerp(8, 0, 0.5)")[0], 4.0)
+        self.assertEqual(_ev("Lerp(8, 0, 0)")[0], 8.0)
+        self.assertEqual(_ev("Lerp(8, 0, 1)")[0], 0.0)
 
     def test_real_corpus_example(self):
         """照抄真实语料的公式（`11_pl_slinger_037.efx.5571972` 的 SpawnExpression），只是
@@ -666,9 +665,9 @@ class TestExprEvaluate(unittest.TestCase):
         的运动方向和"`t=0`→第 2 参"这个读法两次都对不上、和"`t=0`→第 3 参"两次都对得上
         （`ExpressionAssignType` 确认用的是 `Assign`，排除了基准值叠加的混淆）。这条测试
         原来断言 `speed=3.0`(`t=0`) 得 `0.0`、`speed=6.0`(`t=1`) 得 `8.0`，现在反过来。"""
-        self.assertEqual(_ev("Lerp(SmoothStep(speed, 6, 3), 0, 8)", {"speed": 3.0})[0], 8.0)
-        self.assertEqual(_ev("Lerp(SmoothStep(speed, 6, 3), 0, 8)", {"speed": 4.5})[0], 4.0)
-        result, notes = _ev("Lerp(SmoothStep(speed, 6, 3), 0, 8)", {"speed": 6.0})
+        self.assertEqual(_ev("Lerp(8, 0, SmoothStep(3, 6, speed))", {"speed": 3.0})[0], 8.0)
+        self.assertEqual(_ev("Lerp(8, 0, SmoothStep(3, 6, speed))", {"speed": 4.5})[0], 4.0)
+        result, notes = _ev("Lerp(8, 0, SmoothStep(3, 6, speed))", {"speed": 6.0})
         self.assertEqual(result, 0.0)
         self.assertEqual(notes, [])
 
@@ -676,7 +675,7 @@ class TestExprEvaluate(unittest.TestCase):
         """用户报告的那条：`Transform3DExpression` 的 rotationX（assign 方式 = Assign）。
         12 帧内从 -30 线性扫到 190，超过 12 帧后饱和在 190 不再变化（方向已按 2026-09-16
         实机确认的 `Lerp` 读法更正，见 `test_real_corpus_example` 的说明）。"""
-        f = "Lerp(SmoothStep(TIMER, 12, 0), 190, -30)"
+        f = "Lerp(-30, 190, SmoothStep(0, 12, TIMER))"
         self.assertEqual(_ev(f, {"TIMER": 0.0})[0], -30.0)
         self.assertEqual(_ev(f, {"TIMER": 6.0})[0], 80.0)
         self.assertEqual(_ev(f, {"TIMER": 12.0})[0], 190.0)
@@ -723,7 +722,7 @@ class TestExprEvaluate(unittest.TestCase):
         """除法的文本符号是 `-`，而且**除数是左操作数**（`a - b` == `b / a`）。
         `0 - 1` 就是 `1 / 0`——实机测到的正是"按 0"（`(0,1) -> 0`，不是 inf/NaN），
         所以这里的兜底和引擎行为一致，不只是我们自己的防御。"""
-        result, notes = _ev("(0 / 1)")
+        result, notes = _ev("(1 / 0)")
         self.assertEqual(result, 0.0)
         self.assertTrue(any("除零" in n for n in notes))
 
@@ -1312,7 +1311,7 @@ class TestExpressionAngleDegreesConversion(unittest.TestCase):
         "每帧恒定"写的，缓动确认之后改成断言端点总量 + 单调性。"""
         blocks = [_transform3d_block(rot=(0.0, 0.0, 0.0))]
         expressions = [("Transform3D", "rotationX",
-                        "Lerp(SmoothStep(TIMER, 120, 0), 190, -30)", 4, True)]
+                        "Lerp(-30, 190, SmoothStep(0, 120, TIMER))", 4, True)]
         sim = Simulator(blocks, SimConfig(seed=1), expressions=expressions)
         drifts = []
         for _ in range(122):
@@ -1381,7 +1380,7 @@ class TestReplayIsIdempotent(unittest.TestCase):
 
     def test_second_reset_on_the_same_simulator_matches_the_first(self):
         blocks = [_transform3d_block(pos=(0.0, 0.0, 0.0))]
-        expressions = [("Transform3D", "translationY", "Lerp(SmoothStep(TIMER, 12, 0), -1, 0)", 4)]
+        expressions = [("Transform3D", "translationY", "Lerp(0, -1, SmoothStep(0, 12, TIMER))", 4)]
         sim = Simulator(list(blocks), SimConfig(seed=1), expressions=list(expressions))
 
         def play():
@@ -1399,7 +1398,7 @@ class TestReplayIsIdempotent(unittest.TestCase):
         """不只是"重播稳定"，第一次播放的结果必须和**另起一个全新 Simulator**（模拟重新
         导入文件）完全一致——排除"其实是第二次才对、第一次才是异常"这种可能性。"""
         blocks = [_transform3d_block(pos=(0.0, 0.0, 0.0))]
-        expressions = [("Transform3D", "translationY", "Lerp(SmoothStep(TIMER, 12, 0), -1, 0)", 4)]
+        expressions = [("Transform3D", "translationY", "Lerp(0, -1, SmoothStep(0, 12, TIMER))", 4)]
 
         first = self._run_once(blocks, expressions)
         fresh = self._run_once(blocks, expressions)
@@ -1424,7 +1423,7 @@ class TestTransform3DExpressionDrivesTrackedParticles(unittest.TestCase):
                  _life_forever_block()]
         if with_parentoptions:
             blocks.append(_parentoptions_block(use_local=1))
-        expressions = [("Transform3D", "translationY", "Lerp(SmoothStep(TIMER, 12, 0), -1, 0)", 4)]
+        expressions = [("Transform3D", "translationY", "Lerp(0, -1, SmoothStep(0, 12, TIMER))", 4)]
         sim = Simulator(blocks, SimConfig(seed=1), expressions=expressions)
         sim.reset()
         origin_at_spawn = None

@@ -463,6 +463,11 @@ class EFX_RE_OT_export(Operator, ExportHelper):
             self.report({"WARNING"}, f"这棵树有 {len(unwritable)} 处上游写不回去的构造：{head}")
 
         data = io_tree.export_root_to_efxfile(root_col, reorder_effect_groups=self.reorder_effect_groups)
+        try:
+            io_tree.check_expression_notation(root_col, data)
+        except io_tree.ExpressionNotationError as ex:
+            self.report({"ERROR"}, str(ex))
+            return {"CANCELLED"}
         out_path, notice, fatal = _ensure_version_suffix(self.filepath, data)
         if fatal:
             # 补不出合法后缀：拒绝导出，别留一个注定读不回来的文件。

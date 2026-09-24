@@ -2052,8 +2052,8 @@ class EFXExpressionNodeItem(PropertyGroup):
     # 自动按度显示/接受输入，get/set 原样传回弧度，不需要手动 math.degrees()/radians()）。
     # 只在这个 CONST 槽位被 `expr_edit._curve_wants_degrees()` 判定"和这条曲线的目标字段
     # 同一个单位（角度）"时才画它而不是裸的 `value`——**不是**"这条曲线里的每个常量都换算"，
-    # `Lerp(Clamp(TIMER, 120, 0), 190, -30)` 的 `120`/`0` 是帧数阈值，被当角度换算会把
-    # `Clamp` 的重映射区间整个改坏，见 `efx_sim/expr.py::propagate_same_unit_as_root()`。
+    # `Lerp(-30, 190, SmoothStep(0, 120, TIMER))` 的 `0`/`120` 是帧数阈值，被当角度换算会把
+    # `SmoothStep` 的重映射区间整个改坏，见 `efx_sim/expr.py::propagate_same_unit_as_root()`。
     degrees_value: FloatProperty(
         name="Value", subtype="ANGLE",
         get=lambda self: self.value,
@@ -2125,10 +2125,10 @@ class EFXExpressionCurveItem(PropertyGroup):
     `EFXExpressionObject`）。和 `EFXClipCurveItem` 是同一个 BitSet 家族——`bit_index` 的
     0-based 语义、"子曲线数组下标和排序后的置位 bit 下标一一对应"的约定完全相同（见
     `EFXClipCurveItem` 的说明），已用真实样本验证（`11_guide_006` 里 `bit_name == "color"`
-    的那条公式是 `Lerp(IsBlue, colorR_N, color_N)`，语义吻合）。
+    的那条公式是 `Lerp(color_N, colorR_N, IsBlue)`，语义吻合）。
 
     公式本身不存成后缀栈（`EFXExpressionObject.components`），存成 vendor 自带的文本表示
-    （`formula`，如 `"min(1, clamp(TIMER, 30, 150))"`）——`EfxExpressionStringParser`/
+    （`formula`，如 `"Min(1, Clamp(TIMER, 30, 150))"`）——`EfxExpressionStringParser`/
     `EFXExpressionTree.ToString()` 已经是现成、经过测试的双向转换（`EfxExpressionParser.cs`），
     没有必要在 Python 这边再实现一遍递归下降解析器和优先级规则；后缀栈↔树↔文本的转换全部交给
     EfxBridge（dump 时调用 `EfxFile.ParseExpressions()`，load 时调用
@@ -2141,11 +2141,11 @@ class EFXExpressionCurveItem(PropertyGroup):
     formula: StringProperty(name="Formula", default="0",
                             update=_expression_formula_changed)
     formula_error: StringProperty(name="Error")
-    #: `formula` 的**规范记法**视图（`efx_sim/expr_text.py`）。vendor 给六个二元操作码
-    #: 起的名字一个都不对（见 docs/EXPRESSION_RULES.md），照公式文本字面意思写出来的公式必然是错的；这一栏
-    #: 按真实语义显示，也可以直接按真实语义编辑。派生量，不存、不参与导出。
+    #: `formula` 的**规范记法**视图（`efx_sim/expr_text.py`）：符号和函数与引擎记法相同，
+    #: 但按数学惯例读结构（左结合、少括号）——vendor 的解析器是右结合的，`10 - 3 - 2`
+    #: 直接交给它会读成 `10 - (3 - 2)`。派生量，不存、不参与导出。
     formula_canonical: StringProperty(
-        name="Formula", description="按真实语义读写的公式",
+        name="Formula", description="按数学惯例读写的公式",
         get=_read_formula_canonical, set=_write_formula_canonical)
     #: `formula` 的结构化视图，见 `EFXExpressionNodeItem`。派生量，不参与导出。
     nodes: CollectionProperty(type=EFXExpressionNodeItem)
@@ -2289,7 +2289,7 @@ class EFXMaterialExpressionItem(PropertyGroup):
     formula: StringProperty(name="Formula", default="0", update=_expression_formula_changed)
     formula_error: StringProperty(name="Error")
     formula_canonical: StringProperty(
-        name="Formula", description="按真实语义读写的公式",
+        name="Formula", description="按数学惯例读写的公式",
         get=_read_formula_canonical, set=_write_formula_canonical)
     nodes: CollectionProperty(type=EFXExpressionNodeItem)
     nodes_active_index: IntProperty(name="Active Node")

@@ -423,6 +423,7 @@ def build_root_from_efxfile(
     own_collection.children.link(actions_collection)
 
     own_collection["~TYPE"] = model.TYPE_ROOT
+    stamp_expression_notation(own_collection)
     root_obj = own_collection  # 下面这一大段原样沿用，只是承载体从 Empty 换成了集合
     if parent_obj is not None:
         parent_obj.efx_nested_root = own_collection
@@ -1202,6 +1203,73 @@ def check_expression_bits(root_col: Collection) -> None:
             "以下 Expression attribute 的公式 bit_index 有问题（越界或重复），会导致导出出错或"
             "静默丢数据，请先修正：\n" + "\n".join(f"  {m}" for m in issues)
         )
+
+
+# ---------------------------------------------------------------------------
+# 公式记法版本
+# ---------------------------------------------------------------------------
+# vendor `1c2f92d` 起，引擎记法的操作数顺序和多参函数的参数顺序整体翻了过来（见
+# efx_sim/expr.py 模块 docstring）。公式在 .blend 里存的就是引擎文本（`formula`），旧版插件
+# 存下的 `(a / b)` 原意是 `b / a`——新版照样能解析、不报错，导出就静默变成 `a / b`。
+#
+# 所以每个 EFX_ROOT 建出来时打一个记法版本号；没有这个版本号、而且带公式的树一律拒绝导出
+# （铁律 #1）。用户重新导入原始 .efx 就行。2026-09-24 用户拍板选"拒绝"，不做自动迁移。
+#
+# 同一条公式还能经 Copy/Paste 和 Entry 预设从旧树流进新树，那两条路在 copy_paste.py /
+# entry_presets.py 里用同一个判据拦住，否则旧写法会被"洗"进一棵打了新版本号的树。
+EXPR_NOTATION_KEY = "efx_re_expr_notation"
+EXPR_NOTATION_VERSION = 2
+
+EXPR_NOTATION_STALE_MESSAGE = (
+    "这里的公式是旧版插件按旧写法存的，新版会读错它们的含义。"
+    "请重新导入原始 .efx 文件后再操作。"
+)
+
+
+class ExpressionNotationError(Exception):
+    """check_expression_notation() 校验失败时抛出：见上面这一节的说明。"""
+
+
+def stamp_expression_notation(root_col: Collection) -> None:
+    root_col[EXPR_NOTATION_KEY] = EXPR_NOTATION_VERSION
+
+
+def has_current_expression_notation(root_col: Collection | None) -> bool:
+    return root_col is not None and root_col.get(EXPR_NOTATION_KEY) == EXPR_NOTATION_VERSION
+
+
+def dict_has_expressions(data) -> bool:
+    """导出 dict 里有没有公式文本。公式树在 JSON 里的形状是 `{"expression": str, ...}`
+    （`Program.cs` 的 `FixedExpressionTreeJsonConverter`），不管挂在哪种 attribute 上。
+    按导出结果判而不是按 Blender 侧的存储位置判，这样以后新增的公式载体也漏不掉。"""
+    stack = [data]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, dict):
+            if isinstance(item.get("expression"), str):
+                return True
+            stack.extend(item.values())
+        elif isinstance(item, list):
+            stack.extend(item)
+    return False
+
+
+def _roots_in_tree(root_col: Collection) -> list:
+    """`root_col` 自己 + 它下面所有 PlayEmitter 嵌套的 EFX_ROOT。"""
+    out = [root_col]
+    for parent_obj in root_entries(root_col) + root_actions(root_col):
+        for attr_obj in typed_children(parent_obj, model.TYPE_ATTRIBUTE):
+            nested = attr_obj.efx_nested_root
+            if nested is not None and nested.get("~TYPE") == model.TYPE_ROOT:
+                out.extend(_roots_in_tree(nested))
+    return out
+
+
+def check_expression_notation(root_col: Collection, data: dict) -> None:
+    """导出前校验：`data` 是 `export_root_to_efxfile(root_col)` 的产物。"""
+    stale = [r.name for r in _roots_in_tree(root_col) if not has_current_expression_notation(r)]
+    if stale and dict_has_expressions(data):
+        raise ExpressionNotationError(f"'{root_col.name}'：{EXPR_NOTATION_STALE_MESSAGE}")
 
 
 # 已知"能读进来、改得动、但 vendor 写不回去"的构造，登记在 KNOWN_UPSTREAM_ISSUES.md。

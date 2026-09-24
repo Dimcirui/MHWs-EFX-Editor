@@ -91,6 +91,23 @@ def _write_clipboard(marker: str, payload: dict) -> None:
     bpy.context.window_manager.clipboard = json.dumps(blob)
 
 
+def _copy_refusal(obj, data) -> str | None:
+    """旧版插件导入的树里的公式按旧写法存着，复制出去再贴进新树就会被当成新写法读
+    （见 io_tree 的"公式记法版本"一节）。只在真带公式的时候拦。"""
+    if io_tree.has_current_expression_notation(io_tree.find_root(obj)):
+        return None
+    return io_tree.EXPR_NOTATION_STALE_MESSAGE if io_tree.dict_has_expressions(data) else None
+
+
+def _paste_refusal(payload: dict) -> str | None:
+    """剪贴板是系统剪贴板，会跨 Blender 会话、跨插件版本留着。没有记法版本号的旧内容
+    带公式就不贴。"""
+    if payload.get("expr_notation") == io_tree.EXPR_NOTATION_VERSION:
+        return None
+    return (io_tree.EXPR_NOTATION_STALE_MESSAGE
+            if io_tree.dict_has_expressions(payload.get("data")) else None)
+
+
 def _read_clipboard(marker: str) -> dict | None:
     """读回 `_write_clipboard(marker, ...)` 存的那个槽位的完整 payload（含 kind/label/data），
     不影响另一个槽位。"""
@@ -147,8 +164,13 @@ class EFX_RE_OT_object_copy(Operator):
         obj = context.object
         tag = obj.get("~TYPE")
         data = io_tree.export_entry_object(obj) if tag == model.TYPE_ENTRY else io_tree.export_attribute_object(obj)
+        refusal = _copy_refusal(obj, data)
+        if refusal:
+            self.report({"ERROR"}, refusal)
+            return {"CANCELLED"}
         label = _object_label(obj, tag)
-        _write_clipboard(_CLIP_MARKER_OBJECT, {"kind": tag, "label": label, "data": data})
+        _write_clipboard(_CLIP_MARKER_OBJECT, {"kind": tag, "label": label, "data": data,
+                                               "expr_notation": io_tree.EXPR_NOTATION_VERSION})
         self.report({"INFO"}, f"已复制 {label} '{obj.name}'")
         return {"FINISHED"}
 
@@ -180,6 +202,10 @@ class EFX_RE_OT_object_paste(Operator):
         payload = _read_clipboard(_CLIP_MARKER_OBJECT)
         if payload is None:
             self.report({"ERROR"}, "剪贴板里没有可粘贴的对象（先在某个 Entry/Attribute 上用 Copy Object）")
+            return {"CANCELLED"}
+        refusal = _paste_refusal(payload)
+        if refusal:
+            self.report({"ERROR"}, refusal)
             return {"CANCELLED"}
 
         kind = payload.get("kind")
@@ -231,8 +257,13 @@ class EFX_RE_OT_properties_copy(Operator):
         # 身份字段（name/Attributes/$type/UniqueID/...）混在同一个 dict 里传过去也没关系，
         # 会被原样忽略，不需要单独写一套"只导出内容"的序列化。
         data = io_tree.export_entry_object(obj) if tag == model.TYPE_ENTRY else io_tree.export_attribute_object(obj)
+        refusal = _copy_refusal(obj, data)
+        if refusal:
+            self.report({"ERROR"}, refusal)
+            return {"CANCELLED"}
         label = _object_label(obj, tag)
-        _write_clipboard(_CLIP_MARKER_PROPERTIES, {"kind": tag, "label": label, "data": data})
+        _write_clipboard(_CLIP_MARKER_PROPERTIES, {"kind": tag, "label": label, "data": data,
+                                                   "expr_notation": io_tree.EXPR_NOTATION_VERSION})
         self.report({"INFO"}, f"已复制 {label} 的属性")
         return {"FINISHED"}
 
@@ -273,6 +304,10 @@ class EFX_RE_OT_properties_paste(Operator):
         payload = _read_clipboard(_CLIP_MARKER_PROPERTIES)
         if payload is None:
             self.report({"ERROR"}, "剪贴板里没有可粘贴的属性（先在某个 Entry/Attribute 上用 Copy Properties）")
+            return {"CANCELLED"}
+        refusal = _paste_refusal(payload)
+        if refusal:
+            self.report({"ERROR"}, refusal)
             return {"CANCELLED"}
 
         tag = obj.get("~TYPE")

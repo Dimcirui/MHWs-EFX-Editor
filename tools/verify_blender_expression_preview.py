@@ -217,7 +217,7 @@ def verify_variables_and_agreement(report: Report):
     attr["~TYPE"] = model.TYPE_ATTRIBUTE
     attr.efx_is_expression_attribute = True
     curve = attr.efx_expression_curves.add()
-    curve.formula = "Lerp(SmoothStep(TIMER, 12, 0), 190, -30)"
+    curve.formula = "Lerp(-30, 190, SmoothStep(0, 12, TIMER))"
     attr.efx_expression_curves_active_index = 0
     bpy.context.view_layer.objects.active = attr
 
@@ -280,7 +280,7 @@ def verify_series_and_confidence(report: Report, attr, curve) -> None:
     _expr._UNKNOWN_FUNC_ARGC["FuncNew"] = 1
     _expr.CALL_SIGNATURES["FuncNew"] = (1, _expr.CONFIDENCE_UNKNOWN)
     try:
-        curve.formula = "Lerp(FuncNew(SmoothStep(TIMER, 12, 0)), 190, -30)"
+        curve.formula = "Lerp(-30, 190, FuncNew(SmoothStep(0, 12, TIMER)))"
         series2 = expr_preview.hud_series(bpy.context, obj=attr, frames=8)
         report.check("置信度取最差的那一档（注入的未知函数 -> unknown）",
                      series2.confidence == _expr.CONFIDENCE_UNKNOWN, str(series2.confidence))
@@ -301,7 +301,7 @@ def verify_series_and_confidence(report: Report, attr, curve) -> None:
 
     # 反向检查：已经测出语义的函数**不能**被当成未知（否则 UI 会永远挂着"语义未确认"）。
     # 2026-09-16 那一轮把 12 个 `Unary*` + `Func18`~`Func21` 全部定了下来。
-    curve.formula = "Lerp(Saturate(SmoothStep(TIMER, 12, 0)), Remap(1, 0, 12, 0, TIMER), -30)"
+    curve.formula = "Lerp(-30, Remap(TIMER, 0, 12, 0, 1), Saturate(SmoothStep(0, 12, TIMER)))"
     series2b = expr_preview.hud_series(bpy.context, obj=attr, frames=8)
     report.check("已实机确认的 Unary10（saturate）/ Func21 不再算未知档",
                  series2b.confidence != _expr.CONFIDENCE_UNKNOWN, str(series2b.confidence))
@@ -322,7 +322,7 @@ def verify_series_and_confidence(report: Report, attr, curve) -> None:
                  str(fallback.clamp_mode))
 
     # 除零：求值器的约定是 note + 0.0
-    curve.formula = "(TIMER + (TIMER / 5))"
+    curve.formula = "(TIMER + (5 / TIMER))"
     series3 = expr_preview.hud_series(bpy.context, obj=attr, frames=8)
     report.check("除零那一帧有 note", any("除零" in n for n in series3.notes),
                  str(series3.notes))
@@ -335,7 +335,7 @@ def verify_series_and_confidence(report: Report, attr, curve) -> None:
     report.check("整条都算不出来时几何返回 None（不画一条平在 0 的假线）",
                  _plot.build(series4) is None)
 
-    curve.formula = "Lerp(SmoothStep(TIMER, 12, 0), 190, -30)"
+    curve.formula = "Lerp(-30, 190, SmoothStep(0, 12, TIMER))"
 
 
 def verify_subtree_values_and_plot(report: Report, attr, curve) -> None:
@@ -349,22 +349,22 @@ def verify_subtree_values_and_plot(report: Report, attr, curve) -> None:
     print("\n=== 逐节点值 / 子树曲线")
     from blender_efx_re import expr_edit
 
-    curve.formula = "Lerp(SmoothStep(TIMER, 12, 0), 190, -30)"
+    curve.formula = "Lerp(-30, 190, SmoothStep(0, 12, TIMER))"
     expr_edit.rebuild_rows(curve)
     bpy.context.scene.frame_current = 6
     rows = expr_edit.read_rows(curve)
     # 7 行：`-30` 在建行时就折成了一个带符号常量（`expr._collect_rows()`），
     # 不再是"NEG + 常量"两行——界面上因此没有游离的负号
     report.check("行结构是 7 行（-30 折成一个带符号常量）", len(rows) == 7, str(len(rows)))
-    report.check("最后一行是 -30 这个带符号常量",
-                 rows[-1]["kind"] == "CONST" and rows[-1]["value"] == -30.0, str(rows[-1]))
+    report.check("第 1 行是 -30 这个带符号常量",
+                 rows[1]["kind"] == "CONST" and rows[1]["value"] == -30.0, str(rows[1]))
 
     values = expr_preview.subtree_values(bpy.context, curve, rows)
-    # 0 Lerp / 1 Clamp / 2 TIMER / 3 12 / 4 0 / 5 190 / 6 -30
-    want = {0: 80.0, 1: 0.5, 2: 6.0, 3: 12.0, 4: 0.0, 5: 190.0, 6: -30.0}
+    # 0 Lerp / 1 -30 / 2 190 / 3 SmoothStep / 4 0 / 5 12 / 6 TIMER
+    want = {0: 80.0, 1: -30.0, 2: 190.0, 3: 0.5, 4: 0.0, 5: 12.0, 6: 6.0}
     bad = {k: (values.get(k), v) for k, v in want.items()
            if values.get(k) is None or abs(values[k] - v) > 1e-6}
-    report.check("每一级子树各自的值都对（TIMER=6：Clamp=0.5、Lerp=80）", not bad, str(bad))
+    report.check("每一级子树各自的值都对（TIMER=6：SmoothStep=0.5、Lerp=80）", not bad, str(bad))
 
     # 选中根 -> 画整条公式
     curve.nodes_active_index = 0
@@ -375,20 +375,20 @@ def verify_subtree_values_and_plot(report: Report, attr, curve) -> None:
                  root_series.values[0] == -30.0 and root_series.values[12] == 190.0,
                  str(root_series.values[:1] + root_series.values[12:13]))
 
-    # 选中 Clamp -> 画 Clamp 自己（0 -> 1 的斜坡，上界饱和所以 24 帧仍是 1，2026-09-16 实机确认）
-    curve.nodes_active_index = 1
+    # 选中 SmoothStep -> 画它自己（0 -> 1 的斜坡，上界饱和所以 24 帧仍是 1，2026-09-16 实机确认）
+    curve.nodes_active_index = 3
     text, is_root = expr_preview.active_subtree(bpy.context, curve)
-    report.check("选中 Clamp 时子公式文本正确",
-                 (not is_root) and text == "SmoothStep(TIMER, 12, 0)", text)
+    report.check("选中 SmoothStep 时子公式文本正确",
+                 (not is_root) and text == "SmoothStep(0, 12, TIMER)", text)
     sub_series = expr_preview.hud_series(bpy.context, obj=attr, frames=24)
-    report.check("子树曲线是 Clamp 自己（0 -> 1 -> 饱和在 1），不是整条公式",
+    report.check("子树曲线是 SmoothStep 自己（0 -> 1 -> 饱和在 1），不是整条公式",
                  sub_series.values[0] == 0.0 and abs(sub_series.values[12] - 1.0) < 1e-6
                  and abs(sub_series.values[24] - 1.0) < 1e-6,
                  str([sub_series.values[0], sub_series.values[12], sub_series.values[24]]))
     report.check("HUD 标题写明画的是哪一级", ">" in sub_series.label, sub_series.label)
 
     # 选中一个叶子也要能画（常量 -> 一条平线，且几何不退化）
-    curve.nodes_active_index = 3
+    curve.nodes_active_index = 5
     leaf_plot = expr_preview.hud_plot(bpy.context, obj=attr, frames=24)
     report.check("选中常量叶子也画得出来（平线，跨度不为 0）",
                  leaf_plot is not None and leaf_plot.y1 > leaf_plot.y0,

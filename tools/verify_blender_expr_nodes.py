@@ -14,16 +14,16 @@ tools/verify_blender_expr_nodes.py —— Expression 节点视口的回归防护
 ------------------
 `verify_blender_expression_edit.py` 走的是**行视图**那条路（`formula` -> 行 -> `formula`），
 节点图这条路它一步都走不到：行 -> 节点+连线 -> 行 这一段是全新的，而且中间多了两个
-行视图没有的东西——**插槽的显示顺序**（规范记法下六个操作码里四个操作数顺序是反的）和
-**叶子存在插槽上而不是独立节点上**。这两处各自都能单独错，而且都错得很隐蔽。
+行视图没有的东西——**插槽的摆放顺序**和**叶子存在插槽上而不是独立节点上**。这两处各自
+都能单独错，而且都错得很隐蔽。
 
 ⚠ **这里的核心判据不是"图能画出来"，是往返恒等 + 独立对拍。**
-`build_graph` 和 `read_graph` 共用 `expr_text.display_arg_order()` 这一张顺序表，
-所以"摆错顺序"这种错误是**双向一致**的：建图时按错的顺序摆、读回时按同样错的顺序读，
+vendor `1c2f92d` 起插槽顺序就是公式文本里的参数顺序，建图和读回都按插槽下标直走。
+但"摆错顺序"这种错误可以是**双向一致**的：建图时倒着摆、读回时同样倒着读，
 `formula` 一个字符都不会变，逐字节门禁、文本重拼门禁、往返恒等**会一起绿**（CLAUDE.md
-验证纪律最后那条）。所以检查项 3 专门**不走 `display_arg_order()`**，改用一条独立的
-路径对拍：拿 `expr_text.rows_to_canonical()`（规范记法文本，另一套代码）解析出来的
-运算符/操作数顺序，和图上插槽实际摆的顺序逐个比。
+验证纪律最后那条）。所以检查项 3 走一条独立的路径对拍：拿
+`expr_text.rows_to_canonical()`（规范记法文本，另一套代码）里各操作数出现的先后，
+和图上插槽实际摆的顺序逐个比。
 
 检查项
 ------
@@ -31,7 +31,7 @@ tools/verify_blender_expr_nodes.py —— Expression 节点视口的回归防护
 2. 全量"过一遍节点图"之后导出，字节 == 纯 CLI 往返基线（判据是 CLI 往返产物，
    不是原文件——验证纪律）；
 3. **独立对拍**：图上第一层插槽的摆放顺序，和规范记法文本里那一层的操作数顺序一致
-   （不共用 `display_arg_order()`，见上面那段）；
+   （见上面那段）；
 4. 叶子真的在插槽上：图里的节点数 == 行里 arity>0 的行数（叶子一个节点都不该造）；
 5. 编辑能力：改插槽常量 / 改插槽变量名 / 换节点函数 / 断开连线退回叶子 / 重新连线，
    五种都真的改到了 `formula`，且改完仍能被桥接的解析器接受；
@@ -70,19 +70,20 @@ from efx_sim import expr as _expr, expr_text as _expr_text  # noqa: E402
 #: （CLAUDE.md 验证纪律第三条）。
 _INJECTION_MATRIX = """\n| # | 注入                                                    | 1 往返 | 2 字节 | 3 对拍 | 4 叶子 | 5 编辑 | 6 拒绝 |
 |---|---------------------------------------------------------|--------|--------|--------|--------|--------|--------|
-| 1 | `display_arg_order()` 对二元操作码一律不 swap            | 绿     | 绿     | **红** | 绿     | 绿     | 绿     |
-| 2 | `_build_into()` 按 vendor 顺序摆插槽（跳过 order 映射）  | **红** | **红** | **红** | 绿     | **红** | 绿     |
-| 3 | `_emit_node()` 读回时不按 order 还原                     | **红** | **红** | 绿     | 绿     | **红** | 绿     |
+| 1 | `_build_into()` 和 `_emit_node()` 都倒着走插槽            | 绿     | 绿     | **红** | 绿     | 绿     | 绿     |
+| 2 | 只有 `_build_into()` 倒着摆插槽                          | **红** | **红** | **红** | 绿     | 绿     | **红** |
+| 3 | 只有 `_emit_node()` 倒着读插槽                           | **红** | **红** | 绿     | 绿     | 绿     | **红** |
 | 4 | 叶子额外造一个独立节点                                   | 绿     | 绿     | 绿     | **红** | 绿     | 绿     |
 | 5 | `_emit_node()` 去掉 `seen`（允许 DAG）                   | 绿     | 绿     | 绿     | 绿     | 绿     | **红** |
 | 6 | `rebuild_sockets()` 参数变少时不裁插槽                   | 绿     | 绿     | 绿     | 绿     | **红** | 绿     |
 
-六条全部实测过，每条都 exit=1 且有具名 FAIL 行。**这是测出来的，不是推出来的**，
-改代码之后重跑一遍才算数。三处反直觉的地方，别凭直觉改回去：
+六条全部实测过，每条都 exit=1 且有具名 FAIL 行（第 1~3 行 2026-09-24 按插槽直走的实现
+重测过）。**这是测出来的，不是推出来的**，改代码之后重跑一遍才算数。三处反直觉的地方，
+别凭直觉改回去：
 
-- **第 1 行只有对拍红。** 建图和读回共用同一张顺序表，一起错 -> 往返恒等、文本重拼、
-  逐字节**全绿**。这就是这条门禁存在的理由（CLAUDE.md 验证纪律最后那条的又一个实例），
-  也是检查项 3 必须绕开 `display_arg_order()` 自己算一遍的原因。
+- **第 1 行只有对拍红。** 建图和读回一起错 -> 往返恒等、文本重拼、逐字节**全绿**。
+  这就是这条门禁存在的理由（CLAUDE.md 验证纪律最后那条的又一个实例），也是检查项 3
+  必须另走一条路自己算一遍的原因。
 - **第 3 行对拍反而绿。** 只坏读回那一侧时，检查项 3 用来给插槽认领子树的规范文本
   自己也被搅乱了，认不出来就跳过（`count(text) != 1` -> None）。它由往返和字节兜住。
 - **第 2/3 行的字节红是有条件的**：`verify_sample()` 必须把读回的行 `apply_rows()`
@@ -170,14 +171,14 @@ def _graph_roundtrip(tree, obj, curve_index):
 
 
 # ---------------------------------------------------------------------------
-# 检查项 3：独立对拍（**不共用 display_arg_order()**）
+# 检查项 3：独立对拍（**不碰节点图的建/读代码**）
 # ---------------------------------------------------------------------------
 
 def _canonical_operand_order(rows):
     """根节点在**规范记法**下的操作数顺序：返回 `[vendor 参数下标, ...]`，
     第 i 项是"规范文本里第 i 个操作数"对应的 vendor 参数下标。
 
-    实现上刻意绕开 `expr_text.display_arg_order()`——那是被测代码。这里改用
+    实现上不碰节点图的建/读代码（那是被测代码）。这里用
     `rows_to_canonical()` 生成整条规范文本，再把每个子树各自的规范文本拿出来，
     按它们在根的规范文本里**出现的先后**排序。两条路径唯一共享的只有
     `rows_to_canonical()` 本身，而它有 `tests/test_sim_expr_text.py` 的独立覆盖。
@@ -199,6 +200,16 @@ def _canonical_operand_order(rows):
     return [vendor_pos for _at, vendor_pos in positions]
 
 
+#: 交换两个操作数会改变结果的二元运算符。可交换的（`+ * Min Max`）摆反了也看不出来，
+#: 顺序对拍只在根是这些、或者是 3 参以上的函数时才真的测到东西。
+_ASYMMETRIC_BINARY = frozenset({"-", "/", "%", "^", "Pow"})
+
+
+def _order_matters(row) -> bool:
+    arity = int(row.get("arity", 0))
+    return arity >= 3 or (arity == 2 and row.get("name") in _ASYMMETRIC_BINARY)
+
+
 def _child_index(rows, nth):
     return _expr.child_indices(rows, 0)[nth]
 
@@ -207,7 +218,7 @@ def _graph_socket_order(tree, rows):
     """图上根节点的插槽实际摆放顺序，同样表示成 `[vendor 参数下标, ...]`。
 
     做法是把每个插槽背后的子树读回成行、再转成规范文本，然后和 `rows` 里各个
-    vendor 参数的规范文本对上号——**读的是图的实际形状**，不问 `display_arg_order()`。
+    vendor 参数的规范文本对上号——**读的是图的实际形状**。
     """
     output = next((n for n in tree.nodes if n.bl_idname == expr_nodes._OUTPUT_NODE_ID), None)
     root = expr_nodes._source_node(output.inputs[0]) if output else None
@@ -300,8 +311,8 @@ def verify_sample(orig: pathlib.Path, workdir: pathlib.Path, report: Report,
             skipped_order += 1
         else:
             stats["order_checked"] += 1
-            if int(before[0].get("arity", 0)) == 2 and before[0]["name"] in _expr.CANONICAL_OPERATORS:
-                stats["order_checked_swappable"] += 1
+            if _order_matters(before[0]):
+                stats["order_checked_asymmetric"] += 1
             if expected != actual:
                 bad_order.append((original, expected, actual))
 
@@ -316,7 +327,7 @@ def verify_sample(orig: pathlib.Path, workdir: pathlib.Path, report: Report,
                  f"{len(bad_roundtrip)} 条不等：{bad_roundtrip[:3]}")
     report.check(f"[{stem}] 从图重拼的文本 == 原文本", not bad_text,
                  f"{len(bad_text)} 条不等：{bad_text[:2]}")
-    report.check(f"[{stem}] 插槽顺序对拍（不共用 display_arg_order）", not bad_order,
+    report.check(f"[{stem}] 插槽顺序对拍（独立路径）", not bad_order,
                  f"{len(bad_order)} 条顺序不对：{bad_order[:2]}")
     report.check(f"[{stem}] 叶子在插槽上、没造成独立节点", not bad_leaf,
                  f"{len(bad_leaf)} 条节点数对不上：{bad_leaf[:2]}")
@@ -518,7 +529,7 @@ def main() -> int:
 
     report = Report()
     total = 0
-    stats = {"calls": 0, "order_checked": 0, "order_checked_swappable": 0}
+    stats = {"calls": 0, "order_checked": 0, "order_checked_asymmetric": 0}
     for orig in samples:
         total += verify_sample(orig, workdir, report, stats)
     verify_editing(report)
@@ -526,19 +537,20 @@ def main() -> int:
     print("\n=== 样本覆盖")
     print(f"  最大图规模（调用节点数）: {stats['calls']}")
     print(f"  做了顺序对拍的公式: {stats['order_checked']} 条，"
-          f"其中根是**操作数会翻转**的二元操作码的: {stats['order_checked_swappable']} 条")
+          f"其中根的参数顺序真的有意义（非交换运算 / 3 参以上函数）的: "
+          f"{stats['order_checked_asymmetric']} 条")
 
     if total == 0:
         print(f"\n[ERROR] {len(samples)} 个样本里一条 Expression 公式都没有，这条门禁等于没跑。"
               "换一个带 IExpressionAttribute 的样本（diag/11_guide_006.efx.5571972.orig 就有）。")
         return 1
-    if stats["order_checked_swappable"] == 0:
-        # 顺序对拍是这条门禁存在的主要理由（见模块 docstring）。一条会翻转的都没测到时，
+    if stats["order_checked_asymmetric"] == 0:
+        # 顺序对拍是这条门禁存在的主要理由（见模块 docstring）。根全是可交换运算时，
         # 检查项 3 实质上是空跑——必须说出来并退 1，不静默全绿（验证纪律第二条）。
-        print("\n[ERROR] 顺序对拍一条「操作数会翻转的二元操作码」都没测到"
-              f"（`-` `*` `Min` `Max` 这四个，见 expr.CANONICAL_OPERATORS）。"
+        print("\n[ERROR] 顺序对拍一条「参数顺序有意义」的根都没测到"
+              "（`-` `/` `%` `^` `Pow` 或 3 参以上函数）。"
               "检查项 3 是这条门禁的核心，样本覆盖不到它等于没跑。"
-              "往 diag/ 放一个根是这四个操作码之一的公式样本。")
+              "往 diag/ 放一个根是这类调用的公式样本。")
         return 1
 
     print(f"\n过了 {total} 条公式")

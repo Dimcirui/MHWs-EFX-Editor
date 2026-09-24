@@ -226,7 +226,7 @@ def verify_editing_operations(report: Report) -> None:
     holder["~TYPE"] = model.TYPE_ATTRIBUTE
     holder.efx_is_expression_attribute = True
     curve = holder.efx_expression_curves.add()
-    curve.formula = "Lerp(SmoothStep(TIMER, 180, 90), -0.5, 0)"
+    curve.formula = "Lerp(0, -0.5, SmoothStep(90, 180, TIMER))"
     expr_edit.rebuild_rows(curve)
     holder.efx_expression_curves_active_index = 0
 
@@ -234,14 +234,15 @@ def verify_editing_operations(report: Report) -> None:
     report.check("文本 -> 行：节点个数对得上", len(curve.nodes) == 7, str(len(curve.nodes)))
 
     # 改一个常量 -> formula 立刻跟着变（走的是 model.py 上的 update 回调）
-    curve.nodes[3].value = 120.0
+    # 行序：0 Lerp / 1 `0` / 2 `-0.5` / 3 SmoothStep / 4 `90` / 5 `180` / 6 TIMER
+    curve.nodes[5].value = 120.0
     report.check("改常量节点会重拼 formula",
-                 curve.formula == "Lerp(SmoothStep(TIMER, 120, 90), -0.5, 0)", curve.formula)
+                 curve.formula == "Lerp(0, -0.5, SmoothStep(90, 120, TIMER))", curve.formula)
 
     # 改变量名 -> 同上
-    curve.nodes[2].name = "Speed"
+    curve.nodes[6].name = "Speed"
     report.check("改变量节点会重拼 formula",
-                 curve.formula == "Lerp(SmoothStep(Speed, 120, 90), -0.5, 0)", curve.formula)
+                 curve.formula == "Lerp(0, -0.5, SmoothStep(90, 120, Speed))", curve.formula)
 
     # 反方向：手打文本 -> 行跟着重建
     curve.formula = "(1 - TIMER)"
@@ -256,7 +257,7 @@ def verify_editing_operations(report: Report) -> None:
                  bool(curve.formula_error) and len(curve.nodes) == 0,
                  f"error={curve.formula_error!r} rows={len(curve.nodes)}")
 
-    curve.formula = "Lerp(SmoothStep(TIMER, 180, 90), -0.5, 0)"
+    curve.formula = "Lerp(0, -0.5, SmoothStep(90, 180, TIMER))"
     report.check("改回合法文本后错误清掉、行恢复",
                  not curve.formula_error and len(curve.nodes) == 7,
                  f"error={curve.formula_error!r} rows={len(curve.nodes)}")
@@ -264,21 +265,21 @@ def verify_editing_operations(report: Report) -> None:
     # 三个结构算子
     bpy.context.view_layer.objects.active = holder
     # 槽位设计里「内嵌」不再是独立算子：把一个**叶子**槽位替换成函数时，原内容自动
-    # 成为新函数的第一个参数（`expr.convert_node()` 对叶子的处理），这就是内嵌。
+    # 进新函数的主输入槽位（`expr.convert_node()` 对叶子的处理），这就是内嵌。
     # 下面第 2、3 条就是在验这件事，以及「删除这一层」是它的逆操作。
     cases = [
-        # 表达式槽位换函数：保留原有参数（SmoothStep 的三个参数留给 `-` 前两个）
-        ("efx_re.expression_node_replace", {"node_index": 1, "target": "-"},
-         "Lerp((TIMER - 180), -0.5, 0)"),
-        # 叶子槽位换成取负 = 内嵌：原内容 TIMER 成了第一个（唯一的）参数
-        ("efx_re.expression_node_replace", {"node_index": 2, "target": _expr.KIND_NEG},
-         "Lerp((-TIMER - 180), -0.5, 0)"),
+        # 表达式槽位换函数：保留原有参数（SmoothStep 的三个参数原样留给 Clamp）
+        ("efx_re.expression_node_replace", {"node_index": 3, "target": "Clamp"},
+         "Lerp(0, -0.5, Clamp(90, 180, TIMER))"),
+        # 叶子槽位换成取负 = 内嵌：原内容 TIMER 成了唯一的参数
+        ("efx_re.expression_node_replace", {"node_index": 6, "target": _expr.KIND_NEG},
+         "Lerp(0, -0.5, Clamp(90, 180, -TIMER))"),
         # 删除这一层 = 内嵌的逆：去掉负号、TIMER 顶回来
-        ("efx_re.expression_node_delete", {"node_index": 2},
-         "Lerp((TIMER - 180), -0.5, 0)"),
-        # 再删一次：把 Min 这一层也去掉
-        ("efx_re.expression_node_delete", {"node_index": 1},
-         "Lerp(TIMER, -0.5, 0)"),
+        ("efx_re.expression_node_delete", {"node_index": 6},
+         "Lerp(0, -0.5, Clamp(90, 180, TIMER))"),
+        # 再删一次：把 Clamp 这一层也去掉，它的主输入（value = 90）顶上来
+        ("efx_re.expression_node_delete", {"node_index": 3},
+         "Lerp(0, -0.5, 90)"),
     ]
     for op_id, kwargs, want in cases:
         getattr(bpy.ops.efx_re, op_id.split(".", 1)[1])(**kwargs)
@@ -287,7 +288,7 @@ def verify_editing_operations(report: Report) -> None:
     # 存盘/热加载留下的"有公式、没有行"必须被自动补上——这一条是真实用户报告的回归：
     # 在这个功能存在之前导入的场景，面板上只剩一个"按文本重新解析"按钮，看起来像功能
     # 根本没做出来。load_post handler 和启用插件时的延后一遍都走 rebuild_missing_rows()。
-    curve.formula = "Lerp(SmoothStep(TIMER, 12, 0), -1, 0)"
+    curve.formula = "Lerp(0, -1, SmoothStep(0, 12, TIMER))"
     with expr_edit._Suspended():
         curve.nodes.clear()          # 模拟"老 .blend 里存下来的状态"
     report.check("模拟出了'有公式没有行'的状态",
@@ -297,7 +298,7 @@ def verify_editing_operations(report: Report) -> None:
                  fixed >= 1 and len(curve.nodes) == 7,
                  f"fixed={fixed} rows={len(curve.nodes)}")
     report.check("补行不碰 formula",
-                 curve.formula == "Lerp(SmoothStep(TIMER, 12, 0), -1, 0)", curve.formula)
+                 curve.formula == "Lerp(0, -1, SmoothStep(0, 12, TIMER))", curve.formula)
 
     # 已经有行的不该被重建（用户可能正在编辑；而且重建会把活动行重置）
     curve.nodes_active_index = 3
@@ -327,22 +328,22 @@ def verify_editing_operations(report: Report) -> None:
                  not _expr.can_delete_node(expr_edit.read_rows(curve), leaf))
 
     # 槽位视角：界面就是按这几个函数画的（一行一个节点 + 它的全部槽位）
-    curve.formula = "Lerp(SmoothStep(TIMER, 12, 0), 190, -30)"
+    curve.formula = "Lerp(-30, 190, SmoothStep(0, 12, TIMER))"
     expr_edit.rebuild_rows(curve)
 
-    # `Mod(a, b)` 的函数写法（规范记法唯一没有中缀孪生兄弟的那个操作码）
+    # `Mod(a, b)` 的函数写法（`%` 不是人人第一反应会打的符号）
     curve.formula_canonical = "Mod(3 * TIMER, TIMER)"
     report.check("规范记法认 Mod(a, b) 的函数写法",
-                 curve.formula == "Mod(TIMER, (3 * TIMER))", curve.formula)
+                 curve.formula == "((3 * TIMER) % TIMER)", curve.formula)
     report.check("Mod 读回来发的是 % 运算符，不是别名",
                  curve.formula_canonical == "3 * TIMER % TIMER", curve.formula_canonical)
 
     # 未知变量：求值成 0、公式看起来仍然合理，必须在公式框旁边报出来
-    curve.formula = "(Cos((60 + TIMER)) / Sin(((60 + TIMER) * (2 + pi))))"
+    curve.formula = "(Sin(((60 + TIMER) * (2 + pi))) / Cos((60 + TIMER)))"
     expr_edit.rebuild_rows(curve)
     unknown = expr_edit.unknown_variable_names(bpy.context, curve)
     report.check("小写 pi 被认出是未知变量", unknown == ["pi"], str(unknown))
-    curve.formula = "(Cos((60 + TIMER)) / Sin(((60 + TIMER) * (2 + PI))))"
+    curve.formula = "(Sin(((60 + TIMER) * (2 + PI))) / Cos((60 + TIMER)))"
     expr_edit.rebuild_rows(curve)
     report.check("大写 PI 是内置外部变量、不报",
                  expr_edit.unknown_variable_names(bpy.context, curve) == [],
@@ -354,40 +355,37 @@ def verify_editing_operations(report: Report) -> None:
                  str(expr_edit.unknown_variable_names(bpy.context, curve)))
 
     # ⚠ 还原：后面的检查共用这条曲线，留着上面的探针公式会让它们全体假红
-    curve.formula = "Lerp(SmoothStep(TIMER, 12, 0), 190, -30)"
+    curve.formula = "Lerp(-30, 190, SmoothStep(0, 12, TIMER))"
     expr_edit.rebuild_rows(curve)
     srows = expr_edit.read_rows(curve)
-    # 函数槽位显示的是**规范名**（`Clamp` 其实是 smoothstep 重映射），行数据里存的还是
-    # vendor 字面量 —— 下面紧跟着一条就是查这个，两者混起来会把"显示层改名"
-    # 和"文本被改坏"看成同一件事。
-    report.check("根节点的槽位是 [SmoothStep, 190, -30]",
+    report.check("根节点的槽位是 [-30, 190, SmoothStep]",
                  [_expr.node_summary(srows, i)
-                  for i in _expr.child_indices(srows, 0)] == ["SmoothStep", "190", "-30"],
+                  for i in _expr.child_indices(srows, 0)] == ["-30", "190", "SmoothStep"],
                  str([_expr.node_summary(srows, i)
                       for i in _expr.child_indices(srows, 0)]))
-    report.check("显示改名不碰公式文本",
-                 curve.formula == "Lerp(SmoothStep(TIMER, 12, 0), 190, -30)", curve.formula)
-    report.check("SmoothStep 的槽位是 [TIMER, 12, 0]",
+    report.check("读槽位不碰公式文本",
+                 curve.formula == "Lerp(-30, 190, SmoothStep(0, 12, TIMER))", curve.formula)
+    report.check("SmoothStep 的槽位是 [0, 12, TIMER]",
                  [_expr.node_summary(srows, i)
-                  for i in _expr.child_indices(srows, 1)] == ["TIMER", "12", "0"],
+                  for i in _expr.child_indices(srows, 3)] == ["0", "12", "TIMER"],
                  str([_expr.node_summary(srows, i)
-                      for i in _expr.child_indices(srows, 1)]))
-    report.check("从 TIMER 回根的链是 [0, 1, 2]（界面就画这三行）",
-                 _expr.path_to_root(srows, 2) == [0, 1, 2],
-                 str(_expr.path_to_root(srows, 2)))
-    report.check("从 -30 回根的链是 [0, 6]",
-                 _expr.path_to_root(srows, 6) == [0, 6], str(_expr.path_to_root(srows, 6)))
+                      for i in _expr.child_indices(srows, 3)]))
+    report.check("从 TIMER 回根的链是 [0, 3, 6]（界面就画这三行）",
+                 _expr.path_to_root(srows, 6) == [0, 3, 6],
+                 str(_expr.path_to_root(srows, 6)))
+    report.check("从 -30 回根的链是 [0, 1]",
+                 _expr.path_to_root(srows, 1) == [0, 1], str(_expr.path_to_root(srows, 1)))
 
-    # 参数角色名：只有语义已定的两个函数有，其余留空（不把猜测当事实）
-    curve.formula = "Lerp(SmoothStep(TIMER, 12, 0), 190, -30)"
+    # 参数角色名：只有语义已定的多参函数有，其余留空
+    curve.formula = "Lerp(-30, 190, SmoothStep(0, 12, TIMER))"
     roles = _expr.arg_roles(expr_edit.read_rows(curve))
     # 7 行：`-30` 在建行时就折成一个带符号常量，角色名直接落在它身上
-    report.check("Clamp/Lerp 的参数角色名标出来了",
-                 roles == ["", "t", "value", "hi", "lo", "to", "from"], str(roles))
+    report.check("SmoothStep/Lerp 的参数角色名标出来了",
+                 roles == ["", "from", "to", "t", "lo", "hi", "value"], str(roles))
     curve.formula = "Saturate(TIMER)"
-    report.check("语义未确认的函数不编参数名",
+    report.check("单参函数不编参数名",
                  all(r == "" for r in _expr.arg_roles(expr_edit.read_rows(curve))))
-    curve.formula = "Lerp(SmoothStep(TIMER, 12, 0), 190, -30)"
+    curve.formula = "Lerp(-30, 190, SmoothStep(0, 12, TIMER))"
     verify_canonical_notation(report, curve)
 
 
@@ -400,28 +398,28 @@ def verify_canonical_notation(report: Report, curve) -> None:
     以及**坏输入不许动 `formula`**（铁律 #1）。
     """
     print("\n=== 规范记法栏")
-    from efx_sim import expr_text
-
-    curve.formula = "((40 / TIMER) - 1)"
+    curve.formula = "(1 - (TIMER / 40))"
     expr_edit.rebuild_rows(curve)
-    report.check("vendor 文本读成规范记法",
+    report.check("引擎文本读成规范记法（省掉多余括号）",
                  curve.formula_canonical == "1 - TIMER / 40", curve.formula_canonical)
 
-    # 按真实语义写进去 -> `formula` 变成 vendor 记法，行视图跟着重建
+    # 写进去 -> `formula` 是全括号的引擎文本，行视图跟着重建
     curve.formula_canonical = "1 - TIMER / 30"
-    report.check("按规范记法写回去，formula 是 vendor 记法",
-                 curve.formula == "((30 / TIMER) - 1)", curve.formula)
+    report.check("按规范记法写回去，formula 是全括号的引擎文本",
+                 curve.formula == "(1 - (TIMER / 30))", curve.formula)
     report.check("写规范记法之后行视图跟着重建", len(curve.nodes) == 5, str(len(curve.nodes)))
     report.check("再读回来还是同一串", curve.formula_canonical == "1 - TIMER / 30",
                  curve.formula_canonical)
 
-    # 用户当初踩的那一脚：把规范记法原样打进 vendor 那一栏，读出来必须**不是**同一个式子
-    curve.formula = "((60 / TIMER) - 1)"
-    report.check("两套记法确实不同（同一串文本两边含义不一样）",
-                 curve.formula_canonical != "(1 + (TIMER * 60))", curve.formula_canonical)
+    # 两栏唯一的差别是结构怎么读：规范栏左结合，引擎文本镜像 vendor 的右结合
+    curve.formula_canonical = "10 - 3 - 2"
+    report.check("规范栏按数学惯例左结合", curve.formula == "((10 - 3) - 2)", curve.formula)
+    curve.formula = "10 - 3 - 2"
+    report.check("无括号的引擎文本按 vendor 的右结合读",
+                 curve.formula_canonical == "10 - (3 - 2)", curve.formula_canonical)
 
     # 坏输入：不许静默改掉 formula
-    curve.formula = "((40 + TIMER) / 1)"
+    curve.formula = "(1 / (40 + TIMER))"
     before = curve.formula
     curve.formula_canonical = "1 - / TIMER"
     report.check("规范记法写坏了不动 formula", curve.formula == before, curve.formula)
@@ -433,19 +431,16 @@ def verify_canonical_notation(report: Report, curve) -> None:
                  curve.formula_canonical == "", repr(curve.formula_canonical))
 
     # 树视图的符号必须和上面那条规范文本同一套（否则又回到"两边对不上"）。
-    # a96e1d9 之后 `*` / `+` 两边同形，能看出差别的是 `Mod` -> `%` 和 `PowOp` -> `**`。
-    curve.formula = "PowOp(2, Mod(TIMER, 3))"
+    curve.formula = "((3 % TIMER) ^ 2)"
     expr_edit.rebuild_rows(curve)
     rows = expr_edit.read_rows(curve)
     heads = [_expr.node_summary(rows, i) for i in range(len(rows))]
-    report.check("树里的中缀符号是规范符号（`PowOp` 画成 `**`、`Mod` 画成 `%`）",
-                 heads[0] == "**" and "%" in heads, str(heads))
+    report.check("树里的中缀符号和规范文本同一套（`^`、`%`）",
+                 heads[0] == "^" and "%" in heads, str(heads))
+    report.check("规范文本里也是 `^`、`%`",
+                 curve.formula_canonical == "(3 % TIMER) ^ 2", curve.formula_canonical)
 
-    # 中转层和 `efx_sim` 只能有一张表，漂了就会静默两套读法
-    report.check("中转表就是 expr.CANONICAL_OPERATORS 那一张",
-                 expr_text._VENDOR_TO_CANONICAL == dict(_expr.CANONICAL_OPERATORS))
-
-    curve.formula = "Lerp(SmoothStep(TIMER, 12, 0), 190, -30)"
+    curve.formula = "Lerp(-30, 190, SmoothStep(0, 12, TIMER))"
     expr_edit.rebuild_rows(curve)
 
 
@@ -471,7 +466,7 @@ def verify_tree_parameters(report: Report) -> None:
     # ⚠ 大小写两个键都要给：导入侧读大写 `Expression`（`_populate_expression_attribute()`），
     #   只给小写的话一条曲线都建不出来，而 opaque 透传又会让检查"看起来过了"。
     tree = {"version": 5571972, "expressions": [], "parsedExpressions": [{
-        "expression": "Sin(Mod(PI, SmoothStep(TIMER, 30, 0)))",
+        "expression": "Sin((SmoothStep(0, 30, TIMER) % PI))",
         "parameters": [
             {"parameterNameHash": 2589222962, "constantValue": 0.0, "source": 2},
             {"parameterNameHash": PI_HASH, "constantValue": PI_VALUE, "source": 1},
@@ -539,7 +534,7 @@ def verify_tree_parameters(report: Report) -> None:
 
     # 公式里没引用的具名常量不许硬塞进去
     curve.tree_parameters = "[]"
-    curve.formula = "SmoothStep(TIMER, 30, 0)"
+    curve.formula = "SmoothStep(0, 30, TIMER)"
     expr_edit.rebuild_rows(curve)
     got4 = pi_entries(io_tree.export_root_to_efxfile(root))
     report.check("公式没引用就不补条目", got4 == [], str(got4))

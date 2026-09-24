@@ -2092,9 +2092,9 @@ def _draw_expression_content(layout, context, obj) -> None:
             "EFX_RE_MT_expression_bit_picker",
             text=model.bit_display_label(curve.bit_index, curve.bit_name), translate=False,
         )
-    # 公式按**规范记法**读写（`efx_sim/expr_text.py`）：vendor 文本里 `+` 是乘、`-` 是除、
-    # `*` 是取模、`/` 是加、`Min(` 是减、`Max(` 是幂（见 docs/EXPRESSION_RULES.md），照字面写必错。存下来的
-    # 仍然是 `formula`（vendor 一侧），这一栏是它的 get/set 派生视图。
+    # 公式按**规范记法**读写（`efx_sim/expr_text.py`）：符号和函数与引擎记法相同，但按数学
+    # 惯例读结构——vendor 解析器是右结合的，`10 - 3 - 2` 直接交给它会读成 `10 - (3 - 2)`。
+    # 存下来的仍然是 `formula`（全括号的引擎文本），这一栏是它的 get/set 派生视图。
     box.label(text=T("expr.raw_text"), translate=False)
     row = box.row(align=True)
     row.prop(curve, "formula_canonical", text="")
@@ -2107,8 +2107,8 @@ def _draw_expression_content(layout, context, obj) -> None:
         box.label(text="%s: %s" % (T("expr.unknown_var"), ", ".join(unknown_vars)),
                   icon="ERROR", translate=False)
 
-    # ⚠ **不要在这里再加一个 vendor 写法的文本框**。两种写法并排只会让人问"该信哪个"，
-    # 而其中一种的符号是错的。`formula`（vendor 一侧）仍然是存盘/导出的权威，但它是
+    # ⚠ **不要在这里再加一个引擎写法的文本框**。两种写法并排只会让人问"该信哪个"，而
+    # 无括号的公式在两边读出来的结构不一样。`formula` 仍然是存盘/导出的权威，但它是
     # 实现细节，不该出现在界面上。
     # 公式本身解析不了时的修复入口在 `expr_edit.draw_nodes()` 那个错误框里，
     # `ExprError` 的消息自带原文（`公式语法错误：… （原文：…）`）。

@@ -118,8 +118,15 @@ class EFX_RE_OT_entry_preset_save(Operator):
             return {"CANCELLED"}
 
         data = io_tree.export_entry_object(context.object)
+        # 旧版插件导入的树里公式按旧写法存着，存成预设再套进新树就会被当成新写法读
+        # （见 io_tree 的"公式记法版本"一节）。
+        if (not io_tree.has_current_expression_notation(io_tree.find_root(context.object))
+                and io_tree.dict_has_expressions(data)):
+            self.report({"ERROR"}, io_tree.EXPR_NOTATION_STALE_MESSAGE)
+            return {"CANCELLED"}
         presets = [p for p in load_presets() if p.get("name") != name]
-        presets.append({"name": name, "data": data})
+        presets.append({"name": name, "data": data,
+                        "expr_notation": io_tree.EXPR_NOTATION_VERSION})
         _write_presets(presets)
         self.report({"INFO"}, f"已把 Entry 另存为预设 '{name}'")
         return {"FINISHED"}
@@ -148,6 +155,12 @@ class EFX_RE_OT_entry_preset_new(Operator):
         preset = _find_preset(name)
         if preset is None:
             self.report({"ERROR"}, f"预设 '{name}' 不存在（可能已被删除）")
+            return {"CANCELLED"}
+
+        # 旧版插件存的预设没有记法版本号，带公式的就不用——同 Copy/Paste 的判据。
+        if (preset.get("expr_notation") != io_tree.EXPR_NOTATION_VERSION
+                and io_tree.dict_has_expressions(preset.get("data"))):
+            self.report({"ERROR"}, f"预设 '{name}'：{io_tree.EXPR_NOTATION_STALE_MESSAGE}")
             return {"CANCELLED"}
 
         root_col = io_tree.resolve_root(context)

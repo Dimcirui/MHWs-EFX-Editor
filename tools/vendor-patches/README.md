@@ -9,18 +9,14 @@
 复现不了就说明锅在我们这层）。0005 就是这么定的：撤掉补丁后纯二进制路径 0/4 与原文件
 相同，打上后 3/4——一个字节都没经过我们的代码，所以确凿是 vendor 写错。
 
-## 0001-efx-expression-func18-19-20-args2-dispatch.patch
+## 已退役：0001 / 0007（2026-09-24，vendor bump 到 `1c2f92d`）
 
-对应 `KNOWN_UPSTREAM_ISSUES.md` #6。`EfxExpressionParser.ParseFunction()` 的 `args==2` 分支
-无条件把函数名当 `BinaryExpressionOperator` 解析，MHWilds 专属的 `Func18`/`Func19`/`Func20`
-（`EfxExpressionFunction` 成员，同样是 2 参）会直接解析失败——公式能显示，改完存不回去。
+- **0001**（`args == 2` 分支把 2 参函数当运算符解析）：上游 `bf0e5e5` 删掉了那个分支。
+- **0007**（操作码 0 和函数 20 都叫 `Pow`，dump/load 把 20 改写成 0）：上游把操作码 0 的
+  文本形式改成中缀 `^`，撞名不复存在。原样本 `11_em0159_00_308.efx.5571972` 不打补丁
+  `dump`->`load` 逐字节相同。
 
-评估过用 Program.cs 层面的文本替换绕过（同 `material` 那个套路），但这里没有干净的挂钩点：
-`EfxExpressionStringParser` 是 vendor 内部的私有静态递归下降解析器，没有暴露任何可拦截的中间层，
-外部 workaround 只能靠"替换成一个不会真正出现的占位符再解析回来"这种字符串手术，比这个补丁本身
-更绕、更依赖对 vendor 内部语法的隐性假设。改动量也就一个 if/else 分支，跟它自己在同一个函数里
-给 `args>=3` 用的写法（`Enum.Parse<EfxExpressionFunction>` + `ExpressionFuncOperation`）完全同构，
-判断为小到可以本地垫这一块。
+两个补丁文件已删除，编号不复用。当时的说明见 `KNOWN_UPSTREAM_ISSUES.md` #6 和第 11 节。
 
 ## 0002-efx-rszfixedsizearray-implicit-length-write.patch
 
@@ -92,27 +88,6 @@ attribute body 当不透明字节数组读写"的类，不解释字段、不暴�
 不带任何 `[Rsz*]` 标注，源生成器不会给它生成读写代码，字节布局不变），共 4 行有效改动，和
 `EFXAttributeTypeStrainRibbonV2` 现成的写法逐字同构。Program.cs 层面没有挂钩点——C# 没法从外部给一个类
 追加接口实现，而 `SetupBoneReferences()` 和写出侧都是靠 `is IBoneRelationAttribute` 做类型判断的。
-
-## 0007 —— `BinaryExpressionOperator.Pow` 改名 `PowOp`，消除和函数 `Pow`（操作码 20）的文本撞名
-
-上游 `a96e1d9` 把操作码 0 命名为 `Pow`，而 `EfxExpressionFunction.Pow` 是操作码 20，两者
-`ToString()` 都写成 `Pow(a, b)`。`EfxExpressionStringParser.ParseFunction()` 的 `args == 2`
-分支**先试 `BinaryExpressionOperator`**，所以文本读回来一律是操作码 0——**每次
-`dump`/`load` 都把操作码 20 静默改写成 0**。
-
-字节级实测（`11_em0159_00_308.efx.5571972`，公式 `Pow((0.01 * TIMER), 3)`）：
-
-```
-原文件    : 03 00 00 00 14 00 00 00   = (type=3, value=20) 函数 Pow
-dump->load: 01 00 00 00 00 00 00 00   = (type=1, value=0)  运算符 Pow
-```
-
-补丁把**操作码 0** 改名成 `PowOp`（用户看不到这个字面量，界面显示中缀 `**`），文本因此
-无歧义。修补后同一文件 `dump`->`load` **逐字节相同**。
-
-⚠ 这条符合铁律 #2 的三条判据：① 拿完全不经我们代码的路径复现（字节对照），②
-改动是一个枚举成员改名 + 三处引用，③ 文本是 vendor 解析器自己产/自己吃的，
-`Program.cs` 没有干净挂钩点。
 
 ## 0006-efx-attractor-unknwild-float-fields.patch
 
@@ -230,23 +205,17 @@ Y），用户怀疑三转角里的第三个可能藏在 `endwilds` 里——`end
 升级 vendor 之后都要重新打一遍：
 
 ```bash
-git apply tools/vendor-patches/0001-efx-expression-func18-19-20-args2-dispatch.patch --directory=vendor/RE-Engine-Lib
 git apply tools/vendor-patches/0002-efx-rszfixedsizearray-implicit-length-write.patch --directory=vendor/RE-Engine-Lib
 git apply tools/vendor-patches/0003-efx-opaque-unknown-attribute-types.patch --directory=vendor/RE-Engine-Lib
 git apply tools/vendor-patches/0004-efx-bonerelation-strainribbon-fluidsim.patch --directory=vendor/RE-Engine-Lib
 git apply tools/vendor-patches/0005-efx-inline-wstring-bytesize-fields.patch --directory=vendor/RE-Engine-Lib
 git apply tools/vendor-patches/0006-efx-attractor-unknwild-float-fields.patch --directory=vendor/RE-Engine-Lib
-git apply tools/vendor-patches/0007-efx-powop-name-collision.patch --directory=vendor/RE-Engine-Lib
 ```
 
 （`git apply` 认不出就说明补丁跟当前 vendor commit 对不上下文了，去对应源文件里手动照着补丁
 内容改一遍，然后重新生成这个 patch 文件。）
 
 ## 什么时候可以删
-
-**0001**：跑 `dotnet tools/EfxBridge/bin/Debug/net8.0/EfxBridge.dll exprcheck "Func18(TIMER, 2)"`，
-如果不打补丁也能 `OK`（说明上游自己修好了），删掉这个文件、删掉 `EfxExpressionParser.cs` 里那几行、
-`KNOWN_UPSTREAM_ISSUES.md` #6 标一下已解决即可。
 
 **0002**：跑一遍全语料 `roundtrip`（见仓库 `CLAUDE.md`），如果不打补丁 `Layout` 类异常已经是 0，
 说明上游自己修好了，删掉这个文件、删掉 `ReeLibGenerator.cs` 里那几行、`KNOWN_UPSTREAM_ISSUES.md`

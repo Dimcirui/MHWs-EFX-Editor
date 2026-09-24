@@ -2,8 +2,8 @@
 """
 blender_efx_re/expr_edit.py —— Expression 公式的结构化（模块化）编辑
 
-`EFXExpressionCurveItem.formula` 存的是 vendor 的公式文本（`Lerp(Clamp(ext:302732036, 6, 3),
-0, 8)` 这种）。以前面板只给一个单行文本框，`ext:302732036` 这种东西没人打得出来。这一层把
+`EFXExpressionCurveItem.formula` 存的是 vendor 的公式文本（`Lerp(0, 8, Clamp(ext:302732036,
+3, 6))` 这种）。以前面板只给一个单行文本框，`ext:302732036` 这种东西没人打得出来。这一层把
 那行文本摊成**槽位**：一行 = 一个节点 + 它的全部参数槽位，每个槽位一律是同一种控件
 （角色名 + 内容 + 展开标记），点开一个槽位就在下面出现它的检查器
 （`[槽位类型] [该类型的具体值]`）和它内容的下一级。纵向只展开"从根到选中槽位"这一条链。
@@ -37,10 +37,8 @@ blender_efx_re/expr_edit.py —— Expression 公式的结构化（模块化）�
 
 置信度必须如实显示
 ------------------
-`Unary0~12` / `Func18~21` 语义未确认（vendor 注释原话只是"potential candidates"），
-`Lerp`/`InvLerp`/`Clamp` 是名字确认、参数顺序靠猜。抽样 910 条公式里只有 36.0% 完全确认，
-28.7% 只差参数顺序，35.3% 含未确认函数或未知变量。菜单里这三档分开列、选中未确认的函数时
-在面板上标出来——**不把猜测画成确定**。
+现有的函数和运算符已经全部实机确认，但分档机制保留：vendor 升级冒出新操作码时，菜单里
+按置信度分开列、选中未确认的函数时在面板上标出来——**不把猜测画成确定**。
 """
 
 from __future__ import annotations
@@ -280,25 +278,15 @@ def _grouped_call_names():
 
 
 def _call_label(name) -> str:
-    """菜单里一项的显示文字：**规范名** + 参数个数 + vendor 字面量 + 真实语义。
+    """菜单里一项的显示文字：名字 + 参数个数 + 真实语义。
 
     参数个数要显示：换成参数个数不同的函数会补/丢参数，点之前就该看得见。
-
-    vendor 字面量（`Unary0`/`Clamp`/…）在规范名之外**还要再显示一次**：公式文本里写的
-    是它，不摆出来的话用户对不上"我在菜单里选的 `Sin` 就是文本里那个 `Unary0`"。
-
-    语义在规范名说不完的时候显示（弧度还是角度、`Pow` 的指数在第几个参数……）；
-    `+ - * /` 这四个符号则**只能**靠语义说话——它们的名字本身就是错的（`+` 是乘、
-    `-` 是除），见 `efx_sim/expr.py::CALL_SEMANTICS`。"""
-    display = _expr.call_display_name(name)
-    operator = _expr.CANONICAL_OPERATORS.get(name)
+    语义在名字说不完的时候显示（弧度还是角度、`%` 的符号规则、插值类的公式），
+    见 `efx_sim/expr.py::CALL_SEMANTICS`。"""
     if name in _expr.BINARY_OPERATORS:
-        # 规范符号在前、vendor 写法的符号跟在方括号里——和函数那一支的 `Sin  [Unary0]` 同形
-        head = "%s  [%s]" % (operator[0], name) if operator else name
+        head = name
     else:
-        head = "%s (%d)" % (display, _expr.call_arity(name))
-        if display != name:
-            head = "%s  [%s]" % (head, name)
+        head = "%s (%d)" % (name, _expr.call_arity(name))
     semantics = _expr.call_semantics(name)
     return "%s  =  %s" % (head, semantics) if semantics else head
 
@@ -396,7 +384,7 @@ def _curve_wants_degrees(context, curve) -> bool:
 def _same_unit_mask(context, curve, rows) -> list:
     """和 `rows` 等长的布尔列表：这一行是不是该按「角度显示」换算的槽位——`_curve_wants_
     degrees()` 判定这条曲线整体是不是角度字段，`propagate_same_unit_as_root()` 在这个
-    前提下再筛出真正和根节点同单位的那些行（`Clamp(TIMER,120,0)` 的帧数阈值绝不能被
+    前提下再筛出真正和根节点同单位的那些行（`SmoothStep(0, 120, TIMER)` 的帧数阈值绝不能被
     换算，见 `efx_sim/expr.py` 那个函数的说明）。不是角度曲线时全 False，不占额外开销。"""
     if not _curve_wants_degrees(context, curve):
         return [False] * len(rows)

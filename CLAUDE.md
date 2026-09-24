@@ -104,6 +104,7 @@ e. 最终改动必须落成 `tools/vendor-patches/NNNN-*.patch`。调试时临�
 | `efx_sim/`（零 bpy 的那层） | `python -m unittest discover -s tests` |
 | `bridge.py`/`io_tree.py`/`operators.py`/`uvs_io.py` 里加了 `except` | `python tools/check_import_no_swallow.py`（不用开 Blender） |
 | IO 路径 | `verify_blender_roundtrip.py` |
+| 公式记法版本拦截（`io_tree` 的 `EXPR_NOTATION_*` / `copy_paste.py` / `entry_presets.py` 里同一判据） | `verify_blender_roundtrip.py` |
 | `.uvs` IO | `verify_blender_uvs_roundtrip.py` |
 | `mdf` 属性 | `verify_blender_mdf_property.py` |
 | `coords.py`/`transform3d_view.py`/`bone_binding.py`/`io_tree.apply_attribute_content()` | `verify_blender_bone_binding.py` |
@@ -112,7 +113,7 @@ e. 最终改动必须落成 `tools/vendor-patches/NNNN-*.patch`。调试时临�
 | `tex_image.py` | `verify_blender_tex_image.py` |
 | `asset_link.py` / `asset_paths.py` | `verify_blender_asset_link.py` |
 | `expr_edit.py` / `expr_text.py` / `expr.py` 文本↔行 / `model.formula_canonical` | `verify_blender_expression_edit.py` |
-| `expr_nodes.py` / `expr_text.display_arg_order()` | `verify_blender_expr_nodes.py` |
+| `expr_nodes.py` | `verify_blender_expr_nodes.py` |
 | `expr_preview.py` / `efx_sim/plot.py` / `expr.py` 求值 | `verify_blender_expression_preview.py` |
 | `model.as_int32()`/`enum_proxy`/`_read_packed_int()` / `attribute_types.enum_members()` | `verify_blender_enum_proxy.py` |
 | `structure_ops.py` 的算子枚举参数 / `attribute_types.enum_items`/`all_enum_items` | `verify_blender_attribute_picker.py` |

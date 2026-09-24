@@ -14,15 +14,13 @@ blender_efx_re/expr_nodes.py —— Expression 公式的**节点视口**编辑
    被限制成"吐出一段不同的文本"——桥接解析器会拒绝非法文本，字节门禁会抓住合法但不同的
    文本。没有任何路径能绕过文本去改二进制。
 2. **树的变换逻辑不往这儿挪。** 行 ↔ 文本仍然全在 `efx_sim/expr.py`（零 bpy、单测覆盖），
-   插槽的显示顺序走 `efx_sim/expr_text.display_arg_order()`。这一层只做四件事：
-   行 → 节点图、节点图 → 行、自动布局、画。
-3. **插槽顺序按规范记法摆。** vendor 给六个二元操作码起的名字一个都不对，而且其中四个
-   操作数顺序还是反的（`Min(a, b)` 实为 `b - a`）。节点上照 vendor 顺序摆插槽 = 把错的
-   读法画成图，比文本误导更甚。顺序和名字都取规范侧，**表只有一张**，在 `expr_text` 里。
+   这一层只做四件事：行 → 节点图、节点图 → 行、自动布局、画。
+3. **插槽顺序 = 公式文本里的参数顺序。** vendor `1c2f92d` 起引擎记法的操作数/参数顺序
+   就是真实语义（`A - B` 就是 A 减 B、`Lerp(from, to, t)`），节点上不再做任何重排。
 
 ## 为什么叶子不是节点，是插槽上的内嵌控件
 
-常量和变量做成独立节点的话，`Lerp(Clamp(TIMER, 120, 0), 190, -30)` 要画 9 个节点、
+常量和变量做成独立节点的话，`Lerp(-30, 190, SmoothStep(0, 120, TIMER))` 要画 9 个节点、
 8 根连线，屏幕上全是"数字方块"。做成未连线插槽上的内嵌控件（同 Blender 自己的 Math
 节点）之后同一条公式只剩 2 个节点。
 
@@ -66,9 +64,9 @@ from . import expr_edit, model
 from .i18n import T
 
 try:
-    from ..efx_sim import expr as _expr, expr_text as _expr_text, plot as _plot
+    from ..efx_sim import expr as _expr, plot as _plot
 except ImportError:  # pragma: no cover - 只在门禁/单测的顶层包布局下走到
-    from efx_sim import expr as _expr, expr_text as _expr_text, plot as _plot
+    from efx_sim import expr as _expr, plot as _plot
 
 
 #: 共享节点树数据块的名字。**固定一个**，理由见模块 docstring。
@@ -245,46 +243,33 @@ def _call_changed(self, context):
 
 
 def _socket_labels(call_name, arity):
-    """按**显示顺序**给出 arity 个插槽的标签。
+    """给出 arity 个插槽的标签。
 
-    中缀运算符一律 `A` / `B`：规范记法下 `A ÷ B` 已经把顺序说清楚了，再挂
-    `subtract`/`from` 这种 vendor 侧的角色名反而制造第二套读法。函数走
-    `expr.CALL_ARG_ROLES`（那张表只收语义已定的，见它自己的注释），按显示顺序重排。
+    中缀运算符一律 `A` / `B`（`A ÷ B` 已经把顺序说清楚了）。函数走
+    `expr.CALL_ARG_ROLES`（那张表只收语义已定的，见它自己的注释）。
     """
     if call_name == _NEG_CALL:
         return ["x"]
     if call_name in _expr.BINARY_OPERATORS:
         return ["A", "B"]
     roles = _expr.CALL_ARG_ROLES.get(call_name)
-    order = _expr_text.display_arg_order(call_name, arity)
     if not roles or len(roles) != arity:
         return [str(i + 1) for i in range(arity)]
-    return [roles[order[i]] for i in range(arity)]
+    return list(roles)
 
 
 def node_header(call_name):
-    """节点标题栏的文字：**规范记法**的名字 + vendor 字面量。
-
-    vendor 字面量要一起显示，否则用户对不上"图里这个 `Sin` 就是公式文本里的 `Unary0`"
-    ——文本框和节点图是同一条公式的两个视图，两边的名字必须能互相认出来。
-    """
+    """节点标题栏的文字，和公式文本里的名字/符号一致。"""
     if call_name == _NEG_CALL:
         return "Negate  ( -x )"
-    if call_name in _expr.BINARY_OPERATORS:
-        canon = _expr.CANONICAL_OPERATORS.get(call_name)
-        symbol = canon[0] if canon else call_name
-        return "%s        [%s]" % (symbol, call_name)
-    display = _expr.call_display_name(call_name)
-    if display != call_name:
-        return "%s  [%s]" % (display, call_name)
     return call_name
 
 
 class EFX_RE_ExprCallNode(Node):
     """一个运算符 / 函数 / 一元负号。**一个类打通所有调用**，不是每个函数一个类。
 
-    参数个数、置信度、规范名全部现查 `efx_sim/expr.py`（`call_arity()` /
-    `call_confidence()` / `call_display_name()`），所以 vendor 升级加了新操作码时
+    参数个数、置信度全部现查 `efx_sim/expr.py`（`call_arity()` /
+    `call_confidence()`），所以 vendor 升级加了新操作码时
     这一层不用动——一个类一份枚举的话，那张枚举就是第二份真相，迟早和 `CALL_SIGNATURES`
     漂开。
     """
@@ -487,12 +472,7 @@ def _emit_node(node, rows, path, seen):
         raise _expr.ExprError("有一个节点没有函数名")
     rows.append({"kind": _expr.KIND_CALL, "depth": 0, "arity": arity,
                  "name": name, "value": 0.0})
-    # 插槽是按**显示顺序**摆的，行必须按 vendor 顺序发
-    order = _expr_text.display_arg_order(name, arity)
-    slots = [None] * arity
-    for display_pos, vendor_pos in enumerate(order):
-        slots[vendor_pos] = node.inputs[display_pos]
-    for socket in slots:
+    for socket in node.inputs:
         _emit_socket(socket, rows, path, seen)
 
 
@@ -543,12 +523,8 @@ def _build_into(tree, rows, index, socket, same_unit):
         node.rebuild_sockets()
     tree.links.new(node.outputs[0], socket)
 
-    arity = len(node.inputs)
-    order = _expr_text.display_arg_order(node.call_name, arity)
-    vendor_to_display = {v: d for d, v in enumerate(order)}
     cursor = index + 1
-    for vendor_pos in range(arity):
-        target = node.inputs[vendor_to_display.get(vendor_pos, vendor_pos)]
+    for target in node.inputs:
         cursor = _build_into(tree, rows, cursor, target, same_unit)
     return cursor
 

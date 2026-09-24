@@ -188,7 +188,7 @@ _EXPR_FIELD_OVERRIDES = {
     # ② 全语料用量在每一对里都是偶数位 > 奇数位（320>161、320>152、261>142、181>80），
     #    和 `speed`(1031) > `speedRand`(351) 同一个形状；
     # ③ 真实文件对读：`11_guide_006.efx.5571972` 的 `[003] tubu_out` 置位的是 bit2/bit6、
-    #    assign 都是 Multiply、两条公式都是 `1 - Clamp(TIMER, 90, 30)` —— 按这张表读就是
+    #    assign 都是 Multiply、两条公式都是 `1 - SmoothStep(30, 90, TIMER)` —— 按这张表读就是
     #    "把低频和高频的**振幅**（Width）在第 30~90 帧之间乘到 0"，噪声淡出的标准写法；
     #    换成"bit2 = LowFrequency"则读成"把频率降到 0"（噪声变得无限慢而不是消失），讲不通。
     # ⚠ 仍然是推断。现在**接上也不改变任何行为**——`efx_sim/behaviors/` 里没有 noise.py，

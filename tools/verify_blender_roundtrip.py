@@ -49,6 +49,11 @@ Blender 这条用户真正会走的路径上——这个脚本就是补那一刀
 
 外加 `operators._ensure_version_suffix()`/`_parsed_file_version()` 的路径形状单测（E1 根因 1）。
 
+外加"公式记法版本"那道拦截（`io_tree.check_expression_notation()`，vendor bump 到 `1c2f92d`
+之后旧 .blend 里的公式按旧写法存着）：新导入的树带版本号能导出；抹掉版本号模拟旧 .blend，
+导出算子必须 CANCELLED 且不写文件；不带公式的旧树照常放行；Copy/Paste 和 Entry 预设这两条
+能把旧公式"洗"进新树的路同样被拦住。样本里一条公式都没有时这一节报错，不静默全绿。
+
 退出码：全绿 0，有失败 1。
 """
 
@@ -287,6 +292,146 @@ def verify_unwritable_detection(report: Report) -> None:
                  str(io_tree.unwritable_constructs(col)))
 
 
+def _run_op(op, **kwargs):
+    """调算子，返回 `(结果集合, 报错文案)`。后台模式下算子 `report({"ERROR"})` 会让
+    `bpy.ops` 直接抛 RuntimeError（结果本身是 CANCELLED），这里把两种形态收成一种。"""
+    try:
+        return op(**kwargs), ""
+    except RuntimeError as ex:
+        return {"CANCELLED"}, str(ex)
+
+
+def _verify_notation_clipboard(root, report: Report, copy_paste, clip_store: dict) -> None:
+    expr_attr = next(
+        o for o in bpy.data.objects
+        if o.get("~TYPE") == model.TYPE_ATTRIBUTE
+        and getattr(o, "efx_is_expression_attribute", False)
+        and io_tree.find_root(o) is root)
+    bpy.context.view_layer.objects.active = expr_attr
+    report.check("从旧树复制带公式的对象被拒绝",
+                 _run_op(bpy.ops.efx_re.object_copy)[0] == {"CANCELLED"})
+    report.check("从旧树复制带公式的属性被拒绝",
+                 _run_op(bpy.ops.efx_re.properties_copy)[0] == {"CANCELLED"})
+
+    io_tree.stamp_expression_notation(root)
+    report.check("新树里复制带公式的对象放行",
+                 _run_op(bpy.ops.efx_re.object_copy)[0] == {"FINISHED"})
+    payload = copy_paste._read_clipboard(copy_paste._CLIP_MARKER_OBJECT) or {}
+    report.check("剪贴板里记了记法版本号",
+                 payload.get("expr_notation") == io_tree.EXPR_NOTATION_VERSION, str(payload.keys()))
+
+    # 旧版插件写进系统剪贴板的内容没有版本号
+    clip_store.get(copy_paste._CLIP_MARKER_OBJECT, {}).pop("expr_notation", None)
+    before = len(bpy.data.objects)
+    report.check("没有版本号、带公式的剪贴板内容拒绝粘贴",
+                 _run_op(bpy.ops.efx_re.object_paste)[0] == {"CANCELLED"}
+                 and len(bpy.data.objects) == before)
+
+
+def verify_expression_notation_guard(samples: list, workdir: pathlib.Path, report: Report) -> None:
+    """旧 .blend（没有记法版本号）里的公式必须拒绝导出，见 io_tree 的"公式记法版本"一节。
+
+    走的是用户真正点的算子（`efx_re.export` / `object_copy` / `object_paste` /
+    `entry_preset_save` / `entry_preset_new`），不只是直接调校验函数——算子里漏接一次
+    校验，直接调函数的测试照样全绿。
+    """
+    print("\n=== 公式记法版本（旧 .blend 拒绝导出）")
+    from blender_efx_re import copy_paste, entry_presets
+
+    scene_col = bpy.context.scene.collection
+    root = data = None
+    for orig in samples:
+        src = workdir / ("notation_" + orig.name.replace(".orig", ""))
+        shutil.copy(orig, src)
+        candidate = bridge.dump_efx(src)
+        if io_tree.dict_has_expressions(candidate):
+            data = candidate
+            root = io_tree.build_root_from_efxfile(data, scene_col, "notation_probe")
+            break
+    report.check("样本里有带公式的文件（否则这一节整体空跑）", root is not None)
+    if root is None:
+        return
+
+    out_data = io_tree.export_root_to_efxfile(root)
+    report.check("新导入的树带记法版本号", io_tree.has_current_expression_notation(root))
+    try:
+        io_tree.check_expression_notation(root, out_data)
+        report.check("带版本号的树放行", True)
+    except io_tree.ExpressionNotationError as ex:
+        report.check("带版本号的树放行", False, str(ex))
+
+    # 模拟旧 .blend：旧版插件建的树压根没有这个 ID 属性
+    del root[io_tree.EXPR_NOTATION_KEY]
+    try:
+        io_tree.check_expression_notation(root, out_data)
+        report.check("没有版本号、带公式的树被拒绝", False, "没有抛 ExpressionNotationError")
+    except io_tree.ExpressionNotationError:
+        report.check("没有版本号、带公式的树被拒绝", True)
+
+    bpy.context.view_layer.objects.active = None
+    bpy.context.scene.efx_re_active_root = root
+    out = workdir / "notation_probe_refused.efx.5571972"
+    result, message = _run_op(bpy.ops.efx_re.export, filepath=str(out))
+    report.check("导出算子对旧树返回 CANCELLED、不写文件",
+                 result == {"CANCELLED"} and not out.exists(), f"{result} exists={out.exists()}")
+    report.check("拒绝时告诉用户重新导入",
+                 io_tree.EXPR_NOTATION_STALE_MESSAGE in message, message)
+
+    # 不带公式的旧树照常放行：只有公式受记法影响，不能因为没版本号就一刀切
+    plain = io_tree.build_root_from_efxfile(
+        {"Header": {"Version": 5571972}, "Entries": [bridge.new_entry()], "Actions": [],
+         "Bones": [], "FieldParameterValues": [], "UvarGroups": [],
+         "ExpressionParameters": [], "EffectGroups": []}, scene_col, "notation_plain")
+    del plain[io_tree.EXPR_NOTATION_KEY]
+    try:
+        io_tree.check_expression_notation(plain, io_tree.export_root_to_efxfile(plain))
+        report.check("没有版本号、但不带公式的树放行", True)
+    except io_tree.ExpressionNotationError as ex:
+        report.check("没有版本号、但不带公式的树放行", False, str(ex))
+
+    # Copy/Paste：从旧树复制带公式的 attribute 必须被拦。
+    # 后台模式没有系统剪贴板（`window_manager.clipboard` 读回来恒为空串），把模块里那两个
+    # 读写函数换成内存里的一份；算子本身照常走，它们是运行时按模块属性查这两个函数的。
+    clip_store = {}
+    saved_read, saved_write = copy_paste._read_all, copy_paste._write_clipboard
+    copy_paste._read_all = lambda: json.loads(json.dumps(clip_store))
+
+    def _fake_write(marker, payload):
+        clip_store[copy_paste._CLIP_MAGIC] = True
+        clip_store[marker] = json.loads(json.dumps(payload))
+
+    copy_paste._write_clipboard = _fake_write
+    try:
+        _verify_notation_clipboard(root, report, copy_paste, clip_store)
+    finally:
+        copy_paste._read_all, copy_paste._write_clipboard = saved_read, saved_write
+
+    # Entry 预设：别碰用户配置目录里的真文件
+    entry = next(o for o in io_tree.root_entries(root)
+                 if io_tree.dict_has_expressions(io_tree.export_entry_object(o)))
+    written = []
+    saved_write, saved_cache = entry_presets._write_presets, entry_presets._cache
+    entry_presets._write_presets = lambda presets: written.append(presets)
+    try:
+        del root[io_tree.EXPR_NOTATION_KEY]
+        bpy.context.view_layer.objects.active = entry
+        result, _msg = _run_op(bpy.ops.efx_re.entry_preset_save, preset_name="notation_probe")
+        report.check("旧树里带公式的 Entry 不能存成预设",
+                     result == {"CANCELLED"} and not written, f"{result} written={len(written)}")
+        io_tree.stamp_expression_notation(root)
+
+        entry_presets._cache = [{"name": "notation_old",
+                                 "data": io_tree.export_entry_object(entry)}]
+        bpy.context.window_manager.efx_re_entry_preset = "notation_old"
+        before = len(io_tree.root_entries(root))
+        result, _msg = _run_op(bpy.ops.efx_re.entry_preset_new)
+        report.check("没有版本号、带公式的预设拒绝新建",
+                     result == {"CANCELLED"} and len(io_tree.root_entries(root)) == before,
+                     str(result))
+    finally:
+        entry_presets._write_presets, entry_presets._cache = saved_write, saved_cache
+
+
 def verify_version_suffix(report: Report) -> None:
     """E1 根因 1 的单测：版本号后缀的补齐/校验规则（照抄 vendor PathUtils.ParseFileFormat）。"""
     print("\n=== _ensure_version_suffix() / _parsed_file_version()")
@@ -358,6 +503,7 @@ def main() -> int:
     verify_path_separators(report)
     verify_unwritable_detection(report)
     verify_version_suffix(report)
+    verify_expression_notation_guard(samples, workdir, report)
 
     if report.failures:
         print(f"\n===== {len(report.failures)} 项失败")

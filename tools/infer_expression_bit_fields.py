@@ -143,8 +143,6 @@ def author_params(bit):
             for name in _IDENT_RE.findall(text):
                 if ":" in name or name in _RESERVED or name in _expr.CALL_SIGNATURES:
                     continue
-                if _expr.normalize_call_name(name) in _expr.CALL_SIGNATURES:
-                    continue
                 hist[name] = hist.get(name, 0) + count
     return sorted(hist.items(), key=lambda kv: -kv[1])
 
