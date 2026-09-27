@@ -2682,8 +2682,31 @@ def _draw_add_entry_tab(layout, context) -> None:
 
 
 def _draw_add_action_tab(layout, context) -> None:
-    """Action 标签页：目前只有一种新建方式，没有预设系统这一说，就一个按钮。"""
+    """Action 标签页：新建 Action 只有一种方式，没有预设系统这一说，就一个按钮。
+
+    另外放两个快捷按钮，给当前选中的 Action 直接加 `PlayEmitter`/`PlayEfx`——这两个类型
+    按 vendor `AddAttribute()` 的硬性规则只能挂在 Action 上（`attribute_types.
+    ACTION_ONLY_ATTR_NAMES`），是 Action 唯一有意义的下一步，不用切到 Attribute 标签页再从
+    ~150 种类型里翻。Attribute 标签页那边的选择器/搜索弹窗对 Action 目标也会自动只剩这两个
+    选项，这里只是少走一次切标签页。"""
     layout.operator("efx_re.action_add", text=T("add.action"), icon="PLAY", translate=False)
+
+    layout.separator(factor=0.5)
+
+    target = structure_ops._resolve_attribute_parent(context)
+    target_is_action = target is not None and target.get("~TYPE") == model.TYPE_ACTION
+    row = layout.row()
+    if not target_is_action:
+        row.enabled = False
+        row.label(text=T("add.target_prefix") + T("add.no_target"), icon="INFO", translate=False)
+    else:
+        row.label(text=T("add.target_prefix") + target.name, icon="PLUS", translate=False)
+
+    col = layout.column(align=True)
+    col.enabled = target_is_action
+    for attr_name in sorted(attribute_types.ACTION_ONLY_ATTR_NAMES):
+        op = col.operator("efx_re.attribute_add", text=attr_name, icon="ADD", translate=False)
+        op.attr_type = attr_name
 
 
 def _draw_add_attribute_tab(layout, context) -> None:
@@ -2717,7 +2740,12 @@ def _draw_add_attribute_tab(layout, context) -> None:
 class EFX_RE_MT_attribute_type_picker(Menu):
     """点一行直接新增对应类型的 attribute，不经过"先选中、再点 Add 确认"的中间态——
     `attribute_types.readable_types()` 按当前分类过滤，跟原来给 `efx_re_attr_type` 下拉喂
-    条目的是同一份数据源，只是这里换成点击即触发。"""
+    条目的是同一份数据源，只是这里换成点击即触发。
+
+    在分类过滤之上再按当前父对象是 Entry 还是 Action 筛一层：`PlayEmitter`/`PlayEfx` 这两个
+    类型 vendor 硬性规定只能挂在 Action 上（`attribute_types.ACTION_ONLY_ATTR_NAMES`），
+    Entry 目标里就不该列出来诱导用户点错；反过来 Action 目标下这两个类型之外的选项也没有
+    意义，直接不列。"""
 
     bl_idname = "EFX_RE_MT_attribute_type_picker"
     bl_label = "Attribute Type"
@@ -2726,6 +2754,12 @@ class EFX_RE_MT_attribute_type_picker(Menu):
         layout = self.layout
         category = getattr(context.window_manager, "efx_re_attr_category", "ALL")
         items = attribute_types.readable_types(category)
+        target = structure_ops._resolve_attribute_parent(context)
+        target_is_action = target is not None and target.get("~TYPE") == model.TYPE_ACTION
+        if target_is_action:
+            items = [i for i in items if i["name"] in attribute_types.ACTION_ONLY_ATTR_NAMES]
+        else:
+            items = [i for i in items if i["name"] not in attribute_types.ACTION_ONLY_ATTR_NAMES]
         if not items:
             layout.label(text=T("add.no_types_in_category"), translate=False)
             return

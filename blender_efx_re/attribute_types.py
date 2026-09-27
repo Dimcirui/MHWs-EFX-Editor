@@ -98,6 +98,13 @@ def categories() -> list[str]:
     return _catalogue()["categories"]
 
 
+#: 只能挂在 Action 上的 attribute 类型——vendor `EFXEntryBase.AddAttribute()`
+#: （`EfxFile.cs:245`）显式拒绝把它们挂到 `EFXEntry` 上；容器只有 `EFXEntry`/`EFXAction`
+#: 两种，排除法下来只有 Action 能合法持有，这是硬事实不是猜测。`structure_ops.py` 拿它挡
+#: "Play 挂到 Entry 上"，`panels.py` 拿它过滤类型选择器/搜索弹窗，两处共用同一份判据。
+ACTION_ONLY_ATTR_NAMES = frozenset({"PlayEmitter", "PlayEfx"})
+
+
 #: 不该出现在界面上的枚举成员名——**C# 侧用来强制枚举底层宽度的占位，不是游戏语义**。
 #: vendor 的 `ExpressionAssignType` 有 `ForceWord = -1`（`EfxCommon.cs`），全语料
 #: 9175 个文件 / 42 个类型 / 609 个字段 / 199613 个实例里**出现 0 次**；而把它放进下拉

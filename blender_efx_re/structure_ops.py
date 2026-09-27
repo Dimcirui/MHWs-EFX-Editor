@@ -289,6 +289,13 @@ class EFX_RE_OT_attribute_add(Operator):
             self.report({"ERROR"}, f"类型清单里没有 '{self.attr_type}'")
             return {"CANCELLED"}
 
+        if (
+            self.attr_type in attribute_types.ACTION_ONLY_ATTR_NAMES
+            and parent_obj.get("~TYPE") != model.TYPE_ACTION
+        ):
+            self.report({"ERROR"}, f"{self.attr_type} 只能挂在 Action 上，不能挂在 Entry 上")
+            return {"CANCELLED"}
+
         try:
             new_obj = add_attribute(parent_obj, self.attr_type)
         except bridge.BridgeError as ex:
@@ -300,14 +307,35 @@ class EFX_RE_OT_attribute_add(Operator):
         return {"FINISHED"}
 
 
+def _search_enum_items(self, context):
+    """搜索弹窗的候选列表，按当前已解析出的父对象（Entry/Action）过滤掉结构性不合法的类型：
+    父对象是 Action 就只列 `ACTION_ONLY_ATTR_NAMES`；是 Entry 就把这两个从全量列表里去掉
+    （vendor `AddAttribute()` 硬性拒绝 Play 挂到 Entry 上，见 `attribute_types.
+    ACTION_ONLY_ATTR_NAMES` 的注释）。
+
+    这里不会重犯 `EFX_RE_OT_attribute_add.attr_type` 那条注释警告过的坑——那条讲的是"给算子
+    自己的 EnumProperty 按一个跟调用目标脱钩的浏览状态（分类下拉）过滤，会导致换一条路径传参
+    时校验失败"。这里过滤的依据是同一次 invoke/execute 里解析出的真实父对象，不是独立可变的
+    浏览偏好，弹窗选出来的类型转调 `efx_re.attribute_add` 时用的还是它自己不过滤的
+    `all_enum_items`，不会出现"选中的类型不在目标算子的合法值里"这种情况。"""
+    all_items = attribute_types.all_enum_items(self, context)
+    parent_obj = _resolve_attribute_parent(context)
+    parent_is_action = parent_obj is not None and parent_obj.get("~TYPE") == model.TYPE_ACTION
+    if parent_is_action:
+        filtered = [i for i in all_items if i[0] in attribute_types.ACTION_ONLY_ATTR_NAMES]
+    else:
+        filtered = [i for i in all_items if i[0] not in attribute_types.ACTION_ONLY_ATTR_NAMES]
+    return filtered or all_items
+
+
 class EFX_RE_OT_attribute_add_search(Operator):
     """按名字模糊搜索 attribute 类型并直接新增，不用先猜它归在哪个分类。
 
     ~150+ 种类型分类浏览效率太低——这里走 Blender 原生的
     `WindowManager.invoke_search_popup()`（键盘打字模糊过滤，官方文档"Enum Search Popup"
-    那个标准写法），条目用 `attribute_types.all_enum_items()`（不受分类下拉过滤，覆盖全部
-    类型）。选中之后不重复一遍新增逻辑，直接转调 `efx_re.attribute_add`，同一份
-    `add_attribute()` 只写一次。"""
+    那个标准写法），条目用 `_search_enum_items()`（在 `attribute_types.all_enum_items()`
+    的基础上按当前父对象是 Entry 还是 Action 再筛一层，两种类型互斥）。选中之后不重复一遍
+    新增逻辑，直接转调 `efx_re.attribute_add`，同一份 `add_attribute()` 只写一次。"""
 
     bl_idname = "efx_re.attribute_add_search"
     bl_label = "Search Attribute Type"
@@ -318,7 +346,7 @@ class EFX_RE_OT_attribute_add_search(Operator):
     attr_type: EnumProperty(
         name="Type",
         description="要新增的 attribute 类型",
-        items=attribute_types.all_enum_items,
+        items=_search_enum_items,
     )
 
     @classmethod
