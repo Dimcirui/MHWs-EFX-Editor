@@ -214,6 +214,14 @@ if (args.Length >= 1 && args[0] == "clipeventstats")
 {
     return RunClipEventStats(args);
 }
+if (args.Length >= 1 && args[0] == "spawnringbuffer")
+{
+    return RunSpawnRingBuffer(args);
+}
+if (args.Length >= 1 && args[0] == "rootstats")
+{
+    return RunRootStats(args);
+}
 
 if (args.Length < 2 || args[0] != "roundtrip")
 {
@@ -243,6 +251,7 @@ if (args.Length < 2 || args[0] != "roundtrip")
     Console.WriteLine("  dotnet <dll> exprrotationstats <语料目录> <json 输出路径>");
     Console.WriteLine("  dotnet <dll> exprhostcorr <语料目录> <json 输出路径> [每桶保留的不同取值数，默认 10]");
     Console.WriteLine("  dotnet <dll> instancedefaults <语料目录> <逗号分隔的类型名列表|all> <json 输出路径>");
+    Console.WriteLine("  dotnet <dll> spawnringbuffer <语料目录> <json 输出路径> [每桶保留的不同取值数，默认 30]");
     return 1;
 }
 
@@ -2182,6 +2191,124 @@ static int RunExprHostCorr(string[] args)
                       + $"（本体缺失 {hostMissing}；扫描 {scanned}/{files.Count} 个文件，失败 {failed}）-> {jsonOutPath}");
     return 0;
 }
+
+// spawnringbuffer：一次性研究命令，回答"Spawn.RingBufferMode==true 的实例，所在 Entry
+// 有什么特征"。按 RingBufferMode 的取值分两桶，桶内统计：
+//   - 所在 Entry 的具名字符串（container.name）
+//   - 同一个 Entry 上还挂了哪些其它 attribute 类型（兄弟 attribute，看画法/行为组合）
+//   - 文件所在目录名（语料目录一般按"一个效果一个文件夹"组织，目录名常带风格提示）
+//   - Spawn 自己其余字段的取值分布（对照两桶能不能看出 RingBufferMode 和某个字段联动）
+// 用法跟 condstats 类似，但 condstats 只能看同一个 attribute 内部的字段，看不到"同一个
+// Entry 上还有什么"，所以单独写一个命令。
+static int RunSpawnRingBuffer(string[] args)
+{
+    if (args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> spawnringbuffer <语料目录> <json 输出路径> [每桶保留的不同取值数，默认 30]");
+        return 1;
+    }
+    var dir = args[1];
+    var jsonOutPath = args[2];
+    var topN = args.Length >= 4 && int.TryParse(args[3], out var n) ? n : 30;
+
+    if (!Directory.Exists(dir))
+    {
+        Console.WriteLine($"目录不存在: {dir}");
+        return 1;
+    }
+
+    var files = Directory.EnumerateFiles(dir, "*.efx.*", SearchOption.AllDirectories).ToList();
+    var spawnFields = typeof(EFXAttributeSpawn)
+        .GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+        .Where(f => f.Name != "RingBufferMode" && (f.FieldType.IsValueType || f.FieldType == typeof(string)))
+        .OrderBy(f => f.MetadataToken)
+        .ToList();
+
+    var buckets = new Dictionary<string, SpawnRingBucket>
+    {
+        ["True"] = new SpawnRingBucket(),
+        ["False"] = new SpawnRingBucket(),
+    };
+    int scanned = 0, failed = 0, instances = 0;
+    string currentFile = "";
+    string currentDirName = "";
+
+    void Visit(EFXEntryBase container)
+    {
+        foreach (var attr in container.Attributes)
+        {
+            if (attr is EFXAttributeSpawn spawn)
+            {
+                instances++;
+                var key = spawn.RingBufferMode ? "True" : "False";
+                var b = buckets[key];
+                b.count++;
+                if (!string.IsNullOrEmpty(container.name)) Tally(b.entryNames, "", container.name!);
+                Tally(b.dirNames, "", currentDirName);
+                Tally(b.fileNames, "", Path.GetFileName(currentFile));
+                foreach (var sibling in container.Attributes)
+                {
+                    if (ReferenceEquals(sibling, attr)) continue;
+                    Tally(b.siblingTypes, "", sibling.type.ToString());
+                }
+                foreach (var f in spawnFields)
+                    Tally(b.fields, f.Name, ValueKey(f.GetValue(spawn)));
+            }
+            if (attr is EFXAttributePlayEmitter { efxrData: not null } pe)
+            {
+                foreach (var e in pe.efxrData.Entries) Visit(e);
+                foreach (var a in pe.efxrData.Actions) Visit(a);
+            }
+        }
+    }
+
+    foreach (var path in files)
+    {
+        currentFile = path;
+        currentDirName = Path.GetFileName(Path.GetDirectoryName(path)) ?? "";
+        try
+        {
+            var efx = new EfxFile(new FileHandler(path));
+            efx.Read();
+            scanned++;
+            foreach (var e in efx.Entries) Visit(e);
+            foreach (var a in efx.Actions) Visit(a);
+        }
+        catch (Exception)
+        {
+            failed++;
+        }
+    }
+
+    Dictionary<string, object> RenderBucket(SpawnRingBucket b) => new()
+    {
+        ["count"] = b.count,
+        ["entryNames"] = TopN(b.entryNames.GetValueOrDefault(""), topN),
+        ["siblingAttrTypes"] = TopN(b.siblingTypes.GetValueOrDefault(""), topN),
+        ["dirNames"] = TopN(b.dirNames.GetValueOrDefault(""), topN),
+        ["fileNames"] = TopN(b.fileNames.GetValueOrDefault(""), topN),
+        ["fields"] = b.fields.OrderBy(kv => kv.Key)
+            .ToDictionary(kv => kv.Key, kv => TopN(kv.Value, topN)),
+    };
+
+    var payload = new
+    {
+        filesTotal = files.Count,
+        filesScanned = scanned,
+        filesFailed = failed,
+        spawnInstances = instances,
+        topN,
+        ringBufferTrue = RenderBucket(buckets["True"]),
+        ringBufferFalse = RenderBucket(buckets["False"]),
+    };
+    File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine($"OK: {instances} 个 Spawn 实例（RingBufferMode=true 的 {buckets["True"].count} 个，"
+                      + $"false 的 {buckets["False"].count} 个；扫描 {scanned}/{files.Count} 个文件，失败 {failed}）-> {jsonOutPath}");
+    return 0;
+}
+
+static List<KeyValuePair<string, int>> TopN(Dictionary<string, int>? hist, int n)
+    => hist == null ? new() : hist.OrderByDescending(kv => kv.Value).Take(n).ToList();
 
 static void Tally(Dictionary<string, Dictionary<string, int>> buckets, string bucket, string key)
 {
@@ -4131,6 +4258,153 @@ static int RunExprCheck(string[] args)
 // EFX 结构里没有 double 字段（`grep 'public double' OtherFiles/EFX` 只有一个转换方法），
 // 所以只处理 float。
 // pairstats 的每字段累计量。只记**原始计数**，判据在 tools/audit_range_fields.py 里。
+
+// rootstats 子命令：全语料普查"Root entry"（EFXEntry.entryAssignment == EfxEntryEnum.Root）。
+// 关心的是三件事：哪些文件有 Root、Root 上挂得起哪些 attribute 类型、这些类型的字段实际取值
+// 分布。字段用反射逐个读（public 实例字段 + 可读属性），这样新增 attribute 类型不用改这里。
+// 同时记一份"同一类型出现在非 Root entry 上"的计数——"只在 Root 上出现"这个结论必须有反例
+// 计数兜底，否则只是采样没扫到。
+static int RunRootStats(string[] args)
+{
+    if (args.Length < 3)
+    {
+        Console.WriteLine("用法: dotnet <dll> rootstats <语料目录> <json 输出路径>");
+        return 1;
+    }
+    var dir = args[1];
+    var jsonOutPath = args[2];
+    if (!Directory.Exists(dir))
+    {
+        Console.WriteLine($"目录不存在: {dir}");
+        return 1;
+    }
+
+    var files = Directory.EnumerateFiles(dir, "*.efx.*", SearchOption.AllDirectories).ToList();
+
+    var rootsPerFile = new Dictionary<int, int>();
+    var rootNames = new Dictionary<string, int>();
+    var rootIndexField = new Dictionary<int, int>();
+    var rootArrayPos = new Dictionary<int, int>();
+    var rootGroups = new Dictionary<string, int>();
+    var rootAttrCount = new Dictionary<int, int>();
+    var typesOnRoot = new Dictionary<string, int>();
+    var typesElsewhere = new Dictionary<string, int>();
+    var combos = new Dictionary<string, int>();
+    // typeName -> fieldName -> 值文本 -> 次数
+    var fields = new Dictionary<string, Dictionary<string, Dictionary<string, int>>>();
+    var rootFiles = new List<string>();
+    var multiRootFiles = new List<string>();
+
+    static void Bump<T>(Dictionary<T, int> d, T k) where T : notnull
+        => d[k] = d.TryGetValue(k, out var n) ? n + 1 : 1;
+
+    static string Fmt(object? v) => v switch
+    {
+        null => "null",
+        float f => f.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+        System.Numerics.Vector3 v3 => $"({v3.X.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}, {v3.Y.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}, {v3.Z.ToString("R", System.Globalization.CultureInfo.InvariantCulture)})",
+        System.Collections.IEnumerable e and not string => "[" + string.Join(", ", e.Cast<object?>().Select(x => x?.ToString() ?? "null")) + "]",
+        _ => v.ToString() ?? "null",
+    };
+
+    int scanned = 0, failed = 0;
+    foreach (var path in files)
+    {
+        EfxFile efx;
+        try
+        {
+            efx = new EfxFile(new FileHandler(path));
+            efx.Read();
+            scanned++;
+        }
+        catch (Exception)
+        {
+            failed++;  // 语料里本来就有一批读不了的，见 KNOWN_UPSTREAM_ISSUES，跳过不中断整批
+            continue;
+        }
+
+        var relPath = Path.GetRelativePath(dir, path).Replace('\\', '/');
+        int rootCount = 0;
+        for (int i = 0; i < efx.Entries.Count; i++)
+        {
+            var entry = efx.Entries[i];
+            bool isRoot = entry.entryAssignment == EfxEntryEnum.Root;
+            if (!isRoot)
+            {
+                foreach (var attr in entry.Attributes) Bump(typesElsewhere, attr.type.ToString());
+                continue;
+            }
+
+            rootCount++;
+            Bump(rootNames, entry.name ?? "<null>");
+            Bump(rootIndexField, entry.index);
+            Bump(rootArrayPos, i);
+            Bump(rootGroups, entry.Groups.Count == 0 ? "<empty>" : string.Join("|", entry.Groups));
+            Bump(rootAttrCount, entry.Attributes.Count);
+
+            var names = new List<string>();
+            foreach (var attr in entry.Attributes)
+            {
+                var typeName = attr.type.ToString();
+                names.Add(typeName);
+                Bump(typesOnRoot, typeName);
+
+                if (!fields.TryGetValue(typeName, out var perField))
+                    fields[typeName] = perField = new();
+                var clrType = attr.GetType();
+                foreach (var f in clrType.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+                {
+                    if (!perField.TryGetValue(f.Name, out var counter))
+                        perField[f.Name] = counter = new();
+                    Bump(counter, Fmt(f.GetValue(attr)));
+                }
+            }
+            names.Sort(StringComparer.Ordinal);
+            Bump(combos, string.Join(" + ", names));
+        }
+
+        Bump(rootsPerFile, rootCount);
+        if (rootCount > 0) rootFiles.Add(relPath);
+        if (rootCount > 1) multiRootFiles.Add(relPath);
+    }
+
+    // 每个字段的 distinct 值可能非常多（Center/Size 这类连续量），只留前 40 个高频值，
+    // 另外记一个 distinct 总数，免得输出文件爆掉。
+    static object TopValues(Dictionary<string, int> counter) => new
+    {
+        distinct = counter.Count,
+        top = counter.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key, StringComparer.Ordinal)
+            .Take(40).ToDictionary(kv => kv.Key, kv => kv.Value),
+    };
+
+    var payload = new
+    {
+        corpusRoot = dir,
+        filesTotal = files.Count,
+        filesScanned = scanned,
+        filesFailed = failed,
+        rootsPerFile = rootsPerFile.OrderBy(kv => kv.Key).ToDictionary(kv => kv.Key.ToString(), kv => kv.Value),
+        rootNames = rootNames.OrderByDescending(kv => kv.Value).Take(40).ToDictionary(kv => kv.Key, kv => kv.Value),
+        rootNamesDistinct = rootNames.Count,
+        rootIndexField = rootIndexField.OrderByDescending(kv => kv.Value).Take(20).ToDictionary(kv => kv.Key.ToString(), kv => kv.Value),
+        rootArrayPos = rootArrayPos.OrderBy(kv => kv.Key).ToDictionary(kv => kv.Key.ToString(), kv => kv.Value),
+        rootGroups = rootGroups.OrderByDescending(kv => kv.Value).Take(20).ToDictionary(kv => kv.Key, kv => kv.Value),
+        rootAttrCount = rootAttrCount.OrderBy(kv => kv.Key).ToDictionary(kv => kv.Key.ToString(), kv => kv.Value),
+        typesOnRoot = typesOnRoot.OrderByDescending(kv => kv.Value).ToDictionary(kv => kv.Key, kv => kv.Value),
+        typesOnRootAlsoElsewhere = typesOnRoot.Keys.OrderBy(k => k, StringComparer.Ordinal)
+            .ToDictionary(k => k, k => typesElsewhere.TryGetValue(k, out var n) ? n : 0),
+        combos = combos.OrderByDescending(kv => kv.Value).Take(40).ToDictionary(kv => kv.Key, kv => kv.Value),
+        multiRootFiles = multiRootFiles.Take(20).ToList(),
+        fields = fields.OrderBy(kv => kv.Key, StringComparer.Ordinal).ToDictionary(
+            kv => kv.Key,
+            kv => kv.Value.OrderBy(f => f.Key, StringComparer.Ordinal).ToDictionary(f => f.Key, f => TopValues(f.Value))),
+    };
+    File.WriteAllText(jsonOutPath, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine($"OK: {rootFiles.Count}/{scanned} 个文件有 Root entry，Root 上出现 {typesOnRoot.Count} 种 attribute（失败 {failed}）-> {jsonOutPath}");
+    return 0;
+}
+
+
 class ExprVarStat
 {
     public int count;
@@ -4442,4 +4716,14 @@ sealed class TypeCorr
             efxNames = bits[kv.Key].efxNames.TryGetValue("", out var x) ? Top(x, 8) : new(),
         }),
     };
+}
+
+sealed class SpawnRingBucket
+{
+    public int count;
+    public Dictionary<string, Dictionary<string, int>> entryNames = new();
+    public Dictionary<string, Dictionary<string, int>> siblingTypes = new();
+    public Dictionary<string, Dictionary<string, int>> dirNames = new();
+    public Dictionary<string, Dictionary<string, int>> fileNames = new();
+    public Dictionary<string, Dictionary<string, int>> fields = new();
 }
