@@ -53,26 +53,29 @@ enum as .clip files?"。证据链（详见 `docs/PITFALLS.md` 和记忆库）：
   不像携带额外编码。跟曲线形状角度看和 Discrete 分不出区别，但语料里用得不算罕见，不能悄悄
   塌缩成 Discrete（会丢导出时该写回哪个原始类型的信息）。
 
-**"能导入"和"能直接导出"从 2026-09-19 起是两个故意不同的集合**（用户拍板，不是疏漏）：
+**"标准"/"非标准"是两个地位平等、能互相切换的顶层分类**（`EFXClipCurveItem.
+curve_category`，用户 2026-09-19 拍板，两轮修正过一次——见下面这段的教训）：
 
-- **能直接导出的只有 3 个 Blender 原生真实类型**：`CONSTANT`/`LINEAR`/`BEZIER`
-  （`_STANDARD_EXPORT_INTERP`，见下面"插值类型映射"一节），对应真实原始值 `1`/`2`/`5`。
-  `curve_interpolation_issues()` 只放行这三个，其余全部拦——`3`(Event) 借的 `SINE` 也在
-  拦截范围内，导出前必须先转成这三种之一。
-- **能导入的是 `{0,1,2,3,4,5,6,8,9,10,11,12,13}`**（`7` 除外，见下面单独一节）：`0/4/6/8/
-  9/10/11/12/13` 这 9 个"非标准"值（语料从没用过，实机测出大多恒为 0/9 飞天）跟 Event 的
-  `3` 完全同构——各自借一个从没用过的 Blender 插值名字当纯占位（不代表任何形状），
-  `import_curve()` 不再拒绝它们，用户可以在 Blender 原生下拉框里把它们改成任何其它类型
-  （包括标准的三个）——这就是"允许导入后改类型"，不需要专门的算子，Blender 自己的插值
-  下拉框已经足够。之所以敢放行：这 9 个值**都不需要额外的切线数据**
-  （`interp_type == _CLIP_HERMITE_TYPE` 才会消费 `interpolationData[]`，这 9 个都不是），
-  纯值+位置+占位插值名字，不存在任何数据结构层面的风险——不像 `7`。
+- **标准**（`{1,2,3,5}`）：数据活在 Blender 原生 fcurve 上，用户能在 Dope Sheet/Graph
+  Editor 里自由拖关键帧。能直接导出的只有 3 个 Blender 原生真实类型——`CONSTANT`/
+  `LINEAR`/`BEZIER`（`_STANDARD_EXPORT_INTERP`，见下面"插值类型映射"一节），对应真实
+  原始值 `1`/`2`/`5`。`curve_interpolation_issues()` 只放行这三个，`3`(Event) 借的
+  `SINE` 也在拦截范围内，导出前必须先转成这三种之一。
+- **非标准**（`0/4/6/8/9/10/11/12/13`，语料从没用过、实机测出大多恒为 0/`9` 飞天）：
+  **完全不进 Blender 的 Animation 系统**——不建 fcurve、不分配 `channel_key`、没有
+  `kp.interpolation` 概念。整条曲线的 `frame_time`/`value` 序列原样存进
+  `EFXClipCurveItem.nonstandard_frames`（一个不透明的 `EFXClipRawFrame` 集合），
+  具体是哪个原始值存在 `nonstandard_raw_type` 上，**不提供任何关键帧编辑入口**。
+  跟标准分类互相切换走 `set_curve_category()`（连带迁移 fcurve↔`nonstandard_frames`
+  的数据），换成哪个具体非标准值走 `set_nonstandard_raw_type()`（纯改标签，不迁移
+  数据——非标准曲线本来就不区分逐帧类型）。
 
-  Blender 一共 13 个内置插值标识符，标准 3 个（`CONSTANT`/`LINEAR`/`BEZIER`）+ Event 借的
-  `SINE` 用掉 4 个，正好剩 9 个（`QUAD`/`CUBIC`/`QUART`/`QUINT`/`EXPO`/`CIRC`/`BACK`/
-  `BOUNCE`/`ELASTIC`）给这 9 个非标准值一一对应，不多不少——这不是巧合设计出来的，是
-  `raw=7` 被排除在外之后刚好腾出的名额（如果 `7` 也要占一个名字，就会变成 10 个值抢 9 个
-  槽位，不够分）。
+  ⚠ **第一版这里做错了，用户当场纠正**：最初把这 9 个非标准值也各自借用一个从没用过的
+  Blender 插值名字（`QUAD`/`CUBIC`/`QUART`/…），塞进跟 Event 一样的 `_INTERP_MHWS_TO_
+  BLENDER` 映射表，让 `import_curve()` 直接把它们建成真实 fcurve 关键帧。这等于把非标准
+  曲线也接进了"value 修改渠道"（用户能在 Dope Sheet 里自由拖它们的位置/数值），跟"不提供
+  任何关键帧编辑入口"这条要求正好相反——是实现时图省事直接照抄 Event 的机制，不是什么
+  技术上绕不开的限制，被用户指出后改成了现在这个完全独立于 fcurve 的存储。
 
 **`raw=7`（真 Bezier）是唯一仍然在 `import_curve()` 硬拒绝的值，不是因为它比其它 9 个更
 "没证据"，是因为它涉及一类完全不同的风险**：`EfxClipData` 的 `interpolationData[]` 是不看
@@ -276,37 +279,33 @@ _CLIP_HERMITE_TYPE = 5  # FrameInterpolationType.Hermite——不是字面 Bezie
 #: 原始类型是 1 还是 3，不能反推出任何真实形状结论；`3` 能导入但不在允许导出的三个真实类型
 #: 里（见 `_STANDARD_EXPORT_INTERP`），导出前必须先转成 Constant/Linear/Bezier 之一。
 #:
-#: **非标准**（`0/4/6/8/9/10/11/12/13`，2026-09-19 用户拍板改成"允许导入+允许改类型，
-#: 但不提供关键帧编辑入口"）：这 9 个原始值各自借用一个 Blender 内置插值名字（纯粹占位，
-#: 不代表任何真实曲线形状），跟 Event 借 SINE 是完全一样的手法——区别只是这些值从不出现
-#: 在真实语料里,而且用户实机测过大多数会产出退化结果（`0`/`4`/`6`/`8`/`10`/`11`/`12` 恒为
-#: 0，`9` 飞到天上，`13` 只在 DMC5 样本见过、MHWs 上未测）。之所以现在敢放行导入，是因为
-#: 这些值**都不需要额外的切线数据**（`interp_type == _CLIP_HERMITE_TYPE` 才会消费
-#: `interpolationData[]`，这 9 个都不是），纯值+位置+占位插值名字，跟 Event 完全同构，没有
-#: 任何数据结构层面的风险。用户可以在 Blender 原生插值下拉框里把它们改成任何其它类型
-#: （包括标准的三个）——这就是"允许改类型"，不需要额外的算子，Blender 自己的下拉框已经够用。
-#: 唯一**不放行**的是 `7`（真 Bezier）——见下面的说明，它涉及切线数据消费顺序，跟这 9 个
-#: 不是同一类风险，需要先解决那个问题才能加进来。
+#: **只有这 4 个值才走 Blender 原生 fcurve**（挂在真实的 Dope Sheet/Graph Editor 关键帧上，
+#: 位置/数值能自由拖动）——2026-09-19 用户明确纠正过一次：非标准的那 9 个值（0/4/6/8/9/
+#: 10/11/12/13）**不能**用"借一个 Blender 插值名字"的方式接进 fcurve，那等于把它们也接进了
+#: "value 修改渠道"，跟"不提供任何关键帧编辑入口"这条要求正好相反。非标准值改用完全独立的
+#: 存储（`EFXClipCurveItem.nonstandard_frames`，一段不透明的 frame_time/value 序列，没有
+#: 插值概念、不挂 fcurve），见 `_NONSTANDARD_TYPE_NAMES`/`import_nonstandard_curve()`/
+#: `export_nonstandard_curve()`。
 _INTERP_MHWS_TO_BLENDER = {
-    0: "QUAD",        # Unknown，实机恒为 0，占位
-    1: "CONSTANT",    # Discrete，实机确认：保持左值直到本段最后一帧才跳变
-    2: "LINEAR",       # Linear，实机确认：匀速直线运动
-    3: "SINE",         # Event，占位名字，导入允许、导出前必须先转成标准三种之一
-    4: "CUBIC",        # Slerp，四元数专属插值喂给标量分量，实机恒为 0，占位
-    5: "BEZIER",       # Hermite（不是字面 Bezier），切线换算见 `_tangent_to_handles()`
-    6: "QUART",        # AutoHermite，需要额外数据 EFX 没存，实机恒为 0，占位
-    8: "QUINT",        # AutoBezier，同上，实机恒为 0，占位
-    9: "EXPO",         # OffsetFrame，实机"飞到天上"，占位
-    10: "CIRC",        # OffsetSec，需要额外数据，实机恒为 0，占位
-    11: "BACK",        # PassEvent，需要额外数据，实机恒为 0，占位
-    12: "BOUNCE",      # Bezier3D，需要额外数据，实机恒为 0，占位
-    13: "ELASTIC",     # 结构上确认存在但 MHWS 语料至今没见过（只见于 DMC5 样本），未实机测过，占位
+    1: "CONSTANT",   # Discrete，实机确认：保持左值直到本段最后一帧才跳变
+    2: "LINEAR",      # Linear，实机确认：匀速直线运动
+    3: "SINE",        # Event，占位名字，导入允许、导出前必须先转成标准三种之一
+    5: "BEZIER",      # Hermite（不是字面 Bezier），切线换算见 `_tangent_to_handles()`
 }
 _INTERP_BLENDER_TO_MHWS = {v: k for k, v in _INTERP_MHWS_TO_BLENDER.items()}
 
+#: 非标准原始类型的显示名字——来自跟独立 `.clip`/`.tml` 共用的那套枚举（见模块文档"插值
+#: 类型语义"一节），纯展示用，不是 Blender 插值标识符，这些值从不会出现在任何 `kp.
+#: interpolation` 里。`7`（真 Bezier）不在这张表里——它既不是标准也不是这批非标准，
+#: 见下面 raw=7 那一节的说明，现在整个不放行。
+_NONSTANDARD_TYPE_NAMES = {
+    0: "Unknown", 4: "Slerp", 6: "AutoHermite", 8: "AutoBezier",
+    9: "OffsetFrame", 10: "OffsetSec", 11: "PassEvent", 12: "Bezier3D", 13: "Type13",
+}
+
 #: 面板/校验信息统一引用这句话，避免各处措辞漂移。
 UNVERIFIED_INTERP_NOTE = (
-    "仅支持 Discrete/Linear/Event/Hermite 这 4 种（真实文件从没用过别的）；"
+    "标准曲线仅支持 Discrete/Linear/Event/Hermite 这 4 种（真实文件从没用过别的）；"
     "Blender 这里显示的\"Bezier\"其实是 Hermite（切线已按 ÷3 换算），不是字面贝塞尔——"
     "Blender 没有单独的 Hermite 标识符，借用这个名字是最接近的原生选项；"
     "Event 和 Discrete 曲线形状分不出区别，独立占一个名字只是为了导出时能分清原始类型"
@@ -621,7 +620,106 @@ def export_curve(obj, curve_item) -> tuple:
     return header, frames, tangents
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 非标准曲线（标准/非标准是两个地位平等的顶层分类，见 model.py
+# `_CLIP_CURVE_CATEGORY_ITEMS` 的说明）——完全不进 Blender 的 Animation 系统，数据活在
+# `EFXClipCurveItem.nonstandard_frames` 这个不透明列表里，不挂 fcurve、没有插值概念、
+# 不提供任何关键帧编辑入口（2026-09-19 用户原话："不接入任何 value 修改渠道"）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+def classify_raw_types(raw_types) -> str | None:
+    """给 `io_tree._populate_clip_attribute()` 用：一条曲线全部帧的原始类型集合属于
+    "STANDARD"（全部在 `_INTERP_MHWS_TO_BLENDER` 里）、"NONSTANDARD"（只有一个值、且在
+    `_NONSTANDARD_TYPE_NAMES` 里）还是既不是也不是（混了标准+非标准，或者混了多个不同的
+    非标准值——没有 UI 能忠实表示，调用方应该拒绝导入，不猜一个代表值）。后一种情况
+    返回 `None`。"""
+    if raw_types <= set(_INTERP_MHWS_TO_BLENDER):
+        return "STANDARD"
+    if len(raw_types) == 1 and raw_types <= set(_NONSTANDARD_TYPE_NAMES):
+        return "NONSTANDARD"
+    return None
+
+
+def import_nonstandard_curve(curve_item, frame_entries: list, raw_type: int) -> None:
+    """把一条曲线整体导入成非标准分类。`frame_entries` 是 `[{"frame_time","value"}, ...]`
+    ——没有 `interp_type`/`tangent`：非标准曲线不区分逐帧类型，整条曲线共用一个
+    `raw_type`（`_NONSTANDARD_TYPE_NAMES` 里的一个 key）。不建 fcurve、不分配
+    `channel_key`。"""
+    curve_item.curve_category = "NONSTANDARD"
+    curve_item.nonstandard_raw_type = raw_type
+    curve_item.nonstandard_frames.clear()
+    for entry in frame_entries:
+        item = curve_item.nonstandard_frames.add()
+        item.frame_time = entry["frame_time"]
+        item.value = entry["value"]
+
+
+def export_nonstandard_curve(curve_item) -> tuple:
+    """`import_nonstandard_curve()` 的反函数，返回形状跟 `export_curve()` 一致的
+    `(header, frames, tangents)`。非标准类型永远没有切线数据（这些值从没在
+    `_CLIP_HERMITE_TYPE` 判断里出现过，见 `io_tree._populate_clip_attribute()`），
+    `tangents` 恒为空列表。"""
+    value_type = int(curve_item.value_type)
+    raw_type = curve_item.nonstandard_raw_type
+    frames = []
+    for f in curve_item.nonstandard_frames:
+        frame_time = model.json_float_out(f.frame_time)
+        if value_type == 3:  # Int：走位转换，跟标准曲线同一套约定
+            float_value = model.int_bits_to_float(int(round(f.value)))
+        else:
+            float_value = model.json_float_out(f.value)
+        frames.append({
+            "IntValue": 0, "FloatValue": float_value,
+            "frameTime": frame_time, "type": raw_type,
+        })
+    header = {"frameCount": len(frames), "valueType": value_type}
+    return header, frames, []
+
+
+def set_nonstandard_raw_type(curve_item, raw_type: int) -> None:
+    """只改"非标准分类下具体是哪个原始值"这个标记，不迁移任何数据——非标准曲线本来就
+    不区分逐帧类型，整条曲线共用一个 `raw_type`，改这个纯粹是重新贴标签。"""
+    curve_item.nonstandard_raw_type = raw_type
+
+
+def set_curve_category(obj, curve_item, category: str) -> None:
+    """在"标准"/"非标准"这两个地位平等的顶层分类之间切换，连带迁移数据——标准的数据
+    活在 fcurve 里，非标准的数据活在 `nonstandard_frames` 里，两边不共享存储，切换时
+    要把旧存储读出来写进新存储、再清空旧存储，不能只改 `curve_category` 这个标记
+    （那样两边数据会立刻不同步）。两个方向都支持，即使"标准切成非标准"目前没有实际
+    用处（2026-09-19 用户明确要求：这是两个地位平等的分类，不是"非标准低一级"，UI 上
+    不能因为一个方向暂时没用就做成单向）。"""
+    if category == curve_item.curve_category:
+        return
+    if category == "NONSTANDARD":
+        xform = _xform_target(obj, curve_item.bit_index)
+        sign = xform[3] if xform is not None else 1.0
+        fc = _find_fcurve(obj, curve_item)
+        frames = []
+        if fc is not None:
+            for kp in sorted(fc.keyframe_points, key=lambda kp: kp.co[0]):
+                frames.append({"frame_time": kp.co[0], "value": kp.co[1] * sign})
+        remove_channel(obj, curve_item)
+        # raw_type 保留当前值（字段默认 0=Unknown）——具体选哪个由
+        # set_nonstandard_raw_type() 单独管，这里不猜一个"更像"的值。
+        import_nonstandard_curve(curve_item, frames, curve_item.nonstandard_raw_type)
+    else:  # -> STANDARD
+        frames = [{"frame_time": f.frame_time, "value": f.value, "interp_type": 2,
+                    "tangent": None} for f in curve_item.nonstandard_frames]
+        curve_item.nonstandard_frames.clear()
+        curve_item.curve_category = "STANDARD"
+        add_channel(obj, curve_item)
+        if frames:
+            # 默认整条按 Linear 导入——纯粹是给个能看的初始形状，不代表任何语义结论，
+            # 用户应该自己去 Dope Sheet/Graph Editor 里为每个关键帧重新选插值。
+            import_curve(obj, curve_item, frames)
+
+
 def keyframe_count(obj, curve_item) -> int:
+    """标准曲线数真实 fcurve 关键帧；非标准曲线数 `nonstandard_frames`（不透明帧，没有
+    "关键帧"这个概念，但数量信息一样有意义，给曲线列表那一行的计数用）。"""
+    if curve_item.curve_category == "NONSTANDARD":
+        return len(curve_item.nonstandard_frames)
     fc = _find_fcurve(obj, curve_item)
     return len(fc.keyframe_points) if fc is not None else 0
 
@@ -630,7 +728,9 @@ def describe_channel(obj, curve_item) -> str:
     """给面板显示"这条曲线的关键帧实际挂在哪"——xform 通道挂在 `obj.parent` 的原生
     Location/Scale 上，容易和"应该选中这个 attribute 对象本身"的默认认知反着来，必须在
     面板上点破，不然用户在 Dope Sheet 里选错对象、看不到关键帧，会以为是插件的 bug。
-    非 xform 通道返回空串（走默认提示即可）。"""
+    非 xform 通道、或者非标准曲线（根本没有 fcurve）返回空串（走默认提示即可）。"""
+    if curve_item.curve_category == "NONSTANDARD":
+        return ""
     xform = _xform_target(obj, curve_item.bit_index)
     if xform is None:
         return ""

@@ -141,8 +141,25 @@ def _populate_clip_attribute(obj: Object, attr_dict: dict) -> None:
                 }
             entries.append(entry)
 
-        clip_fcurve.add_channel(obj, curve)
-        clip_fcurve.import_curve(obj, curve, entries)
+        # 标准（{1,2,3,5}）走原生 fcurve；非标准（clip_fcurve._NONSTANDARD_TYPE_NAMES 里的
+        # 9 个值）整条曲线当一段不透明的 frame_time/value 序列存，不进 Blender 的 Animation
+        # 系统（2026-09-19 用户拍板："标准/非标准"是两个地位平等的顶层分类，见
+        # model._CLIP_CURVE_CATEGORY_ITEMS 的说明）。一条曲线内混标准+非标准、或者混了
+        # 多个不同的非标准值，现在没有 UI 能忠实表示，按铁律 #1 拒绝导入，不猜一个代表值。
+        raw_types = {e["interp_type"] for e in entries}
+        category = clip_fcurve.classify_raw_types(raw_types)
+        if category == "STANDARD":
+            clip_fcurve.add_channel(obj, curve)
+            clip_fcurve.import_curve(obj, curve, entries)
+        elif category == "NONSTANDARD":
+            plain_entries = [{"frame_time": e["frame_time"], "value": e["value"]} for e in entries]
+            clip_fcurve.import_nonstandard_curve(curve, plain_entries, next(iter(raw_types)))
+        else:
+            raise clip_fcurve.ClipFcurveError(
+                f"{obj.name}: bit{bit_index} 的关键帧插值类型混了标准和非标准、或者混了"
+                f"多个不同的非标准值（{sorted(raw_types)}）——没有 UI 能忠实表示这种情况，"
+                f"拒绝导入，不猜一个代表值顶上去。"
+            )
 
 
 def _populate_expression_attribute(obj: Object, attr_dict: dict) -> None:
@@ -641,7 +658,10 @@ def _export_clip_attribute(obj: Object) -> tuple[dict, dict]:
     tangents = []
     max_frame_time = 0.0
     for curve in curves:
-        header, frame_part, tangent_part = clip_fcurve.export_curve(obj, curve)
+        if curve.curve_category == "NONSTANDARD":
+            header, frame_part, tangent_part = clip_fcurve.export_nonstandard_curve(curve)
+        else:
+            header, frame_part, tangent_part = clip_fcurve.export_curve(obj, curve)
         clip_headers.append(header)
         frames.extend(frame_part)
         tangents.extend(tangent_part)

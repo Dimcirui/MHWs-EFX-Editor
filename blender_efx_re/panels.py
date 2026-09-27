@@ -1553,6 +1553,87 @@ class EFX_RE_OT_clip_select_special_keyframes(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class EFX_RE_OT_clip_curve_set_category(bpy.types.Operator):
+    """把当前选中的 Clip 曲线在"标准"/"非标准"这两个地位平等的顶层分类之间切换——
+    见 model._CLIP_CURVE_CATEGORY_ITEMS 的说明。两个方向都支持，即使"标准切成非标准"
+    目前没有实际用处（2026-09-19 用户明确要求：这是设计上的对称，不是"非标准低一级"）。
+    真正的数据迁移在 clip_fcurve.set_curve_category() 里，这里只是把参数转过去。"""
+    bl_idname = "efx_re.clip_curve_set_category"
+    bl_label = "Set Clip Curve Category"
+    bl_options = {"REGISTER", "UNDO"}
+
+    target: StringProperty(name="Target")
+
+    @classmethod
+    def poll(cls, context):
+        obj = getattr(context, "object", None)
+        return obj is not None and obj.get("~TYPE") == model.TYPE_ATTRIBUTE and _active_clip_curve(obj) is not None
+
+    def execute(self, context):
+        from . import clip_fcurve
+        obj = getattr(context, "object", None)
+        curve = _active_clip_curve(obj)
+        clip_fcurve.set_curve_category(obj, curve, self.target)
+        return {"FINISHED"}
+
+
+class EFX_RE_OT_clip_curve_set_nonstandard_type(bpy.types.Operator):
+    """给已经是"非标准"分类的 Clip 曲线换一个具体的原始类型（0/4/6/8/9/10/11/12/13
+    之一）——纯改标签，不迁移任何数据（非标准曲线本来就不区分逐帧类型，见
+    clip_fcurve.set_nonstandard_raw_type()）。"""
+    bl_idname = "efx_re.clip_curve_set_nonstandard_type"
+    bl_label = "Set Non-standard Clip Type"
+    bl_options = {"REGISTER", "UNDO"}
+
+    raw_type: IntProperty(name="Raw Type")
+
+    @classmethod
+    def poll(cls, context):
+        obj = getattr(context, "object", None)
+        curve = _active_clip_curve(obj) if obj is not None else None
+        return curve is not None and curve.curve_category == "NONSTANDARD"
+
+    def execute(self, context):
+        from . import clip_fcurve
+        curve = _active_clip_curve(getattr(context, "object", None))
+        clip_fcurve.set_nonstandard_raw_type(curve, self.raw_type)
+        return {"FINISHED"}
+
+
+class EFX_RE_MT_clip_curve_category(Menu):
+    """「曲线分类」菜单：标准 / 非标准——两个地位平等的顶层分类，对着
+    EFX_RE_MT_expression_slot_kind（常量/变量/表达式）抄的两步式设计：先选这一步的
+    主类，选完再用另一个菜单（EFX_RE_MT_clip_nonstandard_type）挑非标准分类下具体
+    是哪个原始值。标准分类没有对应的"具体值"菜单——它的关键帧是逐帧各自选插值
+    类型（Blender 原生 Dope Sheet/Graph Editor 里那个下拉框），不是曲线级别的单一
+    选择，跟非标准分类"整条曲线共用一个原始值"的结构不一样，这里不用强凑成对称。"""
+    bl_idname = "EFX_RE_MT_clip_curve_category"
+    bl_label = "Category"
+
+    def draw(self, context):
+        layout = self.layout
+        for target, key in (("STANDARD", "attribute.clip_category_standard"),
+                            ("NONSTANDARD", "attribute.clip_category_nonstandard")):
+            op = layout.operator("efx_re.clip_curve_set_category",
+                                 text=T(key), translate=False)
+            op.target = target
+
+
+class EFX_RE_MT_clip_nonstandard_type(Menu):
+    """非标准分类下的具体原始值——`clip_fcurve._NONSTANDARD_TYPE_NAMES`，来自跟独立
+    `.clip`/`.tml` 共用的那套枚举，纯展示名字，不是 Blender 插值标识符。"""
+    bl_idname = "EFX_RE_MT_clip_nonstandard_type"
+    bl_label = "Non-standard Type"
+
+    def draw(self, context):
+        from . import clip_fcurve
+        layout = self.layout
+        for raw_type, name in sorted(clip_fcurve._NONSTANDARD_TYPE_NAMES.items()):
+            op = layout.operator("efx_re.clip_curve_set_nonstandard_type",
+                                 text=f"{name} ({raw_type})", translate=False)
+            op.raw_type = raw_type
+
+
 class EFX_RE_MT_clip_bit_add_picker(Menu):
     """新增 Clip 曲线时选"驱动哪个 bit"，替代原来"自动挑第一个空位"的隐式行为——见
     live-blender-testing 记忆里"动态 EnumProperty 传不进算子"的坑，这里照抄
@@ -2051,10 +2132,31 @@ def _draw_clip_content(layout, context, obj) -> None:
         text=model.bit_display_label(curve.bit_index, curve.bit_name), translate=False,
     )
 
-    # 关键帧本身在 Dope Sheet / Graph Editor 里编辑（clip_fcurve.py 把它们建成原生 fcurve，
-    # Position/Scale bit 挂在父对象的 Location/Scale 上，其余挂在这个对象自己的 Action
-    # 上），这里只显示计数 + 编辑入口提示，不再手搓关键帧列表。
     from . import clip_fcurve
+
+    # 主类：标准/非标准，两个地位平等的顶层分类（见 model._CLIP_CURVE_CATEGORY_ITEMS）。
+    cat_row = box.row(align=True)
+    cat_row.label(text=T("attribute.clip_category"), translate=False)
+    cat_key = ("attribute.clip_category_standard" if curve.curve_category == "STANDARD"
+               else "attribute.clip_category_nonstandard")
+    cat_row.menu("EFX_RE_MT_clip_curve_category", text=T(cat_key), translate=False)
+
+    if curve.curve_category == "NONSTANDARD":
+        # 非标准：整条曲线共用一个原始值，没有关键帧编辑，只有"具体是哪个值"这一个选择。
+        value_row = box.row(align=True)
+        value_row.label(text=T("attribute.clip_nonstandard_type"), translate=False)
+        type_name = clip_fcurve._NONSTANDARD_TYPE_NAMES.get(curve.nonstandard_raw_type, "?")
+        value_row.menu("EFX_RE_MT_clip_nonstandard_type",
+                       text=f"{type_name} ({curve.nonstandard_raw_type})", translate=False)
+        frame_row = box.row(align=True)
+        frame_row.label(text=T("attribute.keyframes"), translate=False)
+        frame_row.label(text=f"{clip_fcurve.keyframe_count(obj, curve)}", translate=False)
+        box.label(text=T("attribute.clip_nonstandard_hint"), icon="ERROR", translate=False)
+        return
+
+    # 标准：关键帧本身在 Dope Sheet / Graph Editor 里编辑（clip_fcurve.py 把它们建成原生
+    # fcurve，Position/Scale bit 挂在父对象的 Location/Scale 上，其余挂在这个对象自己的
+    # Action 上），这里只显示计数 + 编辑入口提示，不再手搓关键帧列表。
     kf_row = box.row(align=True)
     kf_row.label(text=T("attribute.keyframes"), translate=False)
     kf_row.label(text=f"{clip_fcurve.keyframe_count(obj, curve)}", translate=False)
@@ -2812,6 +2914,10 @@ _CLASSES = (
     EFX_RE_OT_clip_curve_remove,
     EFX_RE_OT_clip_curve_set_bit,
     EFX_RE_OT_clip_select_special_keyframes,
+    EFX_RE_OT_clip_curve_set_category,
+    EFX_RE_OT_clip_curve_set_nonstandard_type,
+    EFX_RE_MT_clip_curve_category,
+    EFX_RE_MT_clip_nonstandard_type,
     EFX_RE_MT_clip_bit_add_picker,
     EFX_RE_MT_clip_bit_picker,
     EFX_RE_OT_expression_curve_add,

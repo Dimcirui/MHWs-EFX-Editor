@@ -161,23 +161,31 @@ _STRINGS: dict[str, dict[str, str]] = {
               "拖动关键帧——改动即时生效）。",
     },
     "attribute.clip_interp_unverified": {
-        "EN": "Import accepts most raw types (real files only ever use Discrete/Linear/Event/"
-              "Hermite, but a few placeholder types import too) — you can freely change any "
-              "keyframe's interpolation after import. Only Constant/Linear/Bezier can be "
-              "exported though; anything else (including Event's placeholder \"Sine\" label) "
-              "must be changed to one of those three first. Blender's own \"Bezier\" label "
-              "here is really Hermite (tangents are /3-converted) — not literal Bezier; "
+        "EN": "Standard curves support 4 types: Discrete, Linear, Event, Hermite. Only "
+              "Constant/Linear/Bezier can be exported though — Event's placeholder \"Sine\" "
+              "label must be changed to one of those three first. Blender's own \"Bezier\" "
+              "label here is really Hermite (tangents are /3-converted) — not literal Bezier; "
               "Blender has no separate Hermite identifier so this is the closest native fit.",
-        "ZH": "导入接受大部分原始类型（真实文件只会用到 Discrete/Linear/Event/Hermite，但少数"
-              "占位类型也能导入）——导入后可以在原生下拉框里随意改任何关键帧的插值。不过只有 "
-              "Constant/Linear/Bezier 能导出，其它的（包括 Event 借用的\"正弦\"占位名字）都要"
-              "先改成这三种之一才能导出。这里 Blender 自己显示的\"Bezier\"其实是 Hermite（切线"
-              "已按 ÷3 换算），不是字面贝塞尔——Blender 没有单独的 Hermite 标识符，借用这个名字"
-              "只是最接近的原生选项。",
+        "ZH": "标准曲线支持 4 种类型：Discrete、Linear、Event、Hermite。不过只有 "
+              "Constant/Linear/Bezier 能导出——Event 借用的\"正弦\"占位名字必须先改成这三种"
+              "之一才能导出。这里 Blender 自己显示的\"Bezier\"其实是 Hermite（切线已按 ÷3 "
+              "换算），不是字面贝塞尔——Blender 没有单独的 Hermite 标识符，借用这个名字只是"
+              "最接近的原生选项。",
     },
     "attribute.clip_select_special": {
         "EN": "Select Event/Hermite Keyframes",
         "ZH": "选中 Event/Hermite 关键帧",
+    },
+    "attribute.clip_category": {"EN": "Curve Category", "ZH": "曲线分类"},
+    "attribute.clip_category_standard": {"EN": "Standard", "ZH": "标准"},
+    "attribute.clip_category_nonstandard": {"EN": "Non-standard", "ZH": "非标准"},
+    "attribute.clip_nonstandard_type": {"EN": "Non-standard Value", "ZH": "非标准取值"},
+    "attribute.clip_nonstandard_hint": {
+        "EN": "Non-standard values never appear in real files and mostly do nothing "
+              "or crash in-game. No keyframe editing here — this whole curve is one "
+              "opaque frame sequence, preserved as-is.",
+        "ZH": "非标准取值从没在真实文件里出现过，实机测试大多恒为 0、飞天或崩溃。这里不提供"
+              "关键帧编辑——整条曲线是一段不透明的帧序列，原样保存。",
     },
     "attribute.clip_xform_channel": {
         "EN": "Keyframes for this curve live on the parent object's native transform "

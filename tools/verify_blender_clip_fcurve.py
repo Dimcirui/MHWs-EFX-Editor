@@ -231,24 +231,25 @@ def verify_sample(orig: pathlib.Path, workdir: pathlib.Path, report: Report,
 
 
 def verify_interpolation_gate(report: Report) -> None:
-    """插值映射表覆盖率 + 非标准原始类型的拒绝闸门 + 标准导出闸门。
+    """插值映射表覆盖率 + 标准/非标准分类闸门 + 标准导出闸门。
 
-    2026-09-19 `_INTERP_MHWS_TO_BLENDER` 从"塞满 Blender 全部 13 种内置插值方便挨个实机测"
-    的过渡表，收窄成语料统计（1767 个真实实例，覆盖全部 12+ 个 Clip 类型）+ 实机崩溃/飞天/
-    恒零测试共同确认的 4 个真实值 `{1=Discrete, 2=Linear, 3=Event, 5=Hermite}`。同一天下午
-    用户又拍板加了一道更严的导出闸门：**只有 Constant/Linear/Bezier 三个 Blender 原生真实
-    类型能导出**，`3`(Event) 借用的 SINE 占位名字虽然还能正常导入，但导出前必须先转成这
-    三种真实类型之一——所以现在是三段测试：
-    ① `{1,2,3,5}` 全部能正确导入/识别；
-    ② 只有 `{1,2,5}`（对应 Constant/Linear/Bezier）不会被 `curve_interpolation_issues()`
-    判成问题，`3`（SINE）现在**应该**被判成问题——这是刻意的收紧，不是回归；
-    ③ 表外的原始类型（`0/4/6/7/8/9/10/11/12/13`，语料从没出现过或实机测出会崩/飞天/恒零）
-    导入时必须被 `import_curve()` 拒绝，不会静默退化成某个凑合的形状（铁律 #1）。
+    2026-09-19 用户纠正过一次架构：非标准原始类型（`0/4/6/8/9/10/11/12/13`，语料从没
+    出现过、实机测出会崩/飞天/恒零）**不能**像 Event 那样借用 Blender 插值名字接进
+    fcurve——那等于把它们也接进了"value 修改渠道"，跟"不提供任何关键帧编辑入口"的要求
+    正好相反。改成完全独立于 Blender Animation 系统的存储
+    （`EFXClipCurveItem.nonstandard_frames`），"标准"/"非标准"是两个地位平等、能互相
+    切换的顶层分类（见 model._CLIP_CURVE_CATEGORY_ITEMS），不是"非标准低一级"。测四件事：
+    ① `{1,2,3,5}` 全部能正确导入/识别到 fcurve 上；
+    ② 只有 `{1,2,5}`（Constant/Linear/Bezier）不会被 `curve_interpolation_issues()` 判成
+    问题，`3`（Event 借的 SINE）应该被判成问题——导入成功不代表能直接导出；
+    ③ `classify_raw_types()` 对标准/非标准/歧义（混标准+非标准，或混多个不同非标准值）
+    三种情况的分类都对，非标准值经 `import_nonstandard_curve()` 导入后**完全不touch
+    fcurve**（没有 channel_key，也没有任何 fcurve 被创建）；
+    ④ `set_curve_category()` 双向切换：标准↔非标准的数据搬运不丢东西，且切换方向对称
+    （两个方向都能切，不是单向"降级"）。
 
-    用内存里造的探针对象，不依赖具体样本。`_walk_clip_issues(holder, leaf_check)` 在
-    `holder` 自己就是 `TYPE_ATTRIBUTE` 时会直接对它跑叶子检查（不要求嵌在 Entry/Action
-    树里），不需要搭一整棵可达的树。"""
-    print("\n=== 插值映射表覆盖率 + 非标准类型拒绝闸门 + 标准导出闸门")
+    用内存里造的探针对象，不依赖具体样本。"""
+    print("\n=== 插值映射表覆盖率 + 标准/非标准分类闸门 + 标准导出闸门")
     scene_col = bpy.context.scene.collection
     holder = bpy.data.objects.new("clip_interp_probe", None)
     scene_col.objects.link(holder)
@@ -294,33 +295,70 @@ def verify_interpolation_gate(report: Report) -> None:
     report.check("导出闸门只放行 Constant/Linear/Bezier（raw 1/2/5），拦住 Event 的 SINE 占位（raw=3）",
                  export_ok)
 
-    # 2. 非标准原始类型（0/4/6/8/9/10/11/12/13）2026-09-19 改成"允许导入，各自借一个占位
-    #    Blender 名字，但仍然拦在标准导出闸门外"——跟 Event 完全同构，不是回归。
-    non_standard = (0, 4, 6, 8, 9, 10, 11, 12, 13)
-    non_standard_ok = True
-    for raw in non_standard:
-        clip_fcurve.import_curve(holder, curve, [
-            {"frame_time": 0.0, "interp_type": raw, "value": 0.0, "tangent": None},
-            {"frame_time": 10.0, "interp_type": raw, "value": 1.0, "tangent": None},
-        ])
-        fc = clip_fcurve._find_fcurve(holder, curve)
-        got = fc.keyframe_points[0].interpolation
-        want = clip_fcurve._INTERP_MHWS_TO_BLENDER[raw]
+    # 3a. classify_raw_types() 的三种分类都对。
+    classify_ok = True
+    cases = [
+        ({1, 2}, "STANDARD"), ({5}, "STANDARD"), ({3}, "STANDARD"),
+        ({0}, "NONSTANDARD"), ({9}, "NONSTANDARD"), ({13}, "NONSTANDARD"),
+        ({1, 9}, None),   # 标准+非标准混在一起
+        ({4, 9}, None),   # 两个不同的非标准值混在一起
+        ({7}, None),      # 真 Bezier：既不是标准也不是这批非标准
+    ]
+    for raw_types, want in cases:
+        got = clip_fcurve.classify_raw_types(raw_types)
         if got != want:
-            non_standard_ok = False
-            print(f"  [FAIL] raw={raw} 导入后 kp.interpolation={got!r}，期望 {want!r}")
-        if clip_fcurve.curve_interpolation_issues(holder, curve) != [want]:
-            non_standard_ok = False
-            print(f"  [FAIL] raw={raw}（{want}）应该被标准导出闸门拦住，但没有")
-    report.check(
-        f"非标准原始类型 {non_standard} 全部能导入（各自借一个占位 Blender 名字），"
-        "但仍被标准导出闸门拦住",
-        non_standard_ok,
-    )
+            classify_ok = False
+            print(f"  [FAIL] classify_raw_types({raw_types}) = {got!r}，期望 {want!r}")
+    report.check("classify_raw_types() 正确分类标准/非标准/歧义三种情况", classify_ok)
 
-    # 3. `7`（真 Bezier）是唯一仍然硬拒绝导入的值——涉及切线数据消费顺序的未决问题
-    #    （见 clip_fcurve.py 模块文档"raw=7 的导出限制"一节），跟上面 9 个不是同一类风险，
-    #    不能一起放行。
+    # 3b. 非标准值经 import_nonstandard_curve() 导入后完全不碰 fcurve——这是这次架构调整
+    #    的核心要求，"非标准曲线不接入任何 value 修改渠道"。
+    nonstandard = 9  # OffsetFrame，任选一个非标准值
+    curve.channel_key = ""
+    curve.curve_category = "STANDARD"
+    clip_fcurve.import_nonstandard_curve(
+        curve,
+        [{"frame_time": 0.0, "value": 1.0}, {"frame_time": 10.0, "value": 2.0}],
+        nonstandard,
+    )
+    no_fcurve_touch = (
+        curve.curve_category == "NONSTANDARD"
+        and curve.nonstandard_raw_type == nonstandard
+        and len(curve.nonstandard_frames) == 2
+        and not curve.channel_key  # 没有分配自定义 ID 属性 key
+        and clip_fcurve._find_fcurve(holder, curve) is None  # 也没有对应的 fcurve
+    )
+    report.check("非标准曲线导入后不分配 channel_key、不建 fcurve（不接入 Animation 系统）",
+                 no_fcurve_touch)
+
+    # 4. set_curve_category() 双向切换：非标准 -> 标准 -> 非标准，数据不丢、方向对称。
+    header, frames, tangents = clip_fcurve.export_nonstandard_curve(curve)
+    export_matches = (
+        header == {"frameCount": 2, "valueType": 5}
+        and [f["frameTime"] for f in frames] == [0.0, 10.0]
+        and [f["type"] for f in frames] == [nonstandard, nonstandard]
+        and tangents == []
+    )
+    report.check("非标准曲线导出的 frames/type 跟导入时一致，且没有切线数据", export_matches)
+
+    clip_fcurve.set_curve_category(holder, curve, "STANDARD")
+    to_standard_ok = (
+        curve.curve_category == "STANDARD"
+        and len(curve.nonstandard_frames) == 0
+        and clip_fcurve.keyframe_count(holder, curve) == 2
+    )
+    clip_fcurve.set_curve_category(holder, curve, "NONSTANDARD")
+    back_ok = (
+        curve.curve_category == "NONSTANDARD"
+        and len(curve.nonstandard_frames) == 2
+        and clip_fcurve._find_fcurve(holder, curve) is None
+    )
+    report.check("set_curve_category() 非标准->标准->非标准双向切换都成功、不丢帧数",
+                 to_standard_ok and back_ok)
+
+    # 5. `7`（真 Bezier）既不在标准表里也不在非标准表里——两条路径都拒绝，不会被误判成
+    #    "非标准"而放行导入。涉及切线数据消费顺序的未决问题，见 clip_fcurve.py 模块文档
+    #    "raw=7 的导出限制"一节。
     raised7 = False
     try:
         clip_fcurve.import_curve(holder, curve, [
@@ -328,7 +366,8 @@ def verify_interpolation_gate(report: Report) -> None:
         ])
     except clip_fcurve.ClipFcurveError:
         raised7 = True
-    report.check("raw=7（真 Bezier）仍被 import_curve() 拒绝，不会静默退化成某个形状", raised7)
+    report.check("raw=7（真 Bezier）仍被 import_curve() 拒绝，且不会被 classify_raw_types() "
+                 "误判成非标准", raised7 and clip_fcurve.classify_raw_types({7}) is None)
 
 
 def verify_hermite_tangent_scale(report: Report) -> None:

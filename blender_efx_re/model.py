@@ -1919,22 +1919,23 @@ class EFXExpressionParamItem(PropertyGroup):
 # EFXClipCurveItem —— IClipAttribute 的动画曲线编辑（挂在 EFX_ATTRIBUTE 对象上，不是
 # EFX_ROOT——每个 Clip attribute 有自己独立的一份，不是文件级共享表）
 #
-# 关键帧数据（frame/value/插值选择/Hermite 切线句柄）**不**存在这里，活在 `clip_fcurve.py`
-# 建的原生 Blender fcurve 里——用户直接在 Dope Sheet / Graph Editor 里编辑，`io_tree.py`
-# 导入/导出时调 `clip_fcurve.import_curve()`/`export_curve()` 在 fcurve 和字节之间搬运。
-# `EFXClipCurveItem` 只保留"这条曲线是什么"的结构性字段：驱动哪个 bit、按 Int 还是 Float
-# 读取、这条曲线的 fcurve 定位 key。
+# 标准曲线（`curve_category == "STANDARD"`）的关键帧数据（frame/value/插值选择/Hermite
+# 切线句柄）**不**存在这里，活在 `clip_fcurve.py` 建的原生 Blender fcurve 里——用户直接在
+# Dope Sheet / Graph Editor 里编辑，`io_tree.py` 导入/导出时调
+# `clip_fcurve.import_curve()`/`export_curve()` 在 fcurve 和字节之间搬运。非标准曲线
+# （`curve_category == "NONSTANDARD"`）的数据反过来，活在这里自己的 `nonstandard_frames`
+# 集合里，**完全不进 fcurve**——见下面 `_CLIP_CURVE_CATEGORY_ITEMS` 的说明。
 #
-# `FrameInterpolationType` 导入能接受 `{0,1,2,3,4,5,6,8,9,10,11,12,13}`（`7` 除外），但只有
-# `{1=Discrete, 2=Linear, 5=Hermite}` 能直接导出，`3=Event` 借的占位名字必须先转成这三种
-# 之一才能导出，剩下 9 个"非标准"值（语料从没用过，实机测出大多恒为 0/9 飞天）导入后能在
-# Blender 原生下拉框里改成任何类型，但导出前也必须先转成标准三种之一——见 `clip_fcurve.py`
-# 模块文档"插值类型语义"一节的完整证据链和分类。`5`（Hermite）借用 Blender 唯一支持自由
-# 切线的 `BEZIER` 插值标识符表示（切线要过 ÷3/×3 换算，不是字面 Bezier）。`7`（真 Bezier）
-# 是唯一仍然硬拒绝导入的值——不是证据不够，是它会消费 `interpolationData[]` 里的切线槽位，
-# 猜错消费顺序会连锁腐蚀同一条曲线里其它 Hermite 帧的数据，属于铁律 #1 要拒绝的风险，跟
-# 其它 9 个"纯值+位置，不摸切线数组"的非标准值不是同一类问题。仍未证实的只剩一处：
-# `Transform3DClip`/`PtTransform3DClip` 的 bit 顺序（哪个 bit 是位移/旋转/缩放的哪个分量）。
+# `FrameInterpolationType` 里只有 `{1=Discrete, 2=Linear, 5=Hermite}` 能直接导出，`3=Event`
+# 借的占位名字必须先转成这三种之一才能导出；`0/4/6/8/9/10/11/12/13` 这 9 个"非标准"值
+# （语料从没用过，实机测出大多恒为 0/9 飞天）能导入、能在这 9 个值之间互相改、也能整条曲线
+# 提升成标准分类，但不提供任何关键帧编辑入口——见 `clip_fcurve.py` 模块文档"插值类型语义"
+# 一节的完整证据链和分类。`5`（Hermite）借用 Blender 唯一支持自由切线的 `BEZIER` 插值
+# 标识符表示（切线要过 ÷3/×3 换算，不是字面 Bezier）。`7`（真 Bezier）是唯一仍然硬拒绝
+# 导入的值——不是证据不够，是它会消费 `interpolationData[]` 里的切线槽位，猜错消费顺序会
+# 连锁腐蚀同一条曲线里其它 Hermite 帧的数据，属于铁律 #1 要拒绝的风险，跟那 9 个"纯值+
+# 位置，不摸切线数组"的非标准值不是同一类问题。仍未证实的只剩一处：`Transform3DClip`/
+# `PtTransform3DClip` 的 bit 顺序（哪个 bit 是位移/旋转/缩放的哪个分量）。
 # 详见 `docs/PITFALLS.md` 对应条目和 `clip_fcurve.py` 模块文档。
 # ---------------------------------------------------------------------------
 
@@ -1978,6 +1979,28 @@ def int_bits_to_float(value: int) -> float:
     return struct.unpack("<f", struct.pack("<i", value))[0]
 
 
+#: 标准 / 非标准是两个**地位平等**的顶层分类（用户 2026-09-19 拍板的设计取舍，不是"非标准
+#: 低人一等"的默认值）：标准=能直接用 Blender 原生 fcurve 编辑的 4 个真实类型（Discrete/
+#: Linear/Event/Hermite，见 clip_fcurve.py）；非标准=剩下 9 个从没在真实文件里出现过、
+#: 实机测出会崩/飞天/恒零的原始值（0/4/6/8/9/10/11/12/13），只能整条曲线当一个不透明的
+#: frame_time/value 序列原样保存，不提供任何关键帧编辑入口。两个方向都能互相切换——哪怕
+#: "标准切成非标准"目前没什么实际用处，UI 上也不因为这个就不对称。
+_CLIP_CURVE_CATEGORY_ITEMS = (
+    ("STANDARD", "Standard", "Discrete/Linear/Event/Hermite，用 Blender 原生 fcurve 编辑"),
+    ("NONSTANDARD", "Non-standard",
+     "语料从没出现过、实机测出会崩/飞天/恒零的原始类型，只保存不提供编辑"),
+)
+
+
+class EFXClipRawFrame(PropertyGroup):
+    """非标准曲线（`EFXClipCurveItem.curve_category == "NONSTANDARD"`）的一个原始帧——
+    只存 `frame_time`/`value`，不提供任何编辑 UI，导入时原样存进来、导出时原样写回去。
+    `value` 已经是解出来的浮点数（Int 类型的位转换在 `clip_fcurve.import_nonstandard_curve()`/
+    `export_nonstandard_curve()` 里做，跟标准曲线走同一套 `int_bits_to_float()` 约定）。"""
+    frame_time: FloatProperty(name="Frame")
+    value: FloatProperty(name="Value")
+
+
 class EFXClipCurveItem(PropertyGroup):
     """对应 `EfxClipData` 里的一条子曲线（`clips[]` 里的一项 + 它自己的一段 `frames[]`）。
     子曲线的身份是"驱动 `ClipBits` 里的哪一位"（`bit_index`，0-based，和 JSON `clipBits.bits`
@@ -2003,6 +2026,18 @@ class EFXClipCurveItem(PropertyGroup):
     #: 寻址是为了不让"删中间一条曲线，后面的下标全部位移"把别的曲线的 fcurve 挪到错误位置上
     #: （见 model.py 顶部 EFXClipCurveItem 说明和 clip_fcurve.py 模块文档）。
     channel_key: StringProperty(name="Channel Key")
+
+    #: 主类：标准/非标准，见 `_CLIP_CURVE_CATEGORY_ITEMS` 的说明。切换走
+    #: `clip_fcurve.set_curve_category()`，不要直接改这个属性——切换要连带迁移
+    #: fcurve/`nonstandard_frames` 之间的数据，直接改属性只会让两边数据不同步。
+    curve_category: EnumProperty(name="Category", items=_CLIP_CURVE_CATEGORY_ITEMS,
+                                  default="STANDARD")
+    #: 非标准分类下的具体原始值（0/4/6/8/9/10/11/12/13 之一），只在
+    #: `curve_category == "NONSTANDARD"` 时有意义。名字表见 `clip_fcurve._NONSTANDARD_TYPE_NAMES`。
+    nonstandard_raw_type: IntProperty(name="Non-standard Type", default=0)
+    #: 非标准分类下的原始帧序列，见 `EFXClipRawFrame`。标准分类下这个集合应该是空的
+    #: （数据活在 fcurve 里）。
+    nonstandard_frames: CollectionProperty(type=EFXClipRawFrame)
 
 
 def _expression_node_changed(self, context) -> None:
@@ -2329,7 +2364,7 @@ def load_opaque(obj) -> dict:
 
 _CLASSES = (
     EFXValueNode, EFXGroupTag, EFXBoneItem, EFXFieldParameterItem, EFXUvarGroupItem,
-    EFXExpressionParamItem, EFXClipCurveItem,
+    EFXExpressionParamItem, EFXClipRawFrame, EFXClipCurveItem,
     # EFXExpressionNodeItem 必须排在 EFXExpressionCurveItem/EFXMaterialExpressionItem 前面：
     # 两者的 `nodes: CollectionProperty(type=...)` 在注册时都要求前者已经注册过。
     EFXExpressionNodeItem, EFXExpressionCurveItem, EFXMaterialExpressionItem,
