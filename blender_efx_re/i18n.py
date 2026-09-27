@@ -301,6 +301,13 @@ _STRINGS: dict[str, dict[str, str]] = {
     "name.label":             {"EN": "Name",                "ZH": "名称"},
     "name.hint":              {"EN": "Written to the EFX string table; nameHash follows automatically.",
                                "ZH": "写进 EFX 字符串表，nameHash 会自动跟着重算。"},
+    "name.hash_drift":        {"EN": "Stored nameHash {hash} doesn't match this name; export will change it",
+                               "ZH": "文件里的 nameHash {hash} 和名字对不上，导出时会变"},
+    "name.hash_drift_known":  {"EN": "The game may look it up as '{name}'",
+                               "ZH": "游戏可能按 '{name}' 找它"},
+    "name.hash_drift_unknown": {"EN": "Original name unknown",
+                                "ZH": "原名字查不到"},
+    "name.restore":           {"EN": "Rename to '{name}'",  "ZH": "改名为 '{name}'"},
 
     # Edit（复制/粘贴这类工具操作）
     "edit.copy_object":       {"EN": "Copy Object",         "ZH": "复制对象"},

@@ -438,17 +438,16 @@ static int RunLoad(string[] args)
         // 非空的 parsedExpressions，其余实现类维持原样透传，这里的分支对它们是空操作）。
         CompileExpressions(efx);
 
-        // Subselect（EffectGroups）组内成员顺序（efxEntryIndexes）快照：`UpdateEffectGroups()`
-        // （EfxFile.cs:1302，vendor 代码，不改）写出时无条件把每个已匹配组的 efxEntryIndexes
-        // 按 Entry 扫描顺序（ascending）重新生成，不管传进来的原始顺序是什么——见 PLAN.md E2。
-        // 数组级顺序（EffectGroups 本身谁在前谁在后）已经靠"不传空数组"绕开了，但组内成员的
-        // 相对顺序这条绕不过去，只能记下 Write() 之前的原始顺序，写完之后原地把这几个 int
-        // 换回去（见 PatchEffectGroupMemberOrder()）。
-        var originalGroupOrder = efx.EffectGroups.ToDictionary(
-            g => g.groupName, g => (int[])(g.efxEntryIndexes ?? Array.Empty<int>()).Clone());
+        // Subselect（EffectGroups）组内成员：`UpdateEffectGroups()`（EfxFile.cs:1312，vendor
+        // 代码，不改）写出时无条件按 Entry 扫描顺序（ascending）重新生成每个组的 efxEntryIndexes，
+        // 不管传进来的原始顺序是什么——见 PLAN.md E2；同名组还会被合并成一个、其余清空
+        // （KNOWN_UPSTREAM_ISSUES.md #13）。数组级顺序（EffectGroups 本身谁在前谁在后）已经靠
+        // "不传空数组"绕开了，组内内容只能 Write() 之前按位置算好，写完之后整段改回去（见
+        // PlanEffectGroups() / ApplyEffectGroupPlan()）。
+        var groupPlan = PlanEffectGroups(efx);
 
         efx.WriteTo(efxOutPath);
-        PatchEffectGroupMemberOrder(efxOutPath, efx, originalGroupOrder);
+        ApplyEffectGroupPlan(efxOutPath, efx, groupPlan);
 
         Console.WriteLine($"OK: {jsonPath} -> {efxOutPath}");
         return 0;
@@ -461,40 +460,99 @@ static int RunLoad(string[] args)
     }
 }
 
-// 把 UpdateEffectGroups() 重新排过的组内成员顺序（efxEntryIndexes）改回"原始相对顺序 +
-// 新成员追加到末尾"——不改变集合内容（还是同一组 entry 下标），只调整这几个 int 在文件里的
-// 排列顺序。定位靠 `EffectGroup.Start`（BaseModel 公开属性，Write() 时记的这个对象在流里的
-// 起始位置，见 Models.cs），不是靠猜整个文件的偏移布局：一个 EffectGroup 的二进制布局固定是
-// hash16(4B) + hash8(4B) + valueCount(4B) + efxEntryIndexes(valueCount * 4B)，见 EfxFile.cs
-// 的字段声明顺序，所以下标数组总是从 `Start + 12` 开始。
-static void PatchEffectGroupMemberOrder(string path, EfxFile efx, Dictionary<string, int[]> originalOrder)
+// Write() 之前算出每个**原有**组（按位置，不按名字——同名组在语料里真实存在，见
+// KNOWN_UPSTREAM_ISSUES.md #13）写出后该有的成员列表：
+//   - 原列表里、当前仍打着这个组标签的 entry，保持原相对顺序（包括原有的重复下标）；
+//   - 当前打了标签、但同名的哪一份原列表里都没有的 entry（新加入的），按升序追加到同名的
+//     第一份末尾——对应"新增在尾部追加"；
+//   - 标签全被去掉的组留空（跟 vendor 一致，保留位置）。
+// 同时把每个 entry 的 Groups 规整成"这个名字在各份目标列表里一共出现几次，就重复几次"
+// （原本没有对应组的新名字去重成 1 次）。Groups 只被 UpdateEffectGroups() 拿来建表、不单独
+// 写进文件，这样规整之后 vendor 写出的 EffectGroups 段总长度恰好等于目标布局的总长度，
+// ApplyEffectGroupPlan() 才能原地整段改写而不挪动后面的任何字节。
+static List<int[]> PlanEffectGroups(EfxFile efx)
 {
-    byte[]? bytes = null;
-    foreach (var grp in efx.EffectGroups)
+    var members = new Dictionary<string, HashSet<int>>();
+    for (int i = 0; i < efx.Entries.Count; i++)
     {
-        // 新增的组（UpdateEffectGroups() 里"unaccounted"分支现造的）在 Write() 之前的快照里
-        // 没有对应项，本来就是 vendor 刚生成的顺序，不需要改。
-        if (!originalOrder.TryGetValue(grp.groupName, out var original)) continue;
-
-        var current = grp.efxEntryIndexes ?? Array.Empty<int>();
-        var finalSet = new HashSet<int>(current);
-        // 原顺序里还在的，保持相对顺序；原顺序里没有的（这次新加入这个组的成员），按升序
-        // 追加到末尾——对应"新增在尾部追加"的要求。
-        var originalSet = new HashSet<int>(original);
-        var desired = original.Where(finalSet.Contains)
-            .Concat(current.Where(v => !originalSet.Contains(v)).OrderBy(v => v))
-            .ToArray();
-
-        if (desired.Length != current.Length || desired.SequenceEqual(current)) continue;
-
-        bytes ??= File.ReadAllBytes(path);
-        var indicesOffset = (int)grp.Start + 12;
-        for (int k = 0; k < desired.Length; k++)
+        foreach (var name in efx.Entries[i].Groups)
         {
-            BitConverter.GetBytes(desired[k]).CopyTo(bytes, indicesOffset + k * 4);
+            if (!members.TryGetValue(name, out var set)) members[name] = set = new HashSet<int>();
+            set.Add(i);
         }
     }
-    if (bytes != null) File.WriteAllBytes(path, bytes);
+
+    var plan = efx.EffectGroups.Select(g =>
+    {
+        var current = members.TryGetValue(g.groupName, out var set) ? set : new HashSet<int>();
+        return (g.efxEntryIndexes ?? Array.Empty<int>()).Where(current.Contains).ToArray();
+    }).ToList();
+
+    foreach (var byName in efx.EffectGroups.Select((g, k) => (g.groupName, k)).GroupBy(x => x.groupName))
+    {
+        if (!members.TryGetValue(byName.Key, out var current)) continue;
+        var covered = new HashSet<int>(byName.SelectMany(x => plan[x.k]));
+        var first = byName.First().k;
+        plan[first] = plan[first].Concat(current.Where(i => !covered.Contains(i)).OrderBy(i => i)).ToArray();
+    }
+
+    var occurrences = new Dictionary<(string, int), int>();
+    for (int k = 0; k < plan.Count; k++)
+    {
+        foreach (var i in plan[k])
+        {
+            var key = (efx.EffectGroups[k].groupName, i);
+            occurrences[key] = occurrences.GetValueOrDefault(key) + 1;
+        }
+    }
+    var knownNames = new HashSet<string>(efx.EffectGroups.Select(g => g.groupName));
+    for (int i = 0; i < efx.Entries.Count; i++)
+    {
+        var groups = efx.Entries[i].Groups;
+        var normalized = groups.Distinct()
+            .SelectMany(name => Enumerable.Repeat(name, knownNames.Contains(name) ? occurrences[(name, i)] : 1))
+            .ToList();
+        groups.Clear();
+        groups.AddRange(normalized);
+    }
+    return plan;
+}
+
+// 按 PlanEffectGroups() 的结果整段改写原有组的二进制。定位靠 `EffectGroup.Start`（BaseModel
+// 公开属性，Write() 时记的这个对象在流里的起始位置，见 Models.cs），不是靠猜整个文件的偏移
+// 布局：一个 EffectGroup 的二进制布局固定是 hash16(4B) + hash8(4B) + valueCount(4B) +
+// efxEntryIndexes(valueCount * 4B)，见 EfxFile.cs 的字段声明顺序，各组首尾相接
+// （EffectGroups.Write() 连续写出）。UpdateEffectGroups() 新造的组排在原有组后面，本来就是
+// vendor 刚生成的内容，不动。
+static void ApplyEffectGroupPlan(string path, EfxFile efx, List<int[]> plan)
+{
+    if (plan.Count == 0) return;
+    var bytes = File.ReadAllBytes(path);
+    var start = (int)efx.EffectGroups[0].Start;
+    var end = plan.Count < efx.EffectGroups.Count
+        ? (int)efx.EffectGroups[plan.Count].Start
+        : start + efx.Header.effectGroupsLength;
+
+    using var rebuilt = new MemoryStream();
+    using (var writer = new BinaryWriter(rebuilt, System.Text.Encoding.UTF8, leaveOpen: true))
+    {
+        for (int k = 0; k < plan.Count; k++)
+        {
+            writer.Write(bytes, (int)efx.EffectGroups[k].Start, 8); // 两个名字哈希原样照抄
+            writer.Write(plan[k].Length);
+            foreach (var index in plan[k]) writer.Write(index);
+        }
+    }
+    // 长度对不上说明 Groups 规整没生效（vendor 改了 UpdateEffectGroups 的算法之类），原地改写
+    // 会把后面的字节覆盖掉——宁可报错拒绝导出，也不写一个错位的文件（铁律 #1）。
+    if (rebuilt.Length != end - start)
+    {
+        throw new Exception(
+            $"EffectGroups 段长度对不上（vendor 写出 {end - start} 字节，按原组重建 {rebuilt.Length} 字节），" +
+            "拒绝写出，免得覆盖后面的数据。");
+    }
+    rebuilt.ToArray().CopyTo(bytes, start);
+    File.WriteAllBytes(path, bytes);
 }
 
 // `EfxMaterialClipData.Version`（`[RszIgnore] public EfxVersion Version;`）在 System.Text.Json
@@ -705,7 +763,7 @@ static void CompileExpressions(EfxFile file)
 // root()）在"这一帧显式选择不裁剪"时需要字面 `0`，DoWrite() 只会给出 -1（见 UvsFile.cs:172，
 // 空列表没有产出字面 0 的路径）。所以 `RunUvsLoad()` 在 JSON 里显式带了 `cutoutUVCount` 字段
 // 的 pattern 上，会在 `uvs.Write()` 完成之后再做一次二次字节 patch（`PatchZeroCutoutCounts()`），
-// 把 DoWrite() 算出来的 -1 改回 0——跟 EffectGroups 顺序的 `PatchEffectGroupMemberOrder()`
+// 把 DoWrite() 算出来的 -1 改回 0——跟 EffectGroups 顺序的 `ApplyEffectGroupPlan()`
 // 是同一个套路。
 
 static JsonSerializerOptions CreateUvsJsonOptions()
@@ -855,7 +913,7 @@ static int RunUvsLoad(string[] args)
 // 0——这些 pattern 是真实、活跃使用的游戏特效数据（2026-09-10 交叉核对过引用它们的 EFX
 // 语料，见 PLAN.md "Phase 2" 一节），不是可以丢弃的编辑器残留。定位靠 `UvsPattern.Start`
 // （BaseModel 公开属性，Write() 时记的这个对象在流里的起始位置，同 EFX 侧
-// PatchEffectGroupMemberOrder() 的思路）——一个 UvsPattern 的二进制布局固定是
+// ApplyEffectGroupPlan() 的思路）——一个 UvsPattern 的二进制布局固定是
 // flags(8B) + left/top/right/bottom(4B×4=16B) + textureIndex(4B) + cutoutUVCount(4B)
 // （见 UvsFile.cs 的字段声明顺序），所以这个字段总是从 `Start + 28` 开始。
 static void PatchZeroCutoutCounts(string path, List<UvsPattern> patterns)

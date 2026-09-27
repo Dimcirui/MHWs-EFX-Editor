@@ -1129,9 +1129,36 @@ class EFX_RE_OT_delete(Operator):
         return {"FINISHED"}
 
 
+class EFX_RE_OT_restore_hashed_name(Operator):
+    """把当前 Entry/Action 改回导入时 nameHash 对应的那个名字（能反查出来的时候）"""
+
+    bl_idname = "efx_re.restore_hashed_name"
+    bl_label = "Restore Original Name"
+    bl_description = "改回导入时 nameHash 对应的名字，导出后游戏能按原哈希找到它"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = getattr(context, "object", None)
+        return (obj is not None and obj.get("~TYPE") in (model.TYPE_ENTRY, model.TYPE_ACTION)
+                and bool(obj.efx_orig_name_hash))
+
+    def execute(self, context):
+        obj = context.object
+        known = semantics.lookup_efx_name_hash(int(obj.efx_orig_name_hash))
+        if known is None:
+            self.report({"ERROR"}, f"原 nameHash {obj.efx_orig_name_hash} 不在已知名字表里，反查不出名字")
+            return {"CANCELLED"}
+        old = obj.efx_name
+        obj.efx_name = known
+        self.report({"INFO"}, f"已把 '{old}' 改回 '{known}'")
+        return {"FINISHED"}
+
+
 _CLASSES = (
     EFX_RE_OT_entry_add,
     EFX_RE_OT_action_add,
+    EFX_RE_OT_restore_hashed_name,
     EFX_RE_OT_attribute_add,
     EFX_RE_OT_attribute_add_search,
     EFX_RE_OT_mdf_reference_load,

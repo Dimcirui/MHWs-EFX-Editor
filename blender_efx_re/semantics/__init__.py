@@ -39,8 +39,11 @@ from typing import Optional
 
 import bpy
 
+from ..name_hash import utf8_hash
+
 _MINED_JSON = Path(__file__).resolve().parent / "mhws_field_labels_mined.json"
 _HASHES_JSON = Path(__file__).resolve().parent / "mhws_name_hashes.json"
+_EFX_NAMES_JSON = Path(__file__).resolve().parent / "mhws_efx_names.json"
 _FACTORY_JSON = Path(__file__).resolve().parent / "mhws_field_labels.json"
 _ATTR_DEFAULTS_JSON = Path(__file__).resolve().parent / "mhws_attribute_defaults.json"
 _INSTANCE_DEFAULTS_JSON = Path(__file__).resolve().parent / "mhws_attribute_instance_defaults.json"
@@ -112,6 +115,24 @@ def lookup_name_hash(value: int) -> Optional[str]:
     32 位碰撞（约 1500/2^32）。
     """
     return _hash_table().get(str(value))
+
+
+_efx_name_cache: Optional[dict] = None
+
+
+def lookup_efx_name_hash(value: int) -> Optional[str]:
+    """一个 Entry/Action nameHash 如果是官方语料里出现过的某个 Entry/Action 名字的哈希，返回
+    那个名字，否则 None。
+
+    和 lookup_name_hash() 分开查：这张表只收 Entry/Action 名字（tools/mine_efx_names.py 从
+    语料里收的，每个都跟文件里存的 nameHash 比对过），两万多条，混进通用哈希表的话面板上
+    随便一个整数字段都可能被标成某个 Entry 的名字。表里只存名字，哈希第一次查的时候现算。
+    """
+    global _efx_name_cache
+    if _efx_name_cache is None:
+        names = _load_table(_EFX_NAMES_JSON).get("names") or []
+        _efx_name_cache = {utf8_hash(name): name for name in names}
+    return _efx_name_cache.get(int(value))
 
 
 _attr_defaults_cache: Optional[dict] = None

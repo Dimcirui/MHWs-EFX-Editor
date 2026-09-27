@@ -2419,10 +2419,21 @@ def register():
     # 改名是安全的：写出时 C# 侧会按 name 重算 nameHash（EfxFile.cs `EFXEntry.DoWrite` /
     # `EFXAction.DoWrite`），文件头的字符串表也按 Entries/Actions 的 name 整体重建
     # （`Strings.EfxNames = Entries.Select(e => e.name ...)`），不存在改了名字对不上哈希的问题。
+    # 反过来的情况见下面的 efx_orig_name_hash：导入的文件本身就对不上。
     Object.efx_name = StringProperty(
         name="EFX Name",
         description="这个 Entry/Action 在 EFX 文件里的名字",
         update=_sync_object_name,
+    )
+
+    # EFX_ENTRY / EFX_ACTION：导入时文件里存的 nameHash **和 name 对不上**才记（十进制 uint32
+    # 字符串，对得上就留空）。官方文件里两者永远一致，对不上说明被别的工具改过名字、哈希没跟着
+    # 改；vendor 写出时按 name 重算，游戏如果按原哈希找这个 Entry/Action，导出后就找不到了。
+    # 面板和导入/导出据此提示，见 io_tree.name_hash_drift()。不参与导出（导出的 nameHash 永远
+    # 是 vendor 现算的），改名改到哈希对上时提示自动消失。
+    Object.efx_orig_name_hash = StringProperty(
+        name="Original nameHash",
+        description="导入时文件里存的 nameHash（和名字对不上时才有值）",
     )
 
     Object.efx_index = IntProperty(name="Original Index")
@@ -2592,6 +2603,7 @@ def unregister():
     del Object.efx_groups_active_index
     del Object.efx_groups
     del Object.efx_index
+    del Object.efx_orig_name_hash
     del Object.efx_name
     del Object.efx_mdf_mismatched
     del Object.efx_mdf_reference

@@ -102,6 +102,7 @@ e. 最终改动必须落成 `tools/vendor-patches/NNNN-*.patch`。调试时临�
 | 改了什么 | 跑什么 |
 |---|---|
 | `efx_sim/`（零 bpy 的那层） | `python -m unittest discover -s tests` |
+| `name_hash.py` / `io_tree.name_hash_drift()` / `semantics/mhws_efx_names.json`（由 `tools/mine_efx_names.py` 重新生成） | `python -m unittest discover -s tests` + `verify_blender_roundtrip.py` |
 | `bridge.py`/`io_tree.py`/`operators.py`/`uvs_io.py` 里加了 `except` | `python tools/check_import_no_swallow.py`（不用开 Blender） |
 | IO 路径 | `verify_blender_roundtrip.py` |
 | 公式记法版本拦截（`io_tree` 的 `EXPR_NOTATION_*` / `copy_paste.py` / `entry_presets.py` 里同一判据） | `verify_blender_roundtrip.py` |

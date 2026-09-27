@@ -297,6 +297,13 @@ class EFX_RE_OT_import(Operator, ImportHelper):
             # （对齐姊妹项目 EFX-Editor 导入后自动指向新根的行为）。见 io_tree.resolve_root()。
             context.scene.efx_re_active_root = root_col
             imported.append((root_col, data))
+            drift = io_tree.name_hash_drift(root_col)
+            if drift:
+                self.report(
+                    {"WARNING"},
+                    f"'{name}' 里有 {len(drift)} 个 Entry/Action 的 nameHash 和名字对不上（文件被别的"
+                    f"工具改过名），导出时会按名字重算，游戏可能找不到它们：{io_tree.describe_name_hash_drift(drift)}",
+                )
 
         # 有文件成功时失败项报 WARNING 而不是 ERROR：`self.report({"ERROR"})` 会让
         # `bpy.ops.efx_re.import(...)` 在 Python 侧直接抛 RuntimeError（Blender 把算子的
@@ -461,6 +468,15 @@ class EFX_RE_OT_export(Operator, ExportHelper):
         if unwritable:
             head = "；".join(unwritable[:2]) + ("……" if len(unwritable) > 2 else "")
             self.report({"WARNING"}, f"这棵树有 {len(unwritable)} 处上游写不回去的构造：{head}")
+
+        # 不拦（用户 2026-09-26 选的方案）：名字是用户看得见、改得了的，面板上有一键改回原名。
+        drift = io_tree.name_hash_drift(root_col)
+        if drift:
+            self.report(
+                {"WARNING"},
+                f"{len(drift)} 个 Entry/Action 的 nameHash 会变（导入时就和名字对不上），游戏按原哈希"
+                f"会找不到它们：{io_tree.describe_name_hash_drift(drift)}",
+            )
 
         data = io_tree.export_root_to_efxfile(root_col, reorder_effect_groups=self.reorder_effect_groups)
         try:

@@ -44,6 +44,7 @@ import bpy
 from bpy.types import Collection, Object
 
 from . import model
+from . import name_hash
 # transform3d_view 只在模块级 import model/coords，不 import io_tree（它对 io_tree 的调用是
 # 函数内延迟 import），所以这里正着 import 不成环。
 from . import transform3d_view
@@ -475,12 +476,24 @@ def build_root_from_efxfile(
             item.rgba_str = str(int(value.get("rgba", 0) or 0))
 
     for index, entry_dict in enumerate(efxfile_dict.get("Entries", []) or []):
-        build_entry_object(entry_dict, index, entries_collection)
+        _record_name_hash(build_entry_object(entry_dict, index, entries_collection), entry_dict)
 
     for index, action_dict in enumerate(efxfile_dict.get("Actions", []) or []):
-        build_action_object(action_dict, index, actions_collection)
+        _record_name_hash(build_action_object(action_dict, index, actions_collection), action_dict)
 
     return own_collection
+
+
+def _record_name_hash(obj: Object, item_dict: dict) -> None:
+    """文件里存的 nameHash 和 name 对不上时记到 `efx_orig_name_hash`，见 model.py 那个属性的
+    说明。只在建整棵树（导入文件、嵌套 efxrData）时调，不放进 build_entry/action_object()：
+    新建的 Entry/Action 从 bridge 拿到的空白模板 nameHash 是 0、名字是后填的，放进去就是
+    必然的误报。复制/粘贴、预设带进来的字典由 _export_name() 保证一致，不会误报。"""
+    stored = item_dict.get("nameHash")
+    if stored is None or int(stored) == name_hash.utf8_hash(item_dict.get("name") or ""):
+        obj.efx_orig_name_hash = ""
+    else:
+        obj.efx_orig_name_hash = str(int(stored))
 
 
 # ---------------------------------------------------------------------------
@@ -835,14 +848,19 @@ def export_attribute_object(obj: Object) -> dict:
 
 
 def _apply_name(target: dict, obj: Object) -> None:
-    """把 efx_name 写回导出字典。
+    """把 efx_name 写回导出字典，nameHash 按写出去的名字现算。
 
     `efx_name` 为空时**保留 opaque 里原有的 name 不动**：`name` 是这一版才从 opaque 挪进
     专属属性的，早先导入、存在 .blend 里的对象没有 efx_name，直接覆盖会把它们的名字清空。
     新导入的对象一定有值（build_* 里赋的），所以这条兼容分支只影响老场景。
+
+    nameHash 写不写对 .efx 字节没有影响（vendor 写出时自己按 name 重算），现算是为了这份
+    字典被复制/粘贴、存成预设再建回来的时候，不带着改名之前那个过期的哈希——否则
+    _record_name_hash() 会把"用户在 Blender 里改过名"误当成"文件本身名字和哈希对不上"。
     """
     if obj.efx_name:
         target["name"] = obj.efx_name
+    target["nameHash"] = name_hash.utf8_hash(target.get("name") or "")
 
 
 def export_entry_object(obj: Object) -> dict:
@@ -1285,6 +1303,41 @@ def check_expression_notation(root_col: Collection, data: dict) -> None:
 # 因为我们这份名单过期而继续挡着，而"先警告、照样试一次"在修好之后自动就通了。
 def _unwritable_in_attribute(attr_obj: Object) -> list[str]:
     return []
+
+
+def name_hash_drift(root_col: Collection) -> list[tuple[Object, int, str | None]]:
+    """导入时 nameHash 就和名字对不上、**现在的名字也还没改到对上**的 Entry/Action：
+    `[(对象, 原 nameHash, 原哈希能反查出的名字或 None), ...]`，含嵌套 efxrData。
+
+    导出时 vendor 会按当前名字重算 nameHash，这些对象的哈希一定会变——游戏如果按原哈希找它
+    （外部动作表之类），导出后就找不到了，看起来就像这个 Entry/Action 丢了。这里只报告、不拦：
+    名字是用户能看见、能改的，改回反查出的名字（面板上一键）哈希就对上了。
+    """
+    from . import semantics
+
+    drift = []
+
+    def visit_root(col: Collection) -> None:
+        for obj in root_entries(col) + root_actions(col):
+            raw = obj.efx_orig_name_hash
+            if raw and int(raw) != name_hash.utf8_hash(obj.efx_name or ""):
+                drift.append((obj, int(raw), semantics.lookup_efx_name_hash(int(raw))))
+            for attr_obj in typed_children(obj, model.TYPE_ATTRIBUTE):
+                nested = attr_obj.efx_nested_root
+                if nested is not None and nested.get("~TYPE") == model.TYPE_ROOT:
+                    visit_root(nested)
+
+    visit_root(root_col)
+    return drift
+
+
+def describe_name_hash_drift(drift: list) -> str:
+    """name_hash_drift() 的结果拼成一行给 self.report() 用。"""
+    parts = [
+        f"'{obj.efx_name}'（原哈希 {orig}" + (f" = '{known}'" if known else "，名字未知") + "）"
+        for obj, orig, known in drift[:3]
+    ]
+    return "、".join(parts) + ("……" if len(drift) > 3 else "")
 
 
 def unwritable_constructs(root_col: Collection) -> list[str]:

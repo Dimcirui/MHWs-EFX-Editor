@@ -38,7 +38,7 @@ from bpy.types import Menu, Panel, UIList
 from . import (
     attribute_types, bitfield, bridge, copy_paste, expr_edit, expr_nodes, expr_preview,
     field_label_variants, field_visibility,
-    i18n, io_tree, model, semantics, structure_ops,
+    i18n, io_tree, model, name_hash, semantics, structure_ops,
 )
 from .i18n import T
 
@@ -1961,6 +1961,21 @@ def _draw_name_row(layout, obj) -> None:
     """Entry/Action 的游戏侧名字。**不是 Blender 对象名**——对象名全局唯一、撞名会被加 `.001`，
     而 EFX 里两个 entry 完全可以同名，见 model.py `Object.efx_name` 的说明。"""
     layout.prop(obj, "efx_name", text=T("name.label"))
+    # 导入时 nameHash 就和名字对不上（别的工具改过名），导出会按名字重算，见
+    # io_tree.name_hash_drift()。改名改到哈希对上时这段自动消失。
+    raw = obj.efx_orig_name_hash
+    if raw and int(raw) != name_hash.utf8_hash(obj.efx_name or ""):
+        known = semantics.lookup_efx_name_hash(int(raw))
+        box = layout.box()
+        col = box.column(align=True)
+        col.alert = True
+        col.label(text=T("name.hash_drift").format(hash=raw), icon="ERROR", translate=False)
+        if known is None:
+            col.label(text=T("name.hash_drift_unknown"), translate=False)
+        else:
+            col.label(text=T("name.hash_drift_known").format(name=known), translate=False)
+            box.operator("efx_re.restore_hashed_name", text=T("name.restore").format(name=known),
+                         icon="LOOP_BACK", translate=False)
 
 
 def _draw_entry_content(layout, context, obj) -> None:

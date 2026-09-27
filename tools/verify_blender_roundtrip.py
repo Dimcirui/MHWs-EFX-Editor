@@ -49,6 +49,10 @@ Blender 这条用户真正会走的路径上——这个脚本就是补那一刀
 
 外加 `operators._ensure_version_suffix()`/`_parsed_file_version()` 的路径形状单测（E1 根因 1）。
 
+外加同名 EffectGroups（KNOWN_UPSTREAM_ISSUES.md #13，在带 EffectGroups 的样本上合成一个同名组）
+逐组保住，以及导入时 nameHash 和名字对不上的 Entry/Action 能被报出、反查出原名、一键改回，
+官方样本和"在 Blender 里改过名"都不误报（io_tree.name_hash_drift()）。
+
 外加"公式记法版本"那道拦截（`io_tree.check_expression_notation()`，vendor bump 到 `1c2f92d`
 之后旧 .blend 里的公式按旧写法存着）：新导入的树带版本号能导出；抹掉版本号模拟旧 .blend，
 导出算子必须 CANCELLED 且不写文件；不带公式的旧树照常放行；Copy/Paste 和 Entry 预设这两条
@@ -432,6 +436,138 @@ def verify_expression_notation_guard(samples: list, workdir: pathlib.Path, repor
         entry_presets._write_presets, entry_presets._cache = saved_write, saved_cache
 
 
+def _sample_dumps(samples: list, workdir: pathlib.Path, prefix: str) -> list[tuple[str, dict]]:
+    out = []
+    for orig in samples:
+        src = workdir / (prefix + orig.name.replace(".orig", ""))
+        shutil.copy(orig, src)
+        out.append((orig.name.split(".efx.")[0], bridge.dump_efx(src)))
+    return out
+
+
+def _effect_groups(data: dict) -> list:
+    return [(g.get("groupName"), list(g.get("efxEntryIndexes") or [])) for g in data.get("EffectGroups") or []]
+
+
+def verify_effect_group_duplicates(samples: list, workdir: pathlib.Path, report: Report) -> None:
+    """同名 EffectGroups（KNOWN_UPSTREAM_ISSUES.md #13）：vendor 写出时把同名组合并进第一个、
+    其余清空，桥接层 PlanEffectGroups()/ApplyEffectGroupPlan() 按位置改回去。
+
+    diag 样本里未必有真实的同名组，所以在带 EffectGroups 的样本上合成一个：把第 0 组原样复制
+    一份插在它后面，成员 entry 的 Groups 里同名标签也多出一次（vendor 读文件时就是这么填的），
+    走 Blender 建树 → 导出 → load → 读回，要求 EffectGroups 逐组（名字 + 成员顺序）不变。
+    """
+    print("\n=== EffectGroups 同名组")
+    picked = None
+    for stem, data in _sample_dumps(samples, workdir, "egdup_"):
+        groups = data.get("EffectGroups") or []
+        if groups and groups[0].get("efxEntryIndexes"):
+            picked = (stem, data)
+            break
+    report.check("样本里有带成员的 EffectGroups（否则这一节整体空跑）", picked is not None)
+    if picked is None:
+        return
+    stem, data = picked
+
+    dup = json.loads(json.dumps(data["EffectGroups"][0]))
+    data["EffectGroups"].insert(1, dup)
+    for index in dup["efxEntryIndexes"]:
+        data["Entries"][index].setdefault("Groups", []).append(dup["groupName"])
+    want = _effect_groups(data)
+
+    root = io_tree.build_root_from_efxfile(data, bpy.context.scene.collection, "egdup_probe")
+    out_path = workdir / f"{stem}_egdup.efx.5571972"
+    try:
+        bridge.load_efx(io_tree.export_root_to_efxfile(root), out_path)
+        got = _effect_groups(bridge.dump_efx(out_path))
+    except bridge.BridgeError as ex:
+        report.check(f"{stem}: 合成同名组 '{dup['groupName']}' 后能导出", False, str(ex)[:400])
+        return
+    report.check(f"{stem}: 合成同名组 '{dup['groupName']}' 后能导出", True)
+    report.check(f"{stem}: 同名组逐组保住（名字 + 成员顺序，{len(want)} 组）", got == want,
+                 f"期望 {want[:3]}\n           实际 {got[:3]}")
+
+
+def verify_name_hash_drift(samples: list, workdir: pathlib.Path, report: Report) -> None:
+    """导入时 nameHash 和名字对不上的 Entry/Action（io_tree.name_hash_drift()）。
+
+    1. 官方样本一个都不能报（官方文件里两者永远一致，报了就是误报）；
+    2. 模拟"别的工具只改了名字"：改 name 不改 nameHash，要报出来、反查出原名；
+    3. 导出字典的 nameHash 按当前名字现算；
+    4. restore_hashed_name 算子改回原名后不再报；
+    5. 在 Blender 里改名 → 导出字典 → 再建树（复制/粘贴、预设走的就是这条）不能误报。
+    """
+    print("\n=== nameHash 与名字对不上")
+    from blender_efx_re import name_hash
+
+    scene_col = bpy.context.scene.collection
+    dumps = _sample_dumps(samples, workdir, "namehash_")
+    false_hits = []
+    for stem, data in dumps:
+        root = io_tree.build_root_from_efxfile(data, scene_col, f"namehash_clean_{stem}")
+        false_hits += [f"{stem}:{obj.efx_name}" for obj, _h, _k in io_tree.name_hash_drift(root)]
+    report.check(f"官方样本无误报（{len(dumps)} 个样本）", not false_hits, ", ".join(false_hits[:5]))
+
+    stem, data = next(((s, d) for s, d in dumps if d.get("Actions") and d.get("Entries")), (None, None))
+    report.check("样本里有同时带 Entry 和 Action 的文件（否则这一节整体空跑）", data is not None)
+    if data is None:
+        return
+
+    tampered = json.loads(json.dumps(data))
+    originals = {}
+    for kind in ("Entries", "Actions"):
+        item = tampered[kind][0]
+        originals[kind] = item["name"]
+        item["name"] = f"renamed_by_other_tool_{kind}"  # nameHash 原样不动
+    root = io_tree.build_root_from_efxfile(tampered, scene_col, "namehash_tampered")
+    drift = {obj.efx_name: known for obj, _h, known in io_tree.name_hash_drift(root)}
+    for kind, orig_name in originals.items():
+        name = f"renamed_by_other_tool_{kind}"
+        report.check(f"{stem}: {kind}[0] 被报出、反查出原名 '{orig_name}'", drift.get(name) == orig_name,
+                     f"drift = {drift}")
+
+    # 面板那段警告框：无头模式建不出真的 UILayout，用一个什么调用都接、只记下文字的替身把
+    # panels._draw_name_row() 真跑一遍（i18n 键写错、format 占位符对不上这类错只有执行到才炸）。
+    from blender_efx_re import panels
+
+    class _FakeLayout:
+        def __init__(self, texts: list):
+            self.texts = texts
+
+        def __getattr__(self, _name):
+            def call(*_args, **kwargs):
+                if "text" in kwargs:
+                    self.texts.append(kwargs["text"])
+                return self
+            return call
+
+    texts: list = []
+    panels._draw_name_row(_FakeLayout(texts), io_tree.root_actions(root)[0])
+    report.check(f"{stem}: 面板警告框画出原哈希和改名按钮",
+                 any(str(io_tree.root_actions(root)[0].efx_orig_name_hash) in t for t in texts)
+                 and any(originals["Actions"] in t for t in texts), str(texts))
+
+    out = io_tree.export_root_to_efxfile(root)
+    hashes_ok = all(item["nameHash"] == name_hash.utf8_hash(item["name"] or "")
+                    for kind in ("Entries", "Actions") for item in out[kind])
+    report.check(f"{stem}: 导出字典的 nameHash 按当前名字现算", hashes_ok)
+
+    targets = [io_tree.root_entries(root)[0], io_tree.root_actions(root)[0]]
+    for obj in targets:
+        with bpy.context.temp_override(object=obj, active_object=obj):
+            result, message = _run_op(bpy.ops.efx_re.restore_hashed_name)
+        report.check(f"{stem}: restore_hashed_name 改回 '{obj.efx_name}'", result == {"FINISHED"}, message)
+    report.check(f"{stem}: 改回原名后不再报", not io_tree.name_hash_drift(root),
+                 str(io_tree.name_hash_drift(root)))
+
+    clean = io_tree.build_root_from_efxfile(data, scene_col, "namehash_renamed")
+    io_tree.root_entries(clean)[0].efx_name = "renamed_in_blender"
+    io_tree.root_actions(clean)[0].efx_name = "renamed_in_blender"
+    rebuilt = io_tree.build_root_from_efxfile(io_tree.export_root_to_efxfile(clean), scene_col, "namehash_rebuilt")
+    report.check(f"{stem}: Blender 里改名后再建树不误报", not io_tree.name_hash_drift(rebuilt),
+                 str([(o.efx_name, h) for o, h, _k in io_tree.name_hash_drift(rebuilt)]))
+
+
 def verify_version_suffix(report: Report) -> None:
     """E1 根因 1 的单测：版本号后缀的补齐/校验规则（照抄 vendor PathUtils.ParseFileFormat）。"""
     print("\n=== _ensure_version_suffix() / _parsed_file_version()")
@@ -504,6 +640,8 @@ def main() -> int:
     verify_unwritable_detection(report)
     verify_version_suffix(report)
     verify_expression_notation_guard(samples, workdir, report)
+    verify_effect_group_duplicates(samples, workdir, report)
+    verify_name_hash_drift(samples, workdir, report)
 
     if report.failures:
         print(f"\n===== {len(report.failures)} 项失败")
